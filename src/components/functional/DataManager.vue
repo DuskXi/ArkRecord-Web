@@ -188,26 +188,7 @@ export default {
             }
           }
         }
-
-
-        // let dataLoader = new DataLoader();
-        // dataLoader.load(result);
-        // if (dataLoader.officialPools.length > 0)
-        //   await writeLocalStorage("ArknightsCardInformation", this.merge(dataLoader.officialPools, await readLocalStorage("ArknightsCardInformation")));
-        // if (dataLoader.bilibiliPools.length > 0)
-        //   await writeLocalStorage("ArknightsCardInformationB", this.merge(dataLoader.bilibiliPools, await readLocalStorage("ArknightsCardInformationB")));
-        // if (dataLoader.officialStones.length > 0)
-        //   await writeLocalStorage("StoneOfficial", this.merge(dataLoader.officialStones, await readLocalStorage("StoneOfficial")));
-        // if (dataLoader.bilibiliStones.length > 0)
-        //   await writeLocalStorage("StoneBilibili", this.merge(dataLoader.bilibiliStones, await readLocalStorage("StoneBilibili")));
-        // if (dataLoader.officialRecharge.length > 0)
-        //   await writeLocalStorage("RechargeOfficial", this.merge(dataLoader.officialRecharge, await readLocalStorage("RechargeOfficial")));
-        // if (dataLoader.bilibiliRecharge.length > 0)
-        //   await writeLocalStorage("RechargeBilibili", this.merge(dataLoader.bilibiliRecharge, await readLocalStorage("RechargeBilibili")));
-        // Notify.create({
-        //   type: 'positive',
-        //   message: `数据导入完成: ${dataLoader.summary()}`
-        // });
+        this.onUpdate();
       } catch (e) {
         Notify.create({
           type: 'error',
@@ -286,6 +267,11 @@ export default {
     bilibili: {
       type: Boolean,
       default: false
+    },
+    onUpdate: {
+      type: Function,
+      default: () => {
+      }
     }
   }
 }

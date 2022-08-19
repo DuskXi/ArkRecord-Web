@@ -2,13 +2,14 @@
 
   <div class="q-gutter-xs">
     <q-btn color="primary" @click="onDialogClick" label="Token管理器"/>
-    <q-badge color="primary" :label="current['info']['nickName']" v-if="Object.keys(current).length > 0 "/>
-    <q-badge color="green" :label="'uid: '+ current['info']['uid']" v-if="Object.keys(current).length > 0 "/>
+    <q-badge color="primary" :label="current['info']['nickName']" v-if="Object.keys(current).length > 0 && enableInfoShow"/>
+    <q-badge color="green" :label="'uid: '+ current['info']['uid']" v-if="Object.keys(current).length > 0 && enableInfoShow"/>
     <div class="text-caption row inline" v-if="Object.keys(current).length > 0 && summaryDataSet.hasOwnProperty(`O/${current['info']['uid']}`)">
-      寻访: <span class="text-amber-7">{{ summaryDataSet[`O/${current['info']['uid']}`].pool }}</span> 条,
-      源石: <span class="text-amber-7">{{ summaryDataSet[`O/${current['info']['uid']}`].stone }}</span> 条,
-      充值: <span class="text-amber-7">{{ summaryDataSet[`O/${current['info']['uid']}`].recharge }}</span> 条
+      寻访: <span class="text-amber-9">{{ summaryDataSet[`O/${current['info']['uid']}`].pool }}</span> 条,
+      源石: <span class="text-amber-9">{{ summaryDataSet[`O/${current['info']['uid']}`].stone }}</span> 条,
+      充值: <span class="text-amber-9">{{ summaryDataSet[`O/${current['info']['uid']}`].recharge }}</span> 条
     </div>
+    <q-toggle v-model="enableInfoShow" label="显示个人信息"/>
   </div>
   <q-dialog v-model="dialog" persistent>
     <q-card :style="$q.screen.gt.sm? 'width: 1000px; max-width: 70vw;':'width: 96vw;'">
@@ -152,6 +153,7 @@ export default {
     current: {},
     officialButton: new Date().getTime(),
     bilibiliButton: new Date().getTime(),
+    enableInfoShow: true,
   }),
   methods: {
     onDialogClick() {
@@ -163,7 +165,7 @@ export default {
       if (!this.summaryDataSet)
         this.summaryDataSet = {};
       this.current = await readLocalStorage('active');
-      if(!this.current)
+      if (!this.current)
         this.current = {};
       this.showSecret = {};
       if (tokens != null) {

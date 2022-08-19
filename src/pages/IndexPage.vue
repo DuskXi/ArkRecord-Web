@@ -11,22 +11,12 @@
 
           <div class="text-caption vertical-middle"> ArkRecord 不会收集上传你的任何信息数据，所有从鹰角网站获取的数据都只会保存在本地。</div>
         </div>
-<!--        <div class="q-gutter-sm">-->
-<!--          <q-badge :color="login?'green':'orange'">官服: {{ login ? '已' : '未' }}登录</q-badge>-->
-<!--          <a v-if="!login" href="https://ak.hypergryph.com/user/home" target="_blank"> 点击前往-->
-<!--            <q-icon name="open_in_new"/>-->
-<!--          </a>-->
-<!--          <q-badge :color="loginB?'green':'orange'">B服: {{ loginB ? '已' : '未' }}登录</q-badge>-->
-<!--          <a v-if="!loginB" href="https://ak.hypergryph.com/user/bilibili/home" target="_blank"> 点击前往-->
-<!--            <q-icon name="open_in_new"/>-->
-<!--          </a>-->
-<!--        </div>-->
         <tokenManager :on-active="onActive"/>
-        <div class="col" style="margin-bottom: 20px;">
-          <q-btn-toggle style="margin-bottom: 20px; opacity: .85" spread no-caps rounded unelevated
+        <div class="col q-py-sm" style="">
+          <q-btn-toggle style="opacity: .75" spread no-caps
                         v-model="shownMode" :options="showOptions" class="my-custom-toggle" toggle-color="primary" color="white" text-color="primary"/>
         </div>
-        <div class="col" style="margin-bottom: 20px; " :key="containerKey">
+        <div class="col" style="" :key="containerKey">
           <poolsTable v-if="shownMode === '1'" :bilibili="bilibili" :key="tabKeys[parseInt(shownMode)]"></poolsTable>
           <totalTable v-if="shownMode === '2'" :bilibili="bilibili" :key="tabKeys[parseInt(shownMode)]"></totalTable>
           <normalSplitTable v-if="shownMode === '3'" :bilibili="bilibili" :key="tabKeys[parseInt(shownMode)]"></normalSplitTable>
@@ -102,12 +92,6 @@ export default defineComponent({
   }),
   methods: {
     async loadData() {
-      // let rawData = await readLocalStorage(this.bilibili ? "ArknightsCardInformationB" : "ArknightsCardInformation");
-      // this.poolsDict = loadPools(rawData);
-      // this.pools = Object.values(this.poolsDict);
-      // this.pools.sort((a, b) => {
-      //   return b.getLastUpdate() - a.getLastUpdate();
-      // });
     },
     async loginCheck() {
       let login = await readLocalStorage("login");
