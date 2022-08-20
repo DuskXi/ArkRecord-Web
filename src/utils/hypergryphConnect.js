@@ -45,9 +45,10 @@ class Connect {
     }
   }
 
-  async getPoolData(currentLastTimestamp, strongLoading = false) {
+  async getPoolData(currentLastTimestamp, strongLoading = false, realTimeUpdate = (...arg) => null) {
     let dataset = [];
     let max = 1;
+    let index = 1;
     for (let i = 1; i <= max; i++) {
       let data = await httpGet(this.poolDataRequestUrl + `&page=${i}&token=${encodeURIComponent(this.token)}`);
       let json = await data.json();
@@ -55,21 +56,26 @@ class Connect {
         return false;
       }
       max = json.data["pagination"].total;
+      realTimeUpdate(i / max, i + 1);
       dataset.push(json.data.list);
       if (json.data.list.length > 0 && !strongLoading) {
         let lastTimestamp = json.data.list[json.data.list.length - 1]['ts'];
         if (lastTimestamp < currentLastTimestamp) {
           console.log("非强加载，暂停节省资源");
+          realTimeUpdate(1, i + 1, true);
           break;
         }
       }
+      index++;
     }
+    realTimeUpdate(1, index, true);
     return {data: dataset, pages: max};
   }
 
-  async getStoneData(currentLastTimestamp, strongLoading = false) {
+  async getStoneData(currentLastTimestamp, strongLoading = false, realTimeUpdate = (...arg) => null) {
     let dataset = [];
     let max = 1;
+    let index = 1;
     for (let i = 1; i <= max; i++) {
       let data = await httpGet(this.stoneDataRequestUrl + `&page=${i}&token=${encodeURIComponent(this.token)}`);
       let json = await data.json();
@@ -77,21 +83,25 @@ class Connect {
         return false;
       }
       max = json.data["pagination"].total;
+      realTimeUpdate(i / max, i + 1);
       dataset.push(json.data.list);
       if (json.data.list.length > 0 && !strongLoading) {
         let lastTimestamp = json.data.list[json.data.list.length - 1]['ts'];
         if (lastTimestamp < currentLastTimestamp) {
           console.log("非强加载，暂停节省资源");
+          realTimeUpdate(1, i + 1, true);
           break;
         }
       }
+      index++;
     }
+    realTimeUpdate(1, index, true);
     return {data: dataset, pages: max};
   }
 
-  async getRechargeData() {
-    this.postData.channelToken.token = this.token;
+  async getRechargeData(realTimeUpdate = (...arg) => null) {
     let data = await httpPost(this.rechargeDataRequestUrl, this.postData);
+    realTimeUpdate(1, 1, true);
     let json = await data.json();
     if (data.status === 200)
       return json.data;
@@ -158,10 +168,11 @@ class Arknights {
    * @param {Connect} connector
    * @param {number} currentLastTimestamp
    * @param strongLoading
+   * @param realTimeUpdate
    * @returns
    */
-  async requestPoolData(connector, currentLastTimestamp, strongLoading = false) {
-    let rawData = await connector.getPoolData(currentLastTimestamp, strongLoading);
+  async requestPoolData(connector, currentLastTimestamp, strongLoading = false, realTimeUpdate = (...arg) => null) {
+    let rawData = await connector.getPoolData(currentLastTimestamp, strongLoading, realTimeUpdate);
     let results = [];
     rawData.data.forEach(group => {
       group.forEach(items => {
@@ -180,10 +191,11 @@ class Arknights {
    * @param {Connect} connector
    * @param {number} currentLastTimestamp
    * @param strongLoading
+   * @param realTimeUpdate
    * @returns
    */
-  async requestStoneData(connector, currentLastTimestamp, strongLoading = false) {
-    let rawData = await connector.getStoneData(currentLastTimestamp, strongLoading);
+  async requestStoneData(connector, currentLastTimestamp, strongLoading = false, realTimeUpdate = (...arg) => null) {
+    let rawData = await connector.getStoneData(currentLastTimestamp, strongLoading, realTimeUpdate);
     let results = [];
     rawData.data.forEach(group => {
       group.forEach(items => {
@@ -200,10 +212,11 @@ class Arknights {
   /**
    *
    * @param {Connect} connector
+   * @param realTimeUpdate
    * @returns
    */
-  async requestRechargeData(connector) {
-    let rawData = await connector.getRechargeData();
+  async requestRechargeData(connector, realTimeUpdate = (...arg) => null) {
+    let rawData = await connector.getRechargeData(realTimeUpdate);
     if (rawData === false)
       return false;
     let results = [];
@@ -237,103 +250,120 @@ class Arknights {
     return [merged, difference];
   }
 
-  async syncPool(connector, keyPoolData, keyPools, strongLoading) {
-    let localData = await readLocalStorage(keyPoolData);
-    if (localData === null)
-      localData = [];
-    let currentLastTimestamp = max(localData, (a, b) => a.timestamp - b.timestamp > 0);
-    currentLastTimestamp = currentLastTimestamp ? currentLastTimestamp.timestamp : 0;
-    let serverData = await this.requestPoolData(connector, currentLastTimestamp, strongLoading);
-    let [merged, difference] = await this.mergeData(localData, serverData);
-    await writeLocalStorage(keyPoolData, merged);
-    return difference;
-  }
+  // async syncPool(connector, keyPoolData, keyPools, strongLoading) {
+  //   let localData = await readLocalStorage(keyPoolData);
+  //   if (localData === null)
+  //     localData = [];
+  //   let currentLastTimestamp = max(localData, (a, b) => a.timestamp - b.timestamp > 0);
+  //   currentLastTimestamp = currentLastTimestamp ? currentLastTimestamp.timestamp : 0;
+  //   let serverData = await this.requestPoolData(connector, currentLastTimestamp, strongLoading);
+  //   let [merged, difference] = await this.mergeData(localData, serverData);
+  //   await writeLocalStorage(keyPoolData, merged);
+  //   return difference;
+  // }
 
-  async SyncPool(connector, strongLoading) {
+  async SyncPool(connector, strongLoading, realTimeUpdate = (...arg) => null) {
     let currentLastTimestamp = connector.userData.lastUpdate(connector.userData.data.poolData);
-    let serverData = await this.requestPoolData(connector, currentLastTimestamp, strongLoading);
+    let serverData = await this.requestPoolData(connector, currentLastTimestamp, strongLoading, realTimeUpdate);
     let difference = connector.userData.difference(serverData, [], []).pool;
     await connector.userData.save(serverData, [], []);
     return difference;
   }
 
-  async SyncStone(connector, strongLoading) {
+  async SyncStone(connector, strongLoading, realTimeUpdate = (...arg) => null) {
     let currentLastTimestamp = connector.userData.lastUpdate(connector.userData.data.stoneData);
-    let serverData = await this.requestStoneData(connector, currentLastTimestamp, strongLoading);
+    let serverData = await this.requestStoneData(connector, currentLastTimestamp, strongLoading, realTimeUpdate);
     let difference = connector.userData.difference([], serverData, []).stone;
     await connector.userData.save([], serverData, []);
     return difference;
   }
 
-  async SyncRecharge(connector) {
-    let serverData = await this.requestRechargeData(connector);
+  async SyncRecharge(connector, realTimeUpdate = (...arg) => null) {
+    let serverData = await this.requestRechargeData(connector, realTimeUpdate);
     let difference = connector.userData.difference([], [], serverData).recharge;
     await connector.userData.save([], [], serverData);
     return difference;
   }
 
-  async syncStone(connector, keyStone, strongLoading) {
-    let localData = await readLocalStorage(keyStone);
-    if (localData === null)
-      localData = [];
-    let currentLastTimestamp = max(localData, (a, b) => a.timestamp - b.timestamp > 0);
-    currentLastTimestamp = currentLastTimestamp ? currentLastTimestamp.timestamp : 0;
-    let serverData = await this.requestStoneData(connector, currentLastTimestamp, strongLoading);
-    let [merged, difference] = await this.mergeData(localData, serverData);
-    await writeLocalStorage(keyStone, merged);
-    return difference;
-  }
+  // async syncStone(connector, keyStone, strongLoading) {
+  //   let localData = await readLocalStorage(keyStone);
+  //   if (localData === null)
+  //     localData = [];
+  //   let currentLastTimestamp = max(localData, (a, b) => a.timestamp - b.timestamp > 0);
+  //   currentLastTimestamp = currentLastTimestamp ? currentLastTimestamp.timestamp : 0;
+  //   let serverData = await this.requestStoneData(connector, currentLastTimestamp, strongLoading);
+  //   let [merged, difference] = await this.mergeData(localData, serverData);
+  //   await writeLocalStorage(keyStone, merged);
+  //   return difference;
+  // }
+  //
+  // async syncRecharge(connector, keyRecharge) {
+  //   let localData = await readLocalStorage(keyRecharge);
+  //   let serverData = await this.requestRechargeData(connector);
+  //   if (serverData === false)
+  //     return false;
+  //   if (localData === null)
+  //     localData = [];
+  //   let [merged, difference] = await this.mergeData(localData, serverData);
+  //   await writeLocalStorage(keyRecharge, merged);
+  //   return difference;
+  // }
 
-  async syncRecharge(connector, keyRecharge) {
-    let localData = await readLocalStorage(keyRecharge);
-    let serverData = await this.requestRechargeData(connector);
-    if (serverData === false)
-      return false;
-    if (localData === null)
-      localData = [];
-    let [merged, difference] = await this.mergeData(localData, serverData);
-    await writeLocalStorage(keyRecharge, merged);
-    return difference;
-  }
-
-  async syncPoolData(strongLoading = false) {
+  async syncPoolData(strongLoading = false, realTimeUpdate = (...arg) => null) {
+    const notification = realTimeUpdate(0, true, '正在同步寻访数据');
+    let notify = (percentage, count, finish) => {
+      notification({caption: `${Math.round(percentage * 100)}% (${count} 组)`});
+      if (finish)
+        notification({icon: 'done', spinner: false, message: '寻访数据同步完成', timeout: 3500})
+    }
     if (this.officialStatus) {
       // this.officialPoolDifference = await this.syncPool(this.official, "ArknightsCardInformation", "pools", strongLoading);
-      this.officialPoolDifference = await this.SyncPool(this.official, strongLoading);
+      this.officialPoolDifference = await this.SyncPool(this.official, strongLoading, notify);
     }
 
     if (this.bilibiliStatus) {
       // this.bilibiliPoolDifference = await this.syncPool(this.bilibili, "ArknightsCardInformationB", "poolsB", strongLoading);
-      this.bilibiliPoolDifference = await this.SyncPool(this.bilibili, strongLoading);
+      this.bilibiliPoolDifference = await this.SyncPool(this.bilibili, strongLoading, notify);
     }
   }
 
-  async syncStoneData(strongLoading = false) {
+  async syncStoneData(strongLoading = false, realTimeUpdate = (...arg) => null) {
+    const notification = realTimeUpdate(0, true, '正在同步源石记录');
+    let notify = (percentage, count, finish = false) => {
+      notification({caption: `${Math.round(percentage * 100)}% (${count} 条)`});
+      if (finish)
+        notification({icon: 'done', spinner: false, message: '源石记录同步完成', timeout: 2500})
+    }
     if (this.officialStatus) {
       // this.officialStoneDifference = await this.syncStone(this.official, "StoneOfficial", strongLoading);
-      this.officialStoneDifference = await this.SyncStone(this.official, strongLoading);
+      this.officialStoneDifference = await this.SyncStone(this.official, strongLoading, notify);
     }
 
     if (this.bilibiliStatus) {
       // this.bilibiliStoneDifference = await this.syncStone(this.bilibili, "StoneBilibili", strongLoading);
-      this.bilibiliStoneDifference = await this.SyncStone(this.bilibili, strongLoading);
+      this.bilibiliStoneDifference = await this.SyncStone(this.bilibili, strongLoading, notify);
     }
   }
 
-  async syncRechargeData() {
+  async syncRechargeData(realTimeUpdate = (...arg) => null) {
+    const notification = realTimeUpdate(0, true, '正在同步充值记录');
+    let notify = (percentage, count, finish) => {
+      notification({caption: `${Math.round(percentage * 100)}%`});
+      if (finish)
+        notification({icon: 'done', spinner: false, message: '充值记录同步完成', timeout: 2500})
+    }
     if (this.officialStatus) {
-      // this.officialRechargeDifference = await this.syncRecharge(this.official, "RechargeOfficial");
-      this.officialRechargeDifference = await this.SyncRecharge(this.official);
+      this.officialRechargeDifference = await this.SyncRecharge(this.official, notify);
     }
 
     if (this.bilibiliStatus) {
-      // this.bilibiliRechargeDifference = await this.syncRecharge(this.bilibili, "RechargeBilibili");
+      this.bilibiliRechargeDifference = await this.SyncRecharge(this.bilibili, notify);
     }
   }
 }
 
 class Background {
-  async updateInformation(feedback, initiative = false) {
+  async updateInformation(feedback, initiative = false, realTimeUpdate = (...arg) => null) {
     let active = await readLocalStorage("active");
     feedback('开始同步数据');
     let arknights = new Arknights(active);
@@ -345,13 +375,13 @@ class Background {
     if (arknights.officialStatus || arknights.bilibiliStatus) {
       try {
         feedback("同步寻访数据")
-        await arknights.syncPoolData(initiative);
+        await arknights.syncPoolData(initiative, realTimeUpdate);
         feedback("寻访数据同步完成")
         feedback("同步源石数据中...")
-        await arknights.syncStoneData(initiative);
+        await arknights.syncStoneData(initiative,realTimeUpdate);
         feedback("源石数据同步完成")
         feedback("同步充值数据中...")
-        await arknights.syncRechargeData();
+        await arknights.syncRechargeData(realTimeUpdate);
         feedback("充值数据同步完成")
         feedback("更新状态...")
       } catch (e) {
@@ -373,7 +403,7 @@ class Background {
     console.log(arknights)
   }
 
-  async updateSpecify(userInfo, feedback, initiative = false){
+  async updateSpecify(userInfo, feedback, initiative = false, realTimeUpdate = (...arg) => null) {
     feedback('开始同步数据');
     let arknights = new Arknights(userInfo);
     feedback('进行身份验证');
@@ -384,13 +414,13 @@ class Background {
     if (arknights.officialStatus || arknights.bilibiliStatus) {
       try {
         feedback("同步寻访数据")
-        await arknights.syncPoolData(initiative);
+        await arknights.syncPoolData(initiative, realTimeUpdate);
         feedback("寻访数据同步完成")
         feedback("同步源石数据中...")
-        await arknights.syncStoneData(initiative);
+        await arknights.syncStoneData(initiative, realTimeUpdate);
         feedback("源石数据同步完成")
         feedback("同步充值数据中...")
-        await arknights.syncRechargeData();
+        await arknights.syncRechargeData(realTimeUpdate);
         feedback("充值数据同步完成")
         feedback("更新状态...")
       } catch (e) {
