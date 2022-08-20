@@ -18,106 +18,58 @@
       </q-card-section>
 
       <q-card-section class="q-pt-none">
-        <q-card-section class="q-pt-none q-pa-md">
-          <q-list padding bordered class="rounded-borders">
-            <q-expansion-item dense dense-toggle expand-separator icon="assessment" label="官服数据" :default-opened="true">
-              <q-card>
-                <q-card-section>
-                  <div class="text-h6">首先，确保你的
-                    <a href="https://ak.hypergryph.com/user/home" target="_blank"> 网站鹰角
-                      <q-icon name="open_in_new"/>
-                    </a> 已经登录
-                  </div>
-                  <div class="text-h6">然后前往这个
-                    <a href="https://as.hypergryph.com/user/info/v1/token_by_cookie" target="_blank"> 鹰角的链接
-                      <q-icon name="open_in_new"/>
-                    </a> 把全部的东西都复制到下面的文本框里
-                  </div>
-                  <q-input v-model="jsonDataOfficial" label="粘贴在这里" filled lazy-rules :rules="[v=>this.checkOfficialTokenJson(v) || '结构不完整，请重新复制']" :loading="officialInfoLoading"/>
-                  <div v-if="Object.keys(officialTempInfo).length > 0 ">
-                    <div v-if="officialTempInfo.status===0" class="text-h6">昵称: {{ officialTempInfo.data['nickName'] }}</div>
-                    <div v-if="officialTempInfo.status===0" class="text-h6">uid: {{ officialTempInfo.data['uid'] }}</div>
-                    <div v-if="officialTempInfo.status===3" class="text-h6">token 失效, 请重新登录</div>
-                  </div>
-                  <q-btn color="primary" label="储存你数据" @click="saveOfficialTokens" :disable="!checkOfficialTokenJson(jsonDataOfficial)||  officialTempInfo.status!==0" :key="officialButton"/>
-                  <div class="text-h5">当前官服数据: {{ officialToken.length > 0 ? '' : '无' }}</div>
-                  <div class="text-h6">请注意点击对应的账号以加载数据</div>
-                  <q-list bordered separator>
-                    <q-item clickable v-ripple v-for="(value,index) in officialToken" :key="index" :active="value.active" active-class="bg-teal-1">
-                      <q-item-section avatar>
-                        <q-icon :name=" value.active?'person' : 'person_off'"/>
-                      </q-item-section>
-                      <q-item-section @click="active(value)">
-                        <div class="row" @mouseenter="showSecret[value.info['uid']] = true" @mouseleave="showSecret[value.info['uid']] = false">
-                          <div class="col-md-6 col-12-sm text-subtitle1"><span class="text-red-9">昵称</span>: {{ value.info['nickName'] }}</div>
-                          <div class="col-md-6 col-12-sm text-subtitle1"><span class="text-blue-5">uid</span>: {{ value.info['uid'] }}</div>
-                          <div class="col-12 text-subtitle1" style="word-break:break-all"><span class="text-green-5">token</span>
-                            : {{ showSecret[value.info['uid']] ? value.token : secretString(value.token) }}
-                          </div>
-                          <div class="col-12" v-if="summaryDataSet.hasOwnProperty(`O/${value.info['uid']}`)">
-                            寻访: <span class="text-amber-7">{{ summaryDataSet[`O/${value.info['uid']}`].pool }}</span> 条,
-                            源石: <span class="text-amber-7">{{ summaryDataSet[`O/${value.info['uid']}`].stone }}</span> 条,
-                            充值: <span class="text-amber-7">{{ summaryDataSet[`O/${value.info['uid']}`].recharge }}</span> 条
-                          </div>
-                        </div>
-                      </q-item-section>
-                      <q-item-section side>{{ value.active ? '已激活' : '' }}</q-item-section>
-                    </q-item>
-                  </q-list>
-                  <div class="text-h6 text-red-8">请不要随意泄露你的Token，这是你的隐私，如果不慎泄露请前往官网清除所有设备登录</div>
-                </q-card-section>
-              </q-card>
-            </q-expansion-item>
-            <q-expansion-item dense dense-toggle expand-separator icon="assessment" label="B服数据" :default-opened="true">
-              <q-card>
-                <q-card-section>
-                  <div class="text-h6">首先，确保你的
-                    <a href="https://ak.hypergryph.com/user/bilibili/home" target="_blank"> 网站鹰角
-                      <q-icon name="open_in_new"/>
-                    </a> 已经登录
-                  </div>
-                  <div class="text-h6">然后前往这个
-                    <a href="https://web-api.hypergryph.com/account/info/ak-b" target="_blank"> 鹰角的链接
-                      <q-icon name="open_in_new"/>
-                    </a> 把全部的东西都复制到下面的文本框里
-                  </div>
-                  <q-input v-model="jsonDataBilibili" label="粘贴在这里" filled lazy-rules :rules="[v=>this.checkBilibiliTokenJson(v) || '结构不完整，请重新复制']" :loading="bilibiliInfoLoading"/>
-                  <div v-if="Object.keys(bilibiliTempInfo).length > 0">
-                    <div v-if="bilibiliTempInfo.status===0" class="text-h6">昵称: {{ bilibiliTempInfo.data['nickName'] }}</div>
-                    <div v-if="bilibiliTempInfo.status===0" class="text-h6">uid: {{ bilibiliTempInfo.data['uid'] }}</div>
-                    <div v-if="bilibiliTempInfo.status===3" class="text-h6">token 失效, 请重新登录</div>
-                  </div>
-                  <q-btn color="primary" label="储存你的数据" @click="saveBilibiliTokens" :disable="!checkBilibiliTokenJson(jsonDataBilibili)&& bilibiliTempInfo.status!==0" :key="bilibiliButton"/>
-                  <div class="text-h5">当前B服数据: {{ bilibiliToken.length > 0 ? '' : '无' }}</div>
-                  <div class="text-h6">请注意点击对应的账号以加载数据</div>
-                  <q-list bordered separator>
-                    <q-item clickable v-ripple v-for="(value,index) in bilibiliToken" :key="index" :active="value.active" active-class="bg-teal-1 text-grey-8">
-                      <q-item-section avatar>
-                        <q-icon name="signal_wifi_off"/>
-                      </q-item-section>
-                      <q-item-section @click="active(value)">
-                        <div class="row" @mouseenter="showSecret[value.info['uid']] = true" @mouseleave="showSecret[value.info['uid']] = false">
-                          <div class="col-md-6 col-12-sm text-subtitle1"><span class="text-red-9">昵称</span>: {{ value.info['nickName'] }}</div>
-                          <div class="col-md-6 col-12-sm text-subtitle1"><span class="text-blue-5">uid</span>: {{ value.info['uid'] }}</div>
-                          <div class="col-12 text-subtitle1" style="word-break:break-all"><span class="text-green-5">token</span>
-                            : {{ showSecret[value.info['uid']] ? value.token : secretString(value.token) }}
-                          </div>
-                          <div class="col-12" v-if="summaryDataSet.hasOwnProperty(`B/${value.info['uid']}`)">
-                            寻访: <span class="text-amber-7">{{ summaryDataSet[`B/${value.info['uid']}`].pool }}</span> 条,
-                            源石: <span class="text-amber-7">{{ summaryDataSet[`B/${value.info['uid']}`].stone }}</span> 条,
-                            充值: <span class="text-amber-7">{{ summaryDataSet[`B/${value.info['uid']}`].recharge }}</span> 条
-                          </div>
-                        </div>
-                      </q-item-section>
-                      <q-item-section side>{{ value.active ? '已激活' : '' }}</q-item-section>
-                    </q-item>
-                  </q-list>
-                  <div class="text-h6 text-red-8">请不要随意泄露你的Token，这是你的隐私，如果不慎泄露请前往官网清除所有设备登录</div>
-                </q-card-section>
-              </q-card>
-            </q-expansion-item>
-          </q-list>
-        </q-card-section>
+        <div class="text-h6">首先，确保你的
+          <a href="https://ak.hypergryph.com/user/home" target="_blank"> 网站官服
+            <q-icon name="open_in_new"/>
+          </a>
+          /
+          <a href="https://ak.hypergryph.com/user/bilibili/home" target="_blank"> 鹰角B服
+            <q-icon name="open_in_new"/>
+          </a>
+          已经登录
+        </div>
+        <div class="text-h6">然后前往这个
+          <a href="https://as.hypergryph.com/user/info/v1/token_by_cookie" target="_blank"> 官服
+            <q-icon name="open_in_new"/>
+          </a>
+          /
+          <a href="https://web-api.hypergryph.com/account/info/ak-b" target="_blank"> B服
+            <q-icon name="open_in_new"/>
+          </a>
+          把全部的东西都复制到下面的文本框里
+        </div>
+        <q-input v-model="jsonData" label="粘贴在这里" filled lazy-rules :rules="[v=>this.checkTokenJson(v) || '结构不完整，请重新复制']" :loading="syncLoading"/>
+        <!--                  <div v-if="Object.keys(officialTempInfo).length > 0 "> :rules="[v=>this.checkOfficialTokenJson(v) || '结构不完整，请重新复制']"  -->
+        <!--                    <div v-if="officialTempInfo.status===0" class="text-h6">昵称: {{ officialTempInfo.data['nickName'] }}</div>-->
+        <!--                    <div v-if="officialTempInfo.status===0" class="text-h6">uid: {{ officialTempInfo.data['uid'] }}</div>-->
+        <!--                    <div v-if="officialTempInfo.status===3" class="text-h6">token 失效, 请重新登录</div>-->
+        <!--                  </div>-->
+        <q-btn color="primary" label="点击添加" @click="saveOfficialTokens" :disable="!checkOfficialTokenJson(jsonDataOfficial)||  officialTempInfo.status!==0" :key="officialButton"/>
+        <div class="text-h5">当前官服数据: {{ officialToken.length > 0 ? '' : '无' }}</div>
+        <div class="text-h6">请注意点击对应的账号以加载数据</div>
+        <q-list bordered separator>
+          <q-item clickable v-ripple v-for="(value,index) in userInfos" :key="index" :active="value.active" active-class="bg-teal-1">
+            <q-item-section avatar>
+              <q-icon :name=" value.active?'person' : 'person_off'"/>
+            </q-item-section>
+            <q-item-section @click="active(value)">
+              <div class="row" @mouseenter="showSecret[value.info['uid']] = true" @mouseleave="showSecret[value.info['uid']] = false">
+                <div class="col-md-6 col-12-sm text-subtitle1"><span class="text-red-9">昵称</span>: {{ value.info['nickName'] }}</div>
+                <div class="col-md-6 col-12-sm text-subtitle1"><span class="text-blue-5">uid</span>: {{ value.info['uid'] }}</div>
+                <div class="col-12 text-subtitle1" style="word-break:break-all"><span class="text-green-5">token</span>
+                  : {{ showSecret[value.info['uid']] ? value.token : secretString(value.token) }}
+                </div>
+                <div class="col-12" v-if="summaryDataSet.hasOwnProperty(`${value.type==='official' ?'O':'B'}/${value.info['uid']}`)">
+                  寻访: <span class="text-amber-7">{{ summaryDataSet[`${value.type === 'official' ? 'O' : 'B'}/${value.info['uid']}`].pool }}</span> 条,
+                  源石: <span class="text-amber-7">{{ summaryDataSet[`${value.type === 'official' ? 'O' : 'B'}/${value.info['uid']}`].stone }}</span> 条,
+                  充值: <span class="text-amber-7">{{ summaryDataSet[`${value.type === 'official' ? 'O' : 'B'}/${value.info['uid']}`].recharge }}</span> 条
+                </div>
+              </div>
+            </q-item-section>
+            <q-item-section side>{{ value.active ? '已激活' : '' }}</q-item-section>
+          </q-item>
+        </q-list>
+        <div class="text-h6 text-red-8">请不要随意泄露你的Token，这是你的隐私，如果不慎泄露请前往官网清除所有设备登录</div>
       </q-card-section>
 
       <q-card-actions align="right">
@@ -154,6 +106,9 @@ export default {
     officialButton: new Date().getTime(),
     bilibiliButton: new Date().getTime(),
     enableInfoShow: true,
+    userInfos: [],
+    jsonData: '',
+    syncLoading: false,
   }),
   methods: {
     onDialogClick() {
@@ -161,6 +116,7 @@ export default {
     },
     async loadTokens() {
       let tokens = await readLocalStorage('tokens');
+      this.userInfos = tokens ? tokens : [];
       this.summaryDataSet = await readLocalStorage('SummaryDataSet');
       if (!this.summaryDataSet)
         this.summaryDataSet = {};
@@ -180,6 +136,77 @@ export default {
         });
       } else {
         this.dialog = true;
+      }
+    },
+    async syncData(userInfo) {
+      await global.background.updateSpecify(
+        userInfo,
+        (message) => Notify.create({message: message, color: 'positive', position: 'top', timeout: 2000}),
+        false,
+        (percentage, create = false, title = '') => {
+          return this.$q.notify({group: false, timeout: 0, spinner: true, message: title, caption: '0%', position: 'center', type: 'info'});
+        }
+      );
+    },
+    async saveTokens(userInfo) {
+      let exist = false;
+      for (let i = 0; i < this.userInfos.length; i++) {
+        if (this.userInfos[i].info.uid === userInfo.info.uid) {
+          this.userInfos[i] = userInfo;
+          exist = true;
+          this.$q.notify({
+            color: 'positive',
+            message: 'uid已存在，token已更新',
+            position: 'bottom',
+          });
+          break;
+        }
+      }
+      if (!exist)
+        this.userInfos.push(userInfo);
+      await writeLocalStorage('tokens', this.userInfos);
+      this.showSecret[userInfo.info.uid] = false;
+      if (this.userInfos.length === 1)
+        await this.active(this.userInfos[0]);
+      await this.syncData(userInfo);
+    },
+    async onJsonChange(jsonStr) {
+      try {
+        let requestData = {appId: 1, channelMasterId: 1, channelToken: {token: null}};
+        let userInfo = {type: '', info: {}, token: '', active: false,};
+        let json = JSON.parse(jsonStr);
+        if (json.hasOwnProperty('data')) {
+          if (json.data.hasOwnProperty('token')) {
+            let token = json.data.token;
+            userInfo.type = 'official';
+            userInfo.token = token;
+            requestData = {appId: 1, channelMasterId: 1, channelToken: {token: token}};
+          } else if (json.data.hasOwnProperty('content')) {
+            let token = json.data.content;
+            userInfo.type = 'bilibili';
+            userInfo.token = token;
+            requestData = {token: token};
+          } else {
+            return false;
+          }
+          let result = await this.getInfo(requestData);
+          if (result.status === 0) {
+            userInfo.info = result.data;
+            await this.saveTokens(userInfo);
+          } else {
+            this.$q.notify({
+              color: 'negative',
+              message: 'token失效，请检查',
+              position: 'bottom',
+            });
+          }
+        }
+      } catch (e) {
+        this.$q.notify({
+          color: 'warning',
+          message: '数据结构错误，请重新复制全部',
+          position: 'bottom',
+        });
       }
     },
     async saveOfficialTokens() {
@@ -277,6 +304,17 @@ export default {
       array.forEach(element => uidList.push(element.info.uid));
       return uidList;
     },
+    checkTokenJson(jsonStr) {
+      try {
+        let object = JSON.parse(jsonStr);
+        if (object.status === 0 || object.code === 0)
+          if (object.hasOwnProperty('data'))
+            if (object.data.hasOwnProperty('token') || object.data.hasOwnProperty('content'))
+              return true;
+      } catch {
+      }
+      return false;
+    },
     checkOfficialTokenJson(jsonStr) {
       try {
         let object = JSON.parse(jsonStr);
@@ -306,7 +344,7 @@ export default {
       return false;
     },
     async active(item) {
-      (item.type === 'official' ? this.officialToken : this.bilibiliToken).forEach(element => element.active = element.info.uid === item.info.uid);
+      this.userInfos.forEach(element => element.active = element.info.uid === item.info.uid);
       this.rawToken = this.officialToken.concat(this.bilibiliToken);
       await writeLocalStorage('tokens', this.rawToken);
       await writeLocalStorage('active', item);
@@ -351,6 +389,11 @@ export default {
       }
       this.bilibiliButton = new Date().getTime();
       this.bilibiliInfoLoading = false;
+    },
+    async jsonData(newValue) {
+      this.syncLoading = true;
+      await this.onJsonChange(newValue);
+      this.syncLoading = false;
     }
   },
   props: {

@@ -32,14 +32,20 @@ export default {
   name: "DataManager",
   methods: {
     refreshData() {
-      global.background.updateInformation((message) => {
-        Notify.create({
-          message: message,
-          color: 'positive',
-          position: 'top',
-          timeout: 2000
+      // global.background.updateInformation((message) => {
+      //   Notify.create({
+      //     message: message,
+      //     color: 'positive',
+      //     position: 'top',
+      //     timeout: 2000
+      //   });
+      // }, false);
+      global.background.updateInformation(
+        (message) => Notify.create({message: message, color: 'positive', position: 'top', timeout: 2000}),
+        false,
+        (percentage, create = false, title = '') => {
+          return this.$q.notify({group: false, timeout: 0, spinner: true, message: title, caption: '0%', position: 'center', type: 'info'});
         });
-      }, false);
     },
     registryListener() {
       // alert("注册");
