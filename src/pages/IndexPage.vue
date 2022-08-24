@@ -12,6 +12,11 @@
           <div class="text-caption vertical-middle"> ArkRecord 不会收集上传你的任何信息数据，所有从鹰角网站获取的数据都只会保存在本地。</div>
         </div>
         <tokenManager :on-active="onActive"/>
+        <div class="q-gutter-sm">
+          <q-badge color="blue" v-if="usageInfo.total >= 0">使用者: {{ usageInfo.total }} 个</q-badge>
+          <q-badge color="blue" v-if="usageInfo.day180 >= 0">半年内活跃使用者: {{ usageInfo.day180 }} 个</q-badge>
+          <q-badge color="blue" v-if="usageInfo.day30 >= 0">一个月内活跃使用者: {{ usageInfo.day30 }} 个</q-badge>
+        </div>
         <div class="col q-py-sm" style="">
           <q-btn-toggle style="opacity: .75" spread no-caps
                         v-model="shownMode" :options="showOptions" class="my-custom-toggle" toggle-color="primary" color="white" text-color="primary"/>
@@ -47,6 +52,7 @@ import config from '../../package.json';
 import {loadPools} from '../utils/data';
 import {readLocalStorage, writeLocalStorage} from '../utils/storage';
 import {defineComponent} from "vue";
+import {Statistic} from "../utils/Usage";
 import ChartShow from "components/tabs/ChartShow.vue";
 import PoolsTable from "components/tabs/PoolsTable.vue";
 import TotalTable from "components/tabs/TotalTable.vue";
@@ -88,7 +94,12 @@ export default defineComponent({
     loginB: false,
     containerKey: new Date().getTime(),
     dataUpdated: new Date().getTime(),
-    tabKeys: []
+    tabKeys: [],
+    usageInfo: {
+      total: -1,
+      day180: -1,
+      day30: -1,
+    },
   }),
   methods: {
     async loadData() {
@@ -103,6 +114,15 @@ export default defineComponent({
     },
     async onActive() {
       this.tabKeys[parseInt(this.shownMode)] = new Date().getTime();
+    },
+    async syncUsageInfo() {
+      let statistic = new Statistic();
+      await statistic.syncData();
+      this.usageInfo = {
+        total: statistic.activeTotal,
+        day30: statistic.activeDay30,
+        day180: statistic.activeDay180
+      };
     }
   },
   watch: {
@@ -118,6 +138,7 @@ export default defineComponent({
     }
   },
   mounted() {
+    this.syncUsageInfo();
     this.tabKeys = [];
     for (let i = 0; i < this.showOptions.length; i++) {
       this.tabKeys.push(new Date().getTime());
