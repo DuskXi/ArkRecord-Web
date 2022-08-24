@@ -378,7 +378,7 @@ class Background {
         await arknights.syncPoolData(initiative, realTimeUpdate);
         feedback("寻访数据同步完成")
         feedback("同步源石数据中...")
-        await arknights.syncStoneData(initiative,realTimeUpdate);
+        await arknights.syncStoneData(initiative, realTimeUpdate);
         feedback("源石数据同步完成")
         feedback("同步充值数据中...")
         await arknights.syncRechargeData(realTimeUpdate);
@@ -399,6 +399,8 @@ class Background {
         await this.reportChanging(arknights.officialStoneDifference, "源石变更", 2);
       if (arknights.officialRechargeDifference > 0)
         await this.reportChanging(arknights.officialRechargeDifference, "充值", 1);
+    } else {
+      feedback("未登录, Token可能失效了")
     }
     console.log(arknights)
   }
