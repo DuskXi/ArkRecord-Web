@@ -29,7 +29,7 @@
           已经登录
         </div>
         <div class="text-h6">然后前往这个
-          <a href="https://as.hypergryph.com/user/info/v1/token_by_cookie" target="_blank"> 官服
+          <a href="https://web-api.hypergryph.com/account/info/hg" target="_blank"> 官服
             <q-icon name="open_in_new"/>
           </a>
           /
@@ -256,8 +256,7 @@ export default {
     },
     async active(item) {
       this.userInfos.forEach(element => element.active = element.info.uid === item.info.uid);
-      this.rawToken = this.officialToken.concat(this.bilibiliToken);
-      await writeLocalStorage('tokens', this.rawToken);
+      await writeLocalStorage('tokens', this.userInfos);
       await writeLocalStorage('active', item);
       this.onActive();
     },
