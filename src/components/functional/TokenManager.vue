@@ -44,7 +44,7 @@
         <!--                    <div v-if="officialTempInfo.status===0" class="text-h6">uid: {{ officialTempInfo.data['uid'] }}</div>-->
         <!--                    <div v-if="officialTempInfo.status===3" class="text-h6">token 失效, 请重新登录</div>-->
         <!--                  </div>-->
-        <q-btn color="primary" label="点击添加" @click="saveOfficialTokens" :disable="!checkOfficialTokenJson(jsonDataOfficial)||  officialTempInfo.status!==0" :key="officialButton"/>
+        <!--        <q-btn color="primary" label="点击添加" @click="saveOfficialTokens" :disable="!checkOfficialTokenJson(jsonDataOfficial)||  officialTempInfo.status!==0" :key="officialButton"/>-->
         <div class="text-h5">当前官服数据: {{ officialToken.length > 0 ? '' : '无' }}</div>
         <div class="text-h6">请注意点击对应的账号以加载数据</div>
         <q-list bordered separator>
@@ -176,16 +176,17 @@ export default {
         let userInfo = {type: '', info: {}, token: '', active: false,};
         let json = JSON.parse(jsonStr);
         if (json.hasOwnProperty('data')) {
-          if (json.data.hasOwnProperty('token')) {
-            let token = json.data.token;
-            userInfo.type = 'official';
-            userInfo.token = token;
-            requestData = {appId: 1, channelMasterId: 1, channelToken: {token: token}};
-          } else if (json.data.hasOwnProperty('content')) {
+          // if (json.data.hasOwnProperty('token')) {
+          //   let token = json.data.token;
+          //   userInfo.type = 'official';
+          //   userInfo.token = token;
+          //   requestData = {appId: 1, channelMasterId: 1, channelToken: {token: token}};
+          // } else
+          if (json.data.hasOwnProperty('content')) {
             let token = json.data.content;
-            userInfo.type = 'bilibili';
+            userInfo.type = token.length <= 30 ? 'official' : 'bilibili';
             userInfo.token = token;
-            requestData = {token: token};
+            requestData = userInfo.type === 'official' ? {appId: 1, channelMasterId: 1, channelToken: {token: token}} : {token: token};
           } else {
             return false;
           }
@@ -208,96 +209,6 @@ export default {
           position: 'bottom',
         });
       }
-    },
-    async saveOfficialTokens() {
-      if (this.checkOfficialTokenJson(this.jsonDataOfficial) && this.officialTempInfo.status !== 0) {
-        this.officialInfoLoading = true;
-        this.officialTempInfo = await this.getInfo(this.officialTempToken);
-        this.officialInfoLoading = false;
-      }
-      if (this.officialTempInfo.status === 0) {
-        let exist = false;
-        let userInfo = {
-          type: 'official',
-          token: this.officialTempToken,
-          info: this.officialTempInfo.data,
-          active: false,
-        }
-        for (let i = 0; i < this.officialToken.length; i++) {
-          if (this.officialToken[i].info.uid === this.officialTempInfo.data.uid) {
-            this.officialToken[i].info = this.officialTempInfo.data;
-            this.officialToken[i].token = this.officialTempToken;
-            this.$q.notify({
-              color: 'positive',
-              message: 'uid已存在，token已更新',
-              position: 'bottom',
-            });
-            exist = true;
-          }
-        }
-        if (!exist)
-          this.officialToken.push(userInfo);
-        this.rawToken = this.officialToken.concat(this.bilibiliToken);
-        await writeLocalStorage('tokens', this.rawToken);
-        this.showSecret[userInfo.info.uid] = false;
-        await global.background.updateSpecify(userInfo, (message) => Notify.create({message: message, color: 'positive', position: 'top', timeout: 2000}), false);
-        this.officialTempInfo = {};
-        if (this.rawToken.length === 1)
-          await this.active(this.rawToken[0]);
-        return;
-      }
-      this.$q.notify({
-        color: 'red',
-        textColor: 'white',
-        message: '请检查你的token是否正确',
-        position: 'bottom',
-        timeout: 2000,
-      });
-    },
-    async saveBilibiliTokens() {
-      if (this.checkBilibiliTokenJson(this.jsonDataBilibili) && this.bilibiliTempInfo.status !== 0) {
-        this.bilibiliInfoLoading = true;
-        this.bilibiliTempInfo = await this.getInfo(this.bilibiliTempToken);
-        this.bilibiliInfoLoading = false;
-      }
-      if (this.bilibiliTempInfo.status === 0) {
-        let exist = false;
-        let userInfo = {
-          type: 'bilibili',
-          token: this.bilibiliTempToken,
-          info: this.bilibiliTempInfo.data,
-          active: false,
-        };
-        for (let i = 0; i < this.bilibiliToken.length; i++) {
-          if (this.bilibiliToken[i].info.uid === this.bilibiliTempInfo.data.uid) {
-            this.bilibiliToken[i].info = this.bilibiliTempInfo.data;
-            this.bilibiliToken[i].token = this.bilibiliTempToken;
-            this.$q.notify({
-              color: 'positive',
-              message: 'uid已存在，token已更新',
-              position: 'bottom',
-            });
-            exist = true;
-          }
-        }
-        if (!exist)
-          this.bilibiliToken.push(userInfo);
-        this.rawToken = this.bilibiliToken.concat(this.bilibiliToken);
-        await writeLocalStorage('tokens', this.rawToken);
-        this.showSecret[userInfo.info.uid] = false;
-        await global.background.updateSpecify(userInfo, (message) => Notify.create({message: message, color: 'positive', position: 'top', timeout: 2000}), false);
-        this.bilibiliTempInfo = {};
-        if (this.rawToken.length === 1)
-          await this.active(this.rawToken[0]);
-        return;
-      }
-      this.$q.notify({
-        color: 'red',
-        textColor: 'white',
-        message: '请检查你的token是否正确',
-        position: 'bottom',
-        timeout: 2000,
-      });
     },
     getUidList(array) {
       let uidList = [];
