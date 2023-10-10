@@ -184,7 +184,7 @@ export default {
             star3 += element.star === 3 ? 1 : 0;
             star4 += element.star === 4 ? 1 : 0;
             star5 += element.star === 5 ? 1 : 0;
-            if (!characters.includes(element.character) || !this.noRepeat) {
+            if ((!characters.includes(element.character) || !this.noRepeat) && this.characterInfo[element.character]) {
               characters.push(element.character);
               images.push(this.characterInfo[element.character].image);
               stars.push(element.star === 3 ? "⭐⭐⭐" : (element.star === 4 ? "⭐⭐⭐⭐" : "⭐⭐⭐⭐⭐"));
