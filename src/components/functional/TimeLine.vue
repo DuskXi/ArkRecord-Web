@@ -11,6 +11,7 @@
     <q-toggle v-if="!print" v-model="enableBackground" label="启用自定义背景"/>
     <q-toggle v-if="print || enableBackground" v-model="repeatBackground" label="重复背景"/>
     <q-toggle v-model="print" label="启用截图"/>
+    <q-toggle v-model="print_visible_img" label="启用截图可用图片模式"/>
     <screen-shot v-if="print" label="点击截图(全屏)" :key="screenShotKey"/>
     <screen-shot v-if="print" label="点击截图(仅限时间线)" :element="getTimeLineElement()" :key="screenShotKey"/>
     <div class="row inline">
@@ -51,7 +52,7 @@
             </div>
             <q-intersection v-if="!print">
               <q-img loading="lazy" v-if="Object.keys(characterInfo).length > 0 && item.type === 'single'"
-                     :src="characterInfo[item.character].image"
+                     :src="characterInfo[item.character].image.replace('https://prts.wiki', this.$q.platform.is.mobile || print_visible_img?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
                      spinner-color="white" style="height: 120px; max-width: 120px">
                 <div class="absolute-bottom text-subtitle6 text-center q-pa-xs">
                   <div class="absolute-top" style="transform: scale(0.8);"> {{ item.starStr }}</div>
@@ -60,7 +61,7 @@
               <div v-if="!disableThumbnail && item.type !== 'single' && Object.keys(characterInfo).length > 0">
                 <q-img v-for="(character, index) in item.characters"
                        :key="character" :ref="item.images[index]"
-                       :src="item.images[index]"
+                       :src="item.images[index].replace('https://prts.wiki', this.$q.platform.is.mobile?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
                        pinner-color="white" style="height: 100px; max-width: 100px">
                   <div class="absolute-bottom text-center q-pa-xs" style="">
                     <div class="absolute-top" style="transform: scale(0.8)"> {{ item.stars[index] }}</div>
@@ -70,7 +71,7 @@
             </q-intersection>
             <div v-else>
               <q-img v-if="Object.keys(characterInfo).length > 0 && item.type === 'single'"
-                     :src="characterInfo[item.character].image"
+                     :src="characterInfo[item.character].image.replace('https://prts.wiki', this.$q.platform.is.mobile?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
                      spinner-color="white" style="height: 120px; max-width: 120px;">
                 <div class="absolute-bottom text-subtitle6 text-center q-pa-xs" style="">
                   <div class="absolute-top" style="transform: scale(0.8)"> {{ item.starStr }}</div>
@@ -79,7 +80,7 @@
               <div v-if="!disableThumbnail && item.type !== 'single' && Object.keys(characterInfo).length > 0">
                 <q-img v-for="(character, index) in item.characters"
                        :key="character" :ref="item.images[index]"
-                       :src="item.images[index]"
+                       :src="item.images[index].replace('https://prts.wiki', this.$q.platform.is.mobile?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
                        pinner-color="white" style="height: 100px; max-width: 100px">
                   <div class="absolute-bottom text-center q-pa-xs" style="">
                     <div class="absolute-top" style="transform: scale(0.8)"> {{ item.stars[index] }}</div>
@@ -101,6 +102,7 @@ import ScreenShot from "components/functional/ScreenShot.vue";
 import global from "src/utils/largeFileStorage";
 import {Notify} from "quasar";
 import {readLocalStorage} from "src/utils/storage";
+import CryptoJS from "crypto-js";
 
 export default {
   name: "TimeLine",
@@ -184,9 +186,16 @@ export default {
             star3 += element.star === 3 ? 1 : 0;
             star4 += element.star === 4 ? 1 : 0;
             star5 += element.star === 5 ? 1 : 0;
-            if ((!characters.includes(element.character) || !this.noRepeat) && this.characterInfo[element.character]) {
+            if ((!characters.includes(element.character) || !this.noRepeat)) {
               characters.push(element.character);
-              images.push(this.characterInfo[element.character].image);
+              if (this.characterInfo[element.character])
+                  images.push(this.characterInfo[element.character].image);
+              else { // 如果没有则蒙答案
+                let file_name = `头像_${element.character}.png`
+                let hash = CryptoJS.MD5(file_name).toString();
+                let image_path = 'https://prts.wiki'+`/images/${hash[0]}/${hash[0]}${hash[1]}/${file_name}`;
+                images.push(image_path);
+              }
               stars.push(element.star === 3 ? "⭐⭐⭐" : (element.star === 4 ? "⭐⭐⭐⭐" : "⭐⭐⭐⭐⭐"));
             }
             if (!Object.keys(characterNoRepeat).includes(element.character))
@@ -234,10 +243,34 @@ export default {
     },
     async forceRefresh() {
       this.print = false;
+      if (this.$q.platform.is.mobile)
+        this.$q.notify({
+          title: '提示',
+          message: '检测到手机UA，手机UA不让跨域，请设置为桌面网页模式以后尝试刷新',
+          cancel: true,
+          persistent: true
+        });
+      const notify = this.$q.notify({
+        group: false, // required to be updatable
+        timeout: 0, // we want to be in control when it gets dismissed
+        spinner: true,
+        message: '拉取图片数据中...',
+        caption: '0%'
+      })
       let characterInfo = await syncCharactersInformation(true);
+      notify({
+        caption: `${50}%`
+      })
       characterInfo.forEach(info => {
         this.characterInfo[info.name] = info;
       });
+      notify({
+        icon: 'done', // we add an icon
+        spinner: false, // we reset the spinner setting so the icon can be displayed
+        message: '图片数据更新完毕!',
+        caption: `${100}%`,
+        timeout: 1500 // we will timeout it in 2.5s
+      })
       this.update();
       this.generalize()
     },
@@ -351,6 +384,7 @@ export default {
     backgroundStyle: "background-color: rgba(255,255,255,0)",
     timeLineStyle: "",
     reserve: false,
+    print_visible_img: false,
   }),
 }
 </script>

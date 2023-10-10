@@ -27,6 +27,7 @@ import {readLocalStorage, listLocalStorageKeys, writeLocalStorage, UserData} fro
 import {loadPools, buildTotalData} from "src/utils/data";
 import global from "src/utils/hypergryphConnect";
 import {DataLoader, DataLoaderPrev, DataPackage} from "src/utils/DataLoader";
+import {syncCharactersInformation} from "src/utils/CharacterInfo";
 
 export default {
   name: "DataManager",
@@ -46,6 +47,7 @@ export default {
         (percentage, create = false, title = '') => {
           return this.$q.notify({group: false, timeout: 0, spinner: true, message: title, caption: '0%', position: 'center', type: 'info'});
         });
+      this.forceRefresh();
     },
     registryListener() {
       // alert("注册");
@@ -257,7 +259,13 @@ export default {
         csv += `${item.pool},${item.character},${item.star}星,${datetime.toLocaleDateString()} ${datetime.toLocaleTimeString()},${item.isFirstTimes ? "是" : "否"}\n`;
       });
       return csv;
-    }
+    },
+    async forceRefresh() {
+      let characterInfo = await syncCharactersInformation(true);
+      characterInfo.forEach(info => {
+        this.characterInfo[info.name] = info;
+      });
+    },
   },
   mounted() {
     this.registryListener();

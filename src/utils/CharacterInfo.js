@@ -27,11 +27,9 @@ async function parsePRTSHtml(htmlText) {
   console.log(list)
   let result = [];
   list.forEach((element, index) => {
-    console.log(index)
     let file_name = `头像_${element["attribs"]["data-zh"]}.png`
     let hash = CryptoJS.MD5(file_name).toString();
     let image_path = `https://prts.wiki/images/${hash[0]}/${hash[0]}${hash[1]}/${file_name}`;
-    console.log(image_path)
     let data = {
       name: element["attribs"]["data-zh"],
       nameEn: element["attribs"]["data-en"],
