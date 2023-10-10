@@ -33,7 +33,7 @@
           <div v-else class="column inline" v-for="(chars, index) in getNewCharacters(pool)" :key="index">
             <div class="col" style="background-color: rgba(255,255,255, 0.3)">
               <q-avatar rounded size="100px">
-                <img :src="characterInfo[chars.character].image"/>
+                <img :src=" characterInfo[chars.character] ? characterInfo[chars.character].image.replace('https://prts.wiki', 'https://api.kaltsit.dev/prts'):''"/>
                 <q-badge floating color="red">new!</q-badge>
                 <q-badge class="absolute-bottom item-center" style="transform: scale(0.8); background-color: rgba(0,0,0,0)"><span>{{ chars.star }}</span></q-badge>
               </q-avatar>
@@ -187,7 +187,7 @@ export default {
     schedule: {
       async handler() {
         if (!this.noData) {
-          if(this.totalPool.records.length === 0)
+          if (this.totalPool.records.length === 0)
             await this.init();
           let result = splitNormalPoolsBySchedule(this.totalPool, this.schedule);
           this.splitPools = result.pools;
