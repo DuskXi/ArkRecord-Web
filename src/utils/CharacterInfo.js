@@ -1,5 +1,6 @@
 import {load} from 'cheerio'
 import {api} from "boot/axios";
+import CryptoJS from "crypto-js";
 import {readLocalStorage, writeLocalStorage} from "./storage.js";
 import * as https from "https";
 
@@ -22,15 +23,21 @@ async function requestBaseData() {
 
 async function parsePRTSHtml(htmlText) {
   const $ = load(htmlText);
-  const list = $('div.smwdata');
+  const list = $('#filter-data')[0].children;
+  console.log(list)
   let result = [];
-  list.each((index, element) => {
+  list.forEach((element, index) => {
+    console.log(index)
+    let file_name = `头像_${element["attribs"]["data-zh"]}.png`
+    let hash = CryptoJS.MD5(file_name).toString();
+    let image_path = `https://prts.wiki/images/${hash[0]}/${hash[0]}${hash[1]}/${file_name}`;
+    console.log(image_path)
     let data = {
-      name: element["attribs"]["data-cn"],
+      name: element["attribs"]["data-zh"],
       nameEn: element["attribs"]["data-en"],
-      image: filterUrl(element["attribs"]["data-icon"]),
-      imageVertical: filterUrl(element["attribs"]["data-half"]),
-      sortId: element["attribs"]["data-sort_id"],
+      image: image_path,
+      imageVertical: image_path,
+      sortId: element["attribs"]["data-sortid"],
     }
     result.push(data);
   })
