@@ -52,7 +52,7 @@
             </div>
             <q-intersection v-if="!print">
               <q-img loading="lazy" v-if="Object.keys(characterInfo).length > 0 && item.type === 'single'"
-                     :src="characterInfo[item.character].image.replace('https://prts.wiki', this.$q.platform.is.mobile || print_visible_img?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
+                     :src="characterInfo[item.character].image.replace('https://prts.wiki', 'https://api.kaltsit.dev/prts')"
                      spinner-color="white" style="height: 120px; max-width: 120px">
                 <div class="absolute-bottom text-subtitle6 text-center q-pa-xs">
                   <div class="absolute-top" style="transform: scale(0.8);"> {{ item.starStr }}</div>
@@ -61,7 +61,7 @@
               <div v-if="!disableThumbnail && item.type !== 'single' && Object.keys(characterInfo).length > 0">
                 <q-img v-for="(character, index) in item.characters"
                        :key="character" :ref="item.images[index]"
-                       :src="item.images[index].replace('https://prts.wiki', this.$q.platform.is.mobile?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
+                       :src="item.images[index].replace('https://prts.wiki', 'https://api.kaltsit.dev/prts')"
                        pinner-color="white" style="height: 100px; max-width: 100px">
                   <div class="absolute-bottom text-center q-pa-xs" style="">
                     <div class="absolute-top" style="transform: scale(0.8)"> {{ item.stars[index] }}</div>
@@ -71,7 +71,7 @@
             </q-intersection>
             <div v-else>
               <q-img v-if="Object.keys(characterInfo).length > 0 && item.type === 'single'"
-                     :src="characterInfo[item.character].image.replace('https://prts.wiki', this.$q.platform.is.mobile?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
+                     :src="characterInfo[item.character].image.replace('https://prts.wiki', 'https://api.kaltsit.dev/prts')"
                      spinner-color="white" style="height: 120px; max-width: 120px;">
                 <div class="absolute-bottom text-subtitle6 text-center q-pa-xs" style="">
                   <div class="absolute-top" style="transform: scale(0.8)"> {{ item.starStr }}</div>
@@ -80,8 +80,9 @@
               <div v-if="!disableThumbnail && item.type !== 'single' && Object.keys(characterInfo).length > 0">
                 <q-img v-for="(character, index) in item.characters"
                        :key="character" :ref="item.images[index]"
-                       :src="item.images[index].replace('https://prts.wiki', this.$q.platform.is.mobile?'https://api.kaltsit.dev/prts':'https://prts.wiki')"
+                       :src="item.images[index].replace('https://prts.wiki', 'https://api.kaltsit.dev/prts')"
                        pinner-color="white" style="height: 100px; max-width: 100px">
+                  <!--                       :src="item.images[index].replace('https://prts.wiki', this.$q.platform.is.mobile || print_visible_img?'https://api.kaltsit.dev/prts':'https://prts.wiki')"-->
                   <div class="absolute-bottom text-center q-pa-xs" style="">
                     <div class="absolute-top" style="transform: scale(0.8)"> {{ item.stars[index] }}</div>
                   </div>
