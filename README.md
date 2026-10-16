@@ -6,7 +6,7 @@
 
 鹰角官方只能查询最近 90 天的寻访记录（源石、充值记录只有 30 天）。ArkRecord 把每次同步到的记录追加保存在你自己的浏览器里，越攒越全，所有统计分析也都在浏览器本地完成。
 
-> 1.0 是全新重写的版本（旧版为 2022–2023 年的 v0.1.0.1_alpha，旧版的 README 见 [docs/archive/README-v0.1.md](docs/archive/README-v0.1.md)）。
+> 1.0 是全新重写的版本（旧版为 2022–2023 年的 v0.1.0.1_alpha，代码在 [`legacy-v0.1`](https://github.com/DuskXi/ArkRecord-Web/tree/legacy-v0.1) 分支，旧版的 README 见 [docs/archive/README-v0.1.md](docs/archive/README-v0.1.md)）。
 > 老用户第一次打开新版时，旧数据会自动导入；遇到问题可以在旧版网页里手动导出，再到新版导入，见[从旧版迁移](#从旧版迁移)。
 
 ## 快速开始
@@ -91,12 +91,12 @@ npm run build        # 拉取数据 + 类型检查 + 构建
 | 域名 | ark-next.kaltsit.dev | ark.kaltsit.dev |
 | Worker | arkrecord-next | arkrecord |
 | 配置 | `wrangler.jsonc` 顶层 | `wrangler.jsonc` 的 `env.production`（构建时设置 `CLOUDFLARE_ENV=production`） |
-| 工作流 | `deploy-preview.yml`：推送开发分支 | `deploy-production.yml`：推送 `v*` 标签、推送 master、开发分支上提交说明含 `[deploy production]` 的推送 |
+| 工作流 | `deploy-preview.yml`：推送开发分支 | `deploy-production.yml`：推送 master、推送 `v*` 标签、手动运行 |
 
-- 每次部署都会重新拉取游戏数据。`deploy-production.yml` 里的定时更新（每 3 小时）只有在工作流位于默认分支上时才会运行。
+- 每次部署都会重新拉取游戏数据（卡池、UP 名单、新角色头像）。定时更新暂未开启，见 `deploy-production.yml` 里的说明。
 - `ci.yml`：每次推送和 PR 运行 lint、类型检查、测试、构建。
 - 仓库级 Actions Secrets：`CLOUDFLARE_API_TOKEN`（Edit Cloudflare Workers 模板，限定账号和 `kaltsit.dev` 区域）、`CLOUDFLARE_ACCOUNT_ID`。详见 [docs/rewrite/README.md](docs/rewrite/README.md)。
-- 旧版网页在 `public/legacy/`，由 [`scripts/build-legacy.sh`](scripts/build-legacy.sh) 从 master 上的旧代码构建，一般不需要重新生成。
+- 旧版网页在 `public/legacy/`，由 [`scripts/build-legacy.sh`](scripts/build-legacy.sh) 从 [`legacy-v0.1`](https://github.com/DuskXi/ArkRecord-Web/tree/legacy-v0.1) 分支上的旧代码构建，一般不需要重新生成。
 
 ## 目录
 

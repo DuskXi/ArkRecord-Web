@@ -3,10 +3,12 @@
 # 与新版同源，所以旧版仍能读到它留在浏览器里的数据，用户可以在旧版里导出，再到新版导入。
 # 旧版代码已经冻结，一般不需要重新生成；产物直接提交在仓库里。
 #
-# 用法：scripts/build-legacy.sh [git ref，默认 origin/master]
+# 旧版代码保存在 legacy-v0.1 分支（新版合并进 master 之前的 master）。
+#
+# 用法：scripts/build-legacy.sh [git ref，默认 origin/legacy-v0.1]
 set -euo pipefail
 
-REF=${1:-origin/master}
+REF=${1:-origin/legacy-v0.1}
 ROOT=$(git rev-parse --show-toplevel)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT

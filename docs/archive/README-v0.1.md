@@ -1,7 +1,7 @@
 <!--
   归档说明：这是旧版 ArkRecord（v0.1.0.1_alpha，2022–2023，基于 Quasar 的浏览器插件 / 网页）的 README，
   于 2026-10-16 新版 1.0.0 发布时原样保留作为留档，内容未作修改（其中的链接、安装方法只适用于旧版）。
-  旧版代码在 master 分支；旧版网页仍可在 https://ark.kaltsit.dev/legacy/ 打开。新版说明见仓库根目录的 README.md。
+  旧版代码在 legacy-v0.1 分支；旧版网页仍可在 https://ark.kaltsit.dev/legacy/ 打开。新版说明见仓库根目录的 README.md。
 -->
 
 > **留档**：旧版 v0.1.0.1_alpha 的 README（2026-10-16 归档，内容未修改）。新版说明见 [README.md](../../README.md)，旧版网页仍可在 <https://ark.kaltsit.dev/legacy/> 打开。

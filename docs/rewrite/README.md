@@ -68,9 +68,9 @@
 | 域名 | ark-next.kaltsit.dev | ark.kaltsit.dev |
 | Worker | arkrecord-next | arkrecord |
 | 配置 | `wrangler.jsonc` 顶层 | `wrangler.jsonc` 的 `env.production`（构建时 `CLOUDFLARE_ENV=production`） |
-| 部署 | `deploy-preview.yml`：推送开发分支 | `deploy-production.yml`：推送 `v*` 标签、推送 master、开发分支上提交说明含 `[deploy production]` 的推送、每 3 小时更新游戏数据（定时任务只在默认分支上生效）、手动运行 |
+| 部署 | `deploy-preview.yml`：推送开发分支 | `deploy-production.yml`：推送 master、推送 `v*` 标签、手动运行（定时更新游戏数据暂未开启） |
 
-两个 Worker 的限速计数和使用人数统计互不影响。旧版网页在 `/legacy/`，由 `scripts/build-legacy.sh` 从 master 上的旧代码构建，产物提交在 `public/legacy/`。
+两个 Worker 的限速计数和使用人数统计互不影响。旧版网页在 `/legacy/`，由 `scripts/build-legacy.sh` 从 `legacy-v0.1` 分支（合并前的 master）上的旧代码构建，产物提交在 `public/legacy/`。
 
 首次切换：`ark.kaltsit.dev` 原来是 Cloudflare Pages 项目 `arkrecord-web` 的自定义域名，需要先在 Pages 项目里移除这个域名，并删除 DNS 里指向 `arkrecord-web.pages.dev` 的 CNAME 记录，Worker 才能接管这个域名。
 
@@ -88,7 +88,7 @@
 - **B 服明日方舟**：已绑定到鹰角通行证的 B 服角色应该会出现在 `binding_list` 中，这一点只有部分项目验证过。
 - **鹰角接口基本未经实测**（云端容器连不到鹰角域名）。目前只有终末地 `api/content` 由维护者在浏览器中实测可用（见 research.md 2.2）。其余结论来自多个 2025–2026 年仍在维护的开源实现的源码交叉核对。实测由项目维护者在本地浏览器完成，**账号 token 不要交给 AI 助手**。
 - **终末地头像**：目前没有持续维护、按 ID 索引的图标源（见 data-sources.md）。
-- **现有部署情况**（2026-10-16 只读核查）：`ark.kaltsit.dev` 是 Cloudflare Pages 项目 `arkrecord-web`（生产分支 `master`，构建命令 `quasar build`）；`api.kaltsit.dev` 是 Worker `ak`（对所有网站开放 CORS 的旧转发）；`statistics.kaltsit.dev` 是 Worker `arkrecord-extension`。切换正式域名时需要先从 Pages 项目上移除 `ark.kaltsit.dev`，并处理 master 合并后 Pages 会自动触发旧构建的问题。
+- **现有部署情况**（2026-10-16 只读核查）：`ark.kaltsit.dev` 是 Cloudflare Pages 项目 `arkrecord-web`（生产分支 `master`，构建命令 `quasar build`）；`api.kaltsit.dev` 是 Worker `ak`（对所有网站开放 CORS 的旧转发）；`statistics.kaltsit.dev` 是 Worker `arkrecord-extension`。切换正式域名时需要先从 Pages 项目上移除 `ark.kaltsit.dev`，并处理 master 合并后 Pages 会自动触发旧构建的问题（已处理：域名已移除、Pages 自动部署已关闭；新版于 2026-10-16 合并进 master，旧代码保存在 `legacy-v0.1` 分支）。
 - **Cloudflare Web Analytics**：测试域名的页面已被 Cloudflare 自动注入统计脚本（`static.cloudflareinsights.com`），CSP 已放行，无需改代码。
 
 ## 给 AI 助手 Cloudflare 只读权限的方式

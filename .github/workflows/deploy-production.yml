@@ -1,20 +1,16 @@
 # 部署到正式域名 ark.kaltsit.dev（Worker arkrecord，配置见 wrangler.jsonc 的 env.production）。
 #
-# 触发方式：
-#   - 推送版本标签 v*（例如 v1.0.0）
-#   - 推送到默认分支 master
-#   - 开发分支上提交说明含有 [deploy production] 的推送（其余推送跳过）
-#   - 每 3 小时一次，更新游戏数据（卡池、UP 名单、新角色头像）；定时任务只在默认分支上生效
-#   - 在 Actions 页面手动运行（工作流在默认分支上之后才可用）
+# 触发方式：推送到 master、推送版本标签 v*（例如 v1.0.0）、在 Actions 页面手动运行。
+# 每次部署都会重新拉取游戏数据。定时更新游戏数据暂未开启，需要时加上：
+#   schedule:
+#     - cron: '17 */3 * * *'
 name: Deploy production
 
 on:
   push:
+    branches: [master]
     tags: ['v*']
-    branches: [master, claude/laughing-mccarthy-yfzd6y]
   workflow_dispatch:
-  schedule:
-    - cron: '17 */3 * * *'
 
 permissions:
   contents: read
@@ -25,10 +21,6 @@ concurrency:
 
 jobs:
   deploy:
-    # 开发分支的推送只有提交说明里写明 [deploy production] 才部署到正式环境
-    if: >-
-      github.event_name != 'push' || github.ref_type == 'tag' || github.ref == 'refs/heads/master' ||
-      contains(github.event.head_commit.message, '[deploy production]')
     runs-on: ubuntu-latest
     env:
       HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
