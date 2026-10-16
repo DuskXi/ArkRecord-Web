@@ -19,6 +19,9 @@
 | 5 | 使用统计改用 Cloudflare Web Analytics | 去掉旧版的 UUID 上报和页面上的“使用者”徽章 |
 | 6 | UI 可以放弃 Quasar，只保留 Vue | 以美观和功能为先。选型为 Nuxt UI v4（纯 Vue 模式），备选 shadcn-vue |
 | 7 | 继续使用 `ark.kaltsit.dev` 域名 | 浏览器本地数据按域名隔离；同域名才能在新版首次打开时自动迁移旧版 localStorage |
+| 8 | 测试优先 | 维护者测试通过之前，只部署到测试域名 `ark-next.kaltsit.dev`，不改动正式域名 |
+| 9 | Worker 只为本站服务 | 只接受同源请求，不返回 CORS 头，拒绝预检；用 Cloudflare 限速绑定加前端限速防滥用（见 design.md 第 1 节） |
+| 10 | 部署走 GitHub Actions | 部署用的 Cloudflare token 存在 GitHub 仓库级 Secrets；AI 助手只用只读方式访问 Cloudflare API |
 
 ## 分阶段计划
 
@@ -48,4 +51,6 @@
    - Network access 的 Allowed domains 加上 `api.cloudflare.com`、`ark.kaltsit.dev`、`api.kaltsit.dev`、`statistics.kaltsit.dev`。
 3. 新开会话后生效。用完在 Cloudflare 后台删除这个 token。
 
-部署用的写权限 token 与 AI 助手无关：使用 Workers Builds（Cloudflare 后台直连 GitHub）时不需要；若改用 GitHub Actions 部署，则存放在 GitHub Secrets 中。
+注意：Cloudflare 的 Workers 权限只有“编辑”一档，没有只读档。AI 助手对 Cloudflare API 只发 GET 请求，不用这个 token 部署或修改任何资源。
+
+部署用的写权限 token 单独创建，存放在 GitHub 仓库级 Secrets 中，由 GitHub Actions 使用。

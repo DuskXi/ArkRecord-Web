@@ -13,10 +13,26 @@
 
 ### Worker 的职责（且只有这些）
 
-- 按白名单把 `/api/hg/{host}/{path}` 转发到第 4 节列出的鹰角域名和路径前缀，其他请求一律拒绝。
-- 请求头 `x-cookie` → `Cookie`；响应 `Set-Cookie: ak-user-center` → 暴露头 `x-ak-user-center`；补 CORS 头（只允许本站 origin）。
-- 不存储、不记录请求体和 token；关闭 Logs / Tail 中的请求详情。
+- 按白名单把 `/api/hg/{上游别名}/{路径}` 转发到鹰角域名，只放行列出的路径前缀和 HTTP 方法，其他请求一律拒绝。
+- 请求头 `x-cookie` → `Cookie`（只放行 `ak-user-center`）；响应 `Set-Cookie: ak-user-center` → 同源可读的响应头 `x-ak-user-center`。
+- 不存储、不记录请求体和 token；不打印请求内容。
 - 不解析业务数据，不访问 PRTS。
+
+### 防滥用：只为本站服务
+
+前端与 `/api/*` 同源，因此**完全不需要 CORS**。Worker 的规则如下：
+- **只接受本站发出的请求**：
+  - `Sec-Fetch-Site` 存在时必须为 `same-origin`；
+  - `Origin` 存在时必须等于本站 origin（每个部署环境单独配置）；
+  - 两者都缺失时拒绝（正常浏览器的 fetch 至少会带其中之一）。
+- **不返回任何 CORS 头**；`OPTIONS` 预检请求一律返回 405。其他网站无法通过浏览器借用这个转发。
+- **限速**：
+  - Cloudflare Workers Rate Limiting 绑定，认证类和数据类接口分开计数，按客户端 IP 为键；
+  - 前端同步时主动控制节奏，正常使用不会触发限速。
+
+  该绑定按机房分别计数、计数只保证最终一致，所以它是“防滥用”，不是精确计费。
+- **严格限制请求**：方法 + 路径前缀白名单、请求体大小上限（4 KB）、只转发白名单内的请求头；响应统一加 `Cache-Control: no-store`。
+- 浏览器请求头可以被脚本伪造，所以来源检查只能挡住“其他网站借用”。针对脚本滥用，靠限速和白名单兜底；以后需要时可以再加 Turnstile。
 
 Worker 与前端放在同一个开源仓库，页面上“不上传你的数据”的承诺可以被验证。
 
@@ -49,8 +65,8 @@ export const UPSTREAMS = [
   {
     host: 'ak.hypergryph.com',
     paths: ['/user/api/role/login', '/user/api/inquiry/gacha/'],
-    // 原因：数据接口依赖 Cookie ak-user-center，浏览器 JS 无法设置 Cookie，也读不到 Set-Cookie。
-    // CORS：未实测。
+    // 原因：响应不带 Access-Control-Allow-Origin（2026-10-16 实测，上游返回 401 但被浏览器拦截）；
+    // 另外数据接口依赖 Cookie ak-user-center，浏览器 JS 无法设置 Cookie，也读不到 Set-Cookie。
   },
   // as.hypergryph.com、binding-api-account-prod.hypergryph.com 同理，逐条写明原因和实测情况。
 ] as const
@@ -246,11 +262,14 @@ interface EfPull {
 
 ## 8. CI/CD 与统计
 
-- **GitHub Actions**：
-  - PR 上运行 oxlint、vue-tsc、Vitest、构建；
-  - 每日定时任务生成 meta 和头像，有变化就提交，提交后触发部署。
-- **部署**：Cloudflare Workers Builds（Cloudflare 后台直连 GitHub）。主分支发布到生产，其他分支生成预览地址；GitHub 中不存放 Cloudflare token。
-- **Wrangler 配置**：`assets.not_found_handling = "single-page-application"`，`run_worker_first = ["/api/*"]`，自定义域名 `ark.kaltsit.dev`。
+- **GitHub Actions**（部署用的 Cloudflare token 存在 GitHub 仓库级 Secrets 中）：
+  - 每次 push / PR：lint、类型检查、测试、构建；
+  - 重写分支 push 后：构建并部署到**测试域名**（`ark-next.kaltsit.dev`）；
+  - 构建时从 GitHub 拉取最新的游戏数据和头像，所以每次部署都带上最新元数据；每日定时任务只重新部署测试环境。
+- **测试优先**：在维护者完成测试之前，不创建也不运行生产部署，`ark.kaltsit.dev` 保持原样。
+  - Wrangler 配置里**默认环境就是测试环境**；生产环境必须显式加 `--env production` 才会部署。
+  - 生产部署工作流等测试通过后再添加。
+- **Wrangler 配置**：`assets.not_found_handling = "single-page-application"`，`run_worker_first = ["/api/*"]`，各环境分别配置自定义域名、允许的 origin 和限速命名空间。
 - **使用统计**：Cloudflare Web Analytics，不使用 Cookie，也不需要自建后端。
 
 ## 9. 风险

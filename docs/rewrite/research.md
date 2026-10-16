@@ -53,7 +53,16 @@
 
 ### 1.5 为什么必须转发
 
-浏览器 JS 不能设置 `Cookie`，也读不到 `Set-Cookie`。因此无论 CORS 如何，都需要转发层做两件事：
+**CORS 实测（2026-10-16，项目维护者从 `https://www.bilibili.com` 发起 `fetch`，不带任何 token）**：
+
+| 上游 | 结果 |
+|---|---|
+| `as.hypergryph.com`（POST grant） | 预检请求失败：响应没有 `Access-Control-Allow-Origin` |
+| `binding-api-account-prod.hypergryph.com`（GET binding_list） | 上游返回 400，但响应没有 `Access-Control-Allow-Origin`，被拦截 |
+| `ak.hypergryph.com`（GET gacha/cate） | 上游返回 401，但响应没有 `Access-Control-Allow-Origin`，被拦截 |
+| `ef-webview.hypergryph.com`（GET api/content） | 上游返回 200，但响应没有 `Access-Control-Allow-Origin`，被拦截 |
+
+四个上游都不允许浏览器跨域请求。另外，浏览器 JS 不能设置 `Cookie`，也读不到 `Set-Cookie`。因此转发层需要做两件事：
 - 把请求头 `x-cookie` 转成 `Cookie`；
 - 把响应里的 `Set-Cookie: ak-user-center` 改为暴露头 `x-ak-user-center`。
 
