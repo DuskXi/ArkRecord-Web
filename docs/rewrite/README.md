@@ -35,13 +35,16 @@
 - [x] 终末地头像与武器图标：BWIKI 为主、森空岛为备，另有手动指定文件（见 data-sources.md 3.2）
 - [x] 明日方舟干员名单、UP 名单、头像以 PRTS 为主，GitHub 为备（卡池类型和时间只有游戏数据里有，见 data-sources.md 2.4）
 - [x] 终末地角色池与武器池分开查看（标题栏切换，默认角色）；武器池只显示保底进度，不做概率推算
-- [x] 高级统计改为内部 Tab（纪录 / 出红分析 / 时段 / 收集 / 规划）；新增出红抽数分布、出红歪不歪的概率分布（泊松二项分布精确计算）、欧非走势、出红时段与各时段出红率；热力图改为分档配色
+- [x] 高级统计改为内部 Tab（纪录 / 出金分析 / 时段 / 收集 / 规划，终末地叫“出红”）；新增 6★ 抽数分布、歪不歪的概率分布（泊松二项分布精确计算）、欧非走势、出 6★ 时段与各时段出 6★ 的比例；热力图改为分档配色。用词：明日方舟 6★ 叫“出金”，终末地叫“出红”
 - [x] 老用户首次打开新版时自动导入旧数据，显示进度与结果；数据页写明支持的三种旧版格式
 - [x] 站内匿名用户数：侧栏与关于页显示累计用户、今日活跃等，首次打开时说明，可关闭
 - [x] 明日方舟源石 / 充值：从官网用户中心的代码中确认了新接口（见 research.md 1.6），每次同步顺便保存；与旧版记录统一去重；新增“源石与充值”页（收支汇总、源石数量变化、每月充值）
 - [x] 测试环境已部署到 https://ark-next.kaltsit.dev（2026-10-16，GitHub Actions）。已验证：安全响应头、SPA 回退、元数据与头像、同源检查（预检 405、缺少标记头 / 跨站 403、白名单外 404）、浏览器内同源请求可用而其他网站的页面被浏览器拦截、经 Worker 访问鹰角接口可达、Cloudflare 限速会触发
-- [ ] 真实账号端到端测试（维护者在测试域名进行）
-- [ ] 阶段 4：切换正式域名
+- [x] 真实账号端到端测试（维护者在测试域名完成，含旧数据导入）
+- [x] 干员图鉴（按寻访记录标出抽到过的干员 / 终末地武器，声明可能不全）；用词：明日方舟“出金”、终末地“出红”
+- [x] 旧版保留在正式域名的 `/legacy/`（与新版同源，能读到旧版留在浏览器里的数据，见 `scripts/build-legacy.sh`）；迁移弹窗、数据页、关于页说明遇到问题时可以从旧版手动导出再导入
+- [ ] 阶段 4：切换正式域名（版本 1.0.0；部署流程见下方“正式环境”）
+- [ ] 图鉴：上传森空岛 App 的干员列表截图，识别后同步账号里实际拥有的干员
 
 ## 部署所需的密钥
 
@@ -56,7 +59,20 @@
 - Account Resources：只选自己的账号
 - Zone Resources：只选 `kaltsit.dev`
 - 可以删掉模板里用不到的权限：Workers KV Storage、Workers R2 Storage、Workers Tail
-- 保留：Account Settings Read、Workers Scripts Edit、Workers Routes Edit（创建自定义域名 `ark-next.kaltsit.dev` 需要）、User Details Read、Memberships Read
+- 保留：Account Settings Read、Workers Scripts Edit、Workers Routes Edit（创建自定义域名 `ark-next.kaltsit.dev`、`ark.kaltsit.dev` 需要）、User Details Read、Memberships Read
+
+## 正式环境
+
+| | 测试环境 | 正式环境 |
+|---|---|---|
+| 域名 | ark-next.kaltsit.dev | ark.kaltsit.dev |
+| Worker | arkrecord-next | arkrecord |
+| 配置 | `wrangler.jsonc` 顶层 | `wrangler.jsonc` 的 `env.production`（构建时 `CLOUDFLARE_ENV=production`） |
+| 部署 | `deploy-preview.yml`：推送开发分支 | `deploy-production.yml`：推送 `v*` 标签、推送 master、每 3 小时更新游戏数据（定时任务只在默认分支上生效）、手动运行 |
+
+两个 Worker 的限速计数和使用人数统计互不影响。旧版网页在 `/legacy/`，由 `scripts/build-legacy.sh` 从 master 上的旧代码构建，产物提交在 `public/legacy/`。
+
+首次切换：`ark.kaltsit.dev` 原来是 Cloudflare Pages 项目 `arkrecord-web` 的自定义域名，需要先在 Pages 项目里移除这个域名，并删除 DNS 里指向 `arkrecord-web.pages.dev` 的 CNAME 记录，Worker 才能接管这个域名。
 
 ## 分阶段计划
 

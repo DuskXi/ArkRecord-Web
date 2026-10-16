@@ -17,7 +17,7 @@ import { db, requestPersistence } from '@/lib/db'
 import { dateStamp, downloadFile, toCsv } from '@/lib/download'
 import { DEMO_ACCOUNT_ID, loadDemo } from '@/lib/demo'
 import { formatDateTime, formatNumber } from '@/lib/format'
-import { isLegacyExport, type LegacyExport, parseLegacyExport, readLegacyLocalStorage } from '@/lib/legacy'
+import { isLegacyExport, LEGACY_APP_PATH, type LegacyExport, parseLegacyExport, readLegacyLocalStorage } from '@/lib/legacy'
 import { loadAkMeta } from '@/lib/meta'
 import { type Account, GAME_LABEL } from '@/lib/types'
 import { APP_VERSION, useAppStore } from '@/stores/app'
@@ -241,10 +241,15 @@ async function demo() {
               </div>
             </div>
             <ul class="list-disc space-y-1 pl-5 text-xs leading-relaxed text-muted">
-              <li><b class="text-highlighted">新版导出</b>：ArkRecord-*.json，包含两个游戏的全部账号。</li>
+              <li><b class="text-highlighted">新版导出</b>：ArkRecord_*.json，包含两个游戏的全部账号。</li>
               <li><b class="text-highlighted">旧版导出</b>：旧版“数据管理”导出的 ArkRecord_data_*.json，按 UID 自动导入到对应账号（没有的会自动创建），包括源石和充值记录。</li>
               <li><b class="text-highlighted">更早的旧版导出</b>：只区分官服 / B 服、没有 UID，导入时需要选择导入到哪个明日方舟账号。</li>
               <li>导入之前会自动保存一份快照；导入只会新增记录，不会覆盖或重复已有记录。</li>
+              <li>
+                <b class="text-highlighted">旧版网页</b>仍然可以在
+                <a :href="LEGACY_APP_PATH" target="_blank" rel="noopener" class="text-primary underline underline-offset-2">{{ LEGACY_APP_PATH }}</a>
+                打开（与新版是同一个网站，能看到旧版留在浏览器里的数据）。自动迁移的结果有问题时，可以在旧版的“数据管理”里导出，再在这里导入。
+              </li>
             </ul>
           </div>
         </div>

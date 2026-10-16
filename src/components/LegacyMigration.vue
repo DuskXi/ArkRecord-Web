@@ -3,7 +3,7 @@ import { computed, onMounted, ref, shallowRef } from 'vue'
 import { createSnapshot, type ImportSummary, importLegacyAccounts, makeAccountId } from '@/lib/archive'
 import { db } from '@/lib/db'
 import { formatNumber } from '@/lib/format'
-import { type LegacyAccount, readLegacyLocalStorage } from '@/lib/legacy'
+import { LEGACY_APP_PATH, type LegacyAccount, readLegacyLocalStorage } from '@/lib/legacy'
 import { loadAkMeta } from '@/lib/meta'
 import { APP_VERSION, useAppStore } from '@/stores/app'
 
@@ -12,7 +12,8 @@ import { APP_VERSION, useAppStore } from '@/stores/app'
  * 老用户第一次打开新版时自动导入，并显示进度和结果：
  *   - 导入前自动保存一份快照，旧版的数据原样保留、不删除；
  *   - 旧版保存的登录 token 一并迁移（它本来就保存在这个浏览器里），完成后可以一键清除；
- *   - 同一条记录重复导入不会重复计数，失败时可以重试。
+ *   - 同一条记录重复导入不会重复计数，失败时可以重试；
+ *   - 旧版仍保留在 /legacy/，遇到问题可以在旧版里手动导出，再到新版导入。
  */
 const app = useAppStore()
 const open = ref(false)
@@ -23,6 +24,8 @@ const current = ref(0)
 const summary = ref<ImportSummary | null>(null)
 const error = ref('')
 const tokensCleared = ref(false)
+
+const legacyUrl = `${location.host}${LEGACY_APP_PATH}`
 
 const totalPulls = computed(() => legacy.value.reduce((n, a) => n + a.pools.reduce((m, p) => m + p.result.length, 0), 0))
 const hasTokens = computed(() => legacy.value.some((a) => a.accountToken))
@@ -96,6 +99,18 @@ async function later() {
           </li>
         </ul>
 
+        <div class="rounded-(--ui-radius) border border-default bg-elevated/50 p-3 text-xs leading-relaxed text-muted">
+          <p class="flex items-center gap-1.5 font-medium text-highlighted">
+            <UIcon name="i-lucide-life-buoy" class="size-3.5" />
+            遇到问题时
+          </p>
+          <p class="mt-1">
+            旧版仍然可以在
+            <a :href="LEGACY_APP_PATH" target="_blank" rel="noopener" class="font-medium text-primary underline underline-offset-2">{{ legacyUrl }}</a>
+            打开，旧数据原样留在浏览器里。如果新版里的记录不对，可以在旧版的“数据管理”里手动导出 JSON，再到新版的“数据”页导入（重复导入不会重复计数）；新版的数据也可以随时在“数据”页导出备份。
+          </p>
+        </div>
+
         <template v-if="phase === 'done' && summary">
           <div class="grid grid-cols-3 gap-2 text-center">
             <div class="rounded-(--ui-radius) border border-default p-2">
@@ -112,7 +127,7 @@ async function later() {
             </div>
           </div>
           <ul class="list-disc space-y-1 pl-5 text-xs leading-relaxed text-muted">
-            <li>旧版的数据仍然保留在浏览器里，没有删除；导入前已自动保存快照，可以在“数据”页恢复。</li>
+            <li>旧版的数据没有删除；导入前已自动保存快照，可以在“数据”页恢复。</li>
             <li v-if="hasTokens">
               旧版保存的登录 token 已一并迁移，官服 token 仍有效时可以直接同步新记录。
               <UButton v-if="!tokensCleared" label="不保存 token" size="xs" variant="link" class="p-0" @click="clearTokens" />

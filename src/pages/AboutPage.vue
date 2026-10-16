@@ -2,6 +2,7 @@
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { formatNumber } from '@/lib/format'
+import { LEGACY_APP_PATH } from '@/lib/legacy'
 import { APP_VERSION, useAppStore } from '@/stores/app'
 import { IMAGE_SOURCES } from '../../worker/images'
 import { UPSTREAMS } from '../../worker/upstreams'
@@ -118,6 +119,11 @@ const sources = [
           ArkRecord {{ APP_VERSION }} · 开源于
           <ULink to="https://github.com/DuskXi/ArkRecord-Web" target="_blank" class="text-primary">GitHub</ULink>
           。本站为玩家自制工具，与鹰角网络无关。游戏内的名称与图像版权归鹰角网络所有。
+        </p>
+        <p class="mt-1">
+          旧版 ArkRecord（v0.1）仍然可以在
+          <a :href="LEGACY_APP_PATH" target="_blank" rel="noopener" class="text-primary">{{ LEGACY_APP_PATH }}</a>
+          访问，用于查看和导出旧版留在浏览器里的数据。
         </p>
       </section>
     </div>

@@ -13,6 +13,9 @@ import type { AkMeta } from './meta'
 import { buildNameIndex, resolvePoolId } from './meta'
 import type { AkLedgerEntry, AkPull } from './types'
 
+/** 旧版网页仍部署在同一域名的这个路径下（见 scripts/build-legacy.sh），与新版同源，能读到旧版留在浏览器里的数据 */
+export const LEGACY_APP_PATH = '/legacy/'
+
 export interface LegacyPoolEntry {
   timestamp: number
   pool: string

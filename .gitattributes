@@ -1,0 +1,2 @@
+# 旧版网页的构建产物（scripts/build-legacy.sh 生成）
+public/legacy/** linguist-generated=true -diff

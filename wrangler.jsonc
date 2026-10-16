@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  // 注意：这里只有测试环境（ark-next.kaltsit.dev）。
-  // 在维护者完成测试之前，不添加生产环境配置，避免误部署到正式域名 ark.kaltsit.dev。
+  // 顶层是测试环境（ark-next.kaltsit.dev，Worker arkrecord-next）；正式环境见下方 env.production。
+  // 正式环境只由 .github/workflows/deploy-production.yml 部署（构建时设置 CLOUDFLARE_ENV=production）。
   "name": "arkrecord-next",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-10-01",
@@ -24,5 +24,19 @@
   ],
   // 匿名使用人数统计：全站一个 Durable Object，SQLite 存储，只保存计数器（见 worker/stats.ts）。
   "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "UsageStats" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UsageStats"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UsageStats"] }],
+
+  "env": {
+    // 正式环境：ark.kaltsit.dev。与测试环境是两个独立的 Worker，限速计数和使用人数统计互不影响。
+    "production": {
+      "name": "arkrecord",
+      "routes": [{ "pattern": "ark.kaltsit.dev", "custom_domain": true }],
+      "ratelimits": [
+        { "name": "RL_AUTH", "namespace_id": "21101", "simple": { "limit": 20, "period": 60 } },
+        { "name": "RL_DATA", "namespace_id": "21102", "simple": { "limit": 120, "period": 60 } }
+      ],
+      "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "UsageStats" }] },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UsageStats"] }]
+    }
+  }
 }

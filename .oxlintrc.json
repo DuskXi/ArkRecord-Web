@@ -13,6 +13,7 @@
   },
   "ignorePatterns": [
     "dist",
+    "public/legacy",
     "node_modules",
     "worker/worker-configuration.d.ts",
     "auto-imports.d.ts",
