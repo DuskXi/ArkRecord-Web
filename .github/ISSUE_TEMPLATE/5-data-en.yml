@@ -1,0 +1,54 @@
+name: Data issue (English)
+description: Wrong banner name, rate-up list, pity calculation, operator name or avatar; missing new banner or operator
+title: "[Data] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Banners, rate-up lists, operators and avatars come from the game data tables and wikis (PRTS, BWIKI) and are refreshed on every deploy. Brand-new banners may take a little while to appear.
+        **Never post your account token, cookies or other private information.**
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - Arknights
+        - "Arknights: Endfield"
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of data
+      options:
+        - Banner name / type
+        - Rate-up list (wrong "off-banner" result)
+        - Pity calculation
+        - Operator / weapon name or avatar
+        - Missing new banner or operator
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Banner or operator
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong, and what is correct
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Reference (optional)
+      description: Link to an official announcement, PRTS, BWIKI, etc.
+  - type: input
+    id: version
+    attributes:
+      label: Site version
+      placeholder: v1.0.0

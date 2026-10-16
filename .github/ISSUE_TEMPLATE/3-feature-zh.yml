@@ -1,0 +1,33 @@
+name: 功能建议
+description: 希望增加或改进的功能
+title: "[建议] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: 提交前可以先看看 README 里的[路线图](https://github.com/DuskXi/ArkRecord-Web#路线图)和已有的 Issue。
+  - type: textarea
+    id: want
+    attributes:
+      label: 希望有什么功能
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 为什么需要
+      description: 想解决什么问题，或者在什么场景下会用到。
+  - type: textarea
+    id: idea
+    attributes:
+      label: 可以怎么做（可选）
+      description: 设想的样子、参考的网站或工具、截图都可以。
+  - type: dropdown
+    id: game
+    attributes:
+      label: 游戏
+      options:
+        - 明日方舟
+        - 终末地
+        - 两个都要
+        - 和游戏无关
