@@ -88,6 +88,8 @@ describe('纪录与间隔', () => {
     expect(s.hourWeek[0]![21]).toBe(10)
     expect(s.hourWeek.flat().reduce((a, b) => a + b, 0)).toBe(10)
     expect(s.busiestDay).toEqual({ day: '2026-10-12', pulls: 10, six: 0 })
+    expect(s.byHour[21]).toEqual({ pulls: 10, six: 0 })
+    expect(s.sixHourWeek.flat().reduce((a, b) => a + b, 0)).toBe(0)
   })
 
   it('收集：按干员合并 5★ 以上，记录次数与 UP 次数', () => {

@@ -5,7 +5,8 @@ import type { PityState } from '@/lib/stats/analyze'
 const props = defineProps<{ state: PityState }>()
 const pct = computed(() => Math.min(100, (props.state.current / props.state.hardPity) * 100))
 const softPct = computed(() => (props.state.softPity / props.state.hardPity) * 100)
-const inSoft = computed(() => props.state.current >= props.state.softPity)
+const hasSoft = computed(() => props.state.softPity < props.state.hardPity)
+const inSoft = computed(() => hasSoft.value && props.state.current >= props.state.softPity)
 </script>
 
 <template>
@@ -28,15 +29,18 @@ const inSoft = computed(() => props.state.current >= props.state.softPity)
         class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
         :style="{ width: `${pct}%`, background: inSoft ? 'var(--color-rarity-6)' : 'var(--ui-primary)' }"
       />
-      <div class="absolute inset-y-0 w-px bg-(--ui-text-dimmed)" :style="{ left: `${softPct}%` }" />
+      <div v-if="hasSoft" class="absolute inset-y-0 w-px bg-(--ui-text-dimmed)" :style="{ left: `${softPct}%` }" />
     </div>
     <div class="mt-1 flex justify-between font-display text-[10px] text-dimmed">
       <span>0</span>
-      <span :style="{ marginLeft: `${softPct - 8}%` }">{{ state.softPity }}</span>
+      <span v-if="hasSoft" :style="{ marginLeft: `${softPct - 8}%` }">{{ state.softPity }}</span>
       <span>{{ state.hardPity }}</span>
     </div>
 
-    <p class="mt-3 text-xs text-muted">
+    <p v-if="state.expectedMedian === null" class="mt-3 text-xs text-muted">
+      最多再抽 <span class="font-display text-sm text-highlighted">{{ state.hardPity - state.current }}</span> 抽必出 6★
+    </p>
+    <p v-else class="mt-3 text-xs text-muted">
       预计还需 <span class="font-display text-sm text-highlighted">{{ state.expectedMedian }}</span> 抽（中位数），
       90% 的情况下不超过 <span class="font-display text-sm text-highlighted">{{ state.expectedP90 }}</span> 抽
     </p>

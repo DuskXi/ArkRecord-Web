@@ -21,9 +21,9 @@ export interface PityState {
   /** 软保底开始、硬保底的抽数 */
   softPity: number
   hardPity: number
-  /** 预计还需抽数的中位数与 90% 区间上界 */
-  expectedMedian: number
-  expectedP90: number
+  /** 预计还需抽数的中位数与 90% 区间上界；没有概率模型（如终末地武器池）时为 null */
+  expectedMedian: number | null
+  expectedP90: number | null
   lastPoolName: string
   lastTs: number
   mainModel: boolean
@@ -66,7 +66,8 @@ export interface Analysis {
 }
 
 export interface PityModel {
-  dist: Distribution
+  /** 出 6★ 所需抽数的分布；规则不明确、无法建模时为 null（只显示保底进度，不计算期望与运气） */
+  dist: Distribution | null
   softPity: number
   hardPity: number
 }
@@ -145,7 +146,7 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
   }
 
   const pity: PityState[] = [...counters.entries()].map(([family, c]) => {
-    const rest = remaining(model.dist, c.count)
+    const rest = model.dist ? remaining(model.dist, c.count) : null
     return {
       family,
       label: c.label,
@@ -153,8 +154,8 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
       current: c.count,
       softPity: model.softPity,
       hardPity: model.hardPity,
-      expectedMedian: rest.median,
-      expectedP90: quantileOf(rest, 0.9),
+      expectedMedian: rest?.median ?? null,
+      expectedP90: rest ? quantileOf(rest, 0.9) : null,
       lastPoolName: c.lastPool,
       lastTs: c.lastTs,
       mainModel: c.main,
@@ -173,7 +174,7 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
     avgPerSix: mainIntervals.length ? mainIntervals.reduce((a, b) => a + b, 0) / mainIntervals.length : null,
     upWins: known.filter((h) => h.event.isUp).length,
     upTotal: known.length,
-    luck: luckPercentile(model.dist, mainIntervals),
+    luck: model.dist ? luckPercentile(model.dist, mainIntervals) : null,
     perDay,
     perMonth,
     firstTs: events[0]?.ts ?? null,

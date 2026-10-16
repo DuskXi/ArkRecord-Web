@@ -63,7 +63,7 @@ const currency = computed(() =>
       <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatTile label="TOTAL PULLS" :value="formatNumber(a.total)" :hint="currency" icon="i-lucide-sigma" />
         <StatTile
-          label="6★ OPERATORS"
+          :label="records.weaponScope ? '6★ WEAPONS' : '6★ OPERATORS'"
           :value="a.stars[6]"
           :hint="a.total ? `出货率 ${formatPercent(a.stars[6] / a.total, 2)}` : ''"
           icon="i-lucide-star"
@@ -72,7 +72,7 @@ const currency = computed(() =>
         <StatTile
           label="AVG PER 6★"
           :value="a.avgPerSix ? a.avgPerSix.toFixed(1) : '—'"
-          :hint="`理论期望 ${records.model.dist.mean.toFixed(2)} 抽`"
+          :hint="records.model.dist ? `理论期望 ${records.model.dist.mean.toFixed(2)} 抽` : `${records.model.hardPity} 抽内必出 6★`"
           icon="i-lucide-gauge"
         />
         <StatTile
@@ -84,7 +84,7 @@ const currency = computed(() =>
         <StatTile
           label="LUCK"
           :value="a.luck === null ? '—' : formatPercent(a.luck, 0)"
-          :hint="a.luck === null ? '还没有出过 6★' : `${luck.text} · 比这个比例的玩家更欧`"
+          :hint="!records.model.dist ? '武器池不计算运气' : a.luck === null ? '还没有出过 6★' : `${luck.text} · 比这个比例的玩家更欧`"
           icon="i-lucide-sparkles"
           :accent="luckColor"
           class="col-span-2 md:col-span-1"

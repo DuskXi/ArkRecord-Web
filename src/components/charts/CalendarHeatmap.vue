@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { EChartsOption } from 'echarts'
 import { computed } from 'vue'
-import { useChartTheme } from '@/composables/useChartTheme'
+import { heatPieces, mixRgb, useChartTheme } from '@/composables/useChartTheme'
 import { dayKey } from '@/lib/stats/analyze'
 import EChart from './EChart.vue'
 
@@ -16,7 +16,6 @@ const range = computed<[string, string]>(() => {
 const option = computed<EChartsOption>(() => {
   const p = palette.value
   const data = [...props.perDay.entries()].filter(([d]) => d >= range.value[0])
-  const max = Math.max(10, ...data.map(([, n]) => n))
   return {
     tooltip: {
       formatter: (params) => {
@@ -24,12 +23,8 @@ const option = computed<EChartsOption>(() => {
         return `${d}<br/><b>${n}</b> 抽`
       },
     },
-    visualMap: {
-      show: false,
-      min: 0,
-      max,
-      inRange: { color: [p.dark ? '#1f2329' : '#eef1f4', p.primary] },
-    },
+    // 分档配色，少量抽卡的日子也清晰可见；没有抽卡的日子显示为浅色格子
+    visualMap: { type: 'piecewise', show: false, dimension: 1, pieces: heatPieces(data.map(([, n]) => n), p, p.primary) },
     calendar: {
       range: range.value,
       cellSize: ['auto', 13],
@@ -37,7 +32,7 @@ const option = computed<EChartsOption>(() => {
       left: 28,
       right: 8,
       splitLine: { show: false },
-      itemStyle: { color: 'transparent', borderColor: p.bg, borderWidth: 2 },
+      itemStyle: { color: mixRgb(p.border, p.bg, 0.5), borderColor: p.bg, borderWidth: 2 },
       yearLabel: { show: false },
       dayLabel: { color: p.dimmed, nameMap: 'ZH', firstDay: 1, fontSize: 10 },
       monthLabel: { color: p.dimmed, nameMap: 'ZH', fontSize: 10 },

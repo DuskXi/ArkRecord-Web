@@ -64,8 +64,12 @@ export interface Insights {
   busiestDay: { day: string; pulls: number; six: number } | null
   /** 6★ 最多的一天 */
   luckiestDay: { day: string; pulls: number; six: number } | null
-  /** [星期一..星期日][0..23 时]，北京时间 */
+  /** [星期一..星期日][0..23 时] 的抽数，北京时间 */
   hourWeek: number[][]
+  /** 同上，出红（6★）次数 */
+  sixHourWeek: number[][]
+  /** 每个小时的抽数与出红数（只计入保底的抽数），用于看各时段出红率 */
+  byHour: { pulls: number; six: number }[]
   collection: CollectionEntry[]
   /** 按时间顺序的 6★ 与截至当时的平均抽数 */
   sixSequence: { hit: SixStarHit; runningAvg: number }[]
@@ -119,6 +123,8 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
   // 按天统计
   const days = new Map<string, { pulls: number; six: number }>()
   const hourWeek = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0))
+  const sixHourWeek = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0))
+  const byHour = Array.from({ length: 24 }, () => ({ pulls: 0, six: 0 }))
   for (const e of events) {
     const day = dayKey(e.ts)
     const d = days.get(day) ?? { pulls: 0, six: 0 }
@@ -127,7 +133,14 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
     days.set(day, d)
     // 中国没有夏令时，固定 +8 小时即可得到北京时间
     const local = new Date(e.ts + CN_OFFSET_MS)
-    hourWeek[(local.getUTCDay() + 6) % 7]![local.getUTCHours()]!++
+    const weekday = (local.getUTCDay() + 6) % 7
+    const hour = local.getUTCHours()
+    hourWeek[weekday]![hour]!++
+    if (e.star === 6) sixHourWeek[weekday]![hour]!++
+    if (e.countsForPity) {
+      byHour[hour]!.pulls++
+      if (e.star === 6) byHour[hour]!.six++
+    }
   }
   let busiestDay: Insights['busiestDay'] = null
   let luckiestDay: Insights['luckiestDay'] = null
@@ -182,6 +195,8 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
     busiestDay,
     luckiestDay,
     hourWeek,
+    sixHourWeek,
+    byHour,
     collection: [...collection.values()].toSorted((a, b) => b.star - a.star || b.count - a.count || b.lastTs - a.lastTs),
     sixSequence,
   }

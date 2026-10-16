@@ -20,7 +20,7 @@ const sources = [
 </script>
 
 <template>
-  <PageShell id="about" title="关于" eyebrow="ABOUT & TRANSPARENCY" :require-account="false" :sync="false">
+  <PageShell id="about" title="关于" eyebrow="ABOUT & TRANSPARENCY" :require-account="false" :sync="false" :scoped="false">
     <div class="space-y-10">
       <section class="grid gap-3 md:grid-cols-3">
         <div v-for="item in [

@@ -117,6 +117,7 @@ const chartOption = computed<EChartsOption>(() => {
         type: 'line',
         data: pct(r.sixCdf),
         symbol: 'none',
+        itemStyle: { color: p.rarity6 },
         lineStyle: { color: p.rarity6, width: 2 },
         markLine:
           debounced.value.pulls > 0 && debounced.value.pulls <= span
@@ -129,7 +130,7 @@ const chartOption = computed<EChartsOption>(() => {
             : undefined,
       },
       ...(r.targetCdf.length
-        ? [{ name: '得到目标', type: 'line' as const, data: pct(r.targetCdf), symbol: 'none', lineStyle: { color: p.primary, width: 2 } }]
+        ? [{ name: '得到目标', type: 'line' as const, data: pct(r.targetCdf), symbol: 'none', itemStyle: { color: p.primary }, lineStyle: { color: p.primary, width: 2 } }]
         : []),
     ],
   }

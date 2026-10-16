@@ -177,7 +177,7 @@ async function demo() {
 </script>
 
 <template>
-  <PageShell id="data" title="数据" eyebrow="DATA CENTER" :require-account="false">
+  <PageShell id="data" :scoped="false" title="数据" eyebrow="DATA CENTER" :require-account="false">
     <div class="space-y-10">
       <section>
         <SectionHeader index="01" eyebrow="ACCOUNTS" title="账号">

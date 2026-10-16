@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import { GAME_LABEL } from '@/lib/types'
+import ScopeSwitch from './ScopeSwitch.vue'
 import SyncButton from './SyncButton.vue'
 
-withDefaults(defineProps<{ id: string; title: string; eyebrow?: string; requireAccount?: boolean; sync?: boolean }>(), {
-  requireAccount: true,
-  sync: true,
-})
+withDefaults(
+  defineProps<{ id: string; title: string; eyebrow?: string; requireAccount?: boolean; sync?: boolean; scoped?: boolean }>(),
+  {
+    requireAccount: true,
+    sync: true,
+    // 页面内容是否按终末地的“角色 / 武器”范围显示
+    scoped: true,
+  },
+)
 const app = useAppStore()
 </script>
 
@@ -21,6 +27,7 @@ const app = useAppStore()
           </div>
         </template>
         <template #right>
+          <ScopeSwitch v-if="scoped && app.game === 'endfield' && app.activeAccount" />
           <slot name="actions" />
           <SyncButton v-if="sync && app.activeAccount" />
         </template>

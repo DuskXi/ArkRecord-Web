@@ -69,3 +69,49 @@ export function useChartTheme() {
   )
   return palette
 }
+
+/** 坐标轴的统一样式 */
+export function axisStyle(p: ChartPalette) {
+  return {
+    axisLine: { lineStyle: { color: p.border } },
+    axisLabel: { color: p.dimmed, fontSize: 11 },
+    splitLine: { lineStyle: { color: p.border, type: 'dashed' as const } },
+  }
+}
+
+function parseRgb(color: string): [number, number, number] {
+  const [r = 0, g = 0, b = 0] = (color.match(/[\d.]+/g) ?? []).map(Number)
+  return [r, g, b]
+}
+
+/** 两个 rgb() 颜色按比例混合，t 为 a 的占比 */
+export function mixRgb(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = parseRgb(a)
+  const [br, bg, bb] = parseRgb(b)
+  const mix = (x: number, y: number) => Math.round(x * t + y * (1 - t))
+  return `rgb(${mix(ar, br)}, ${mix(ag, bg)}, ${mix(ab, bb)})`
+}
+
+/**
+ * 热力图的分档配色（类似 GitHub 贡献图）：0 用边框色，其余按非零数值的四分位分成 4 档。
+ * 线性渐变时，数值小的格子在浅色主题下几乎看不见。
+ */
+export function heatPieces(values: number[], p: ChartPalette, accent: string) {
+  const ramp = [0.3, 0.55, 0.8, 1].map((t) => mixRgb(accent, p.bg, t))
+  const pieces: { min?: number; max?: number; color: string }[] = [{ min: 0, max: 0, color: p.border }]
+  const nonzero = values.filter((v) => v > 0).toSorted((a, b) => a - b)
+  if (!nonzero.length) return pieces
+  const at = (f: number) => nonzero[Math.floor(f * (nonzero.length - 1))]!
+  const cuts = [...new Set([at(0.25), at(0.5), at(0.75)])]
+  const ranges: { min: number; max?: number }[] = []
+  let lower = Math.min(1, nonzero[0]!)
+  for (const cut of cuts) {
+    if (cut < lower) continue
+    ranges.push({ min: lower, max: cut })
+    lower = cut + Number.EPSILON
+  }
+  ranges.push({ min: lower })
+  const colors = ramp.slice(ramp.length - ranges.length)
+  ranges.forEach((r, i) => pieces.push({ ...r, color: colors[i]! }))
+  return pieces
+}

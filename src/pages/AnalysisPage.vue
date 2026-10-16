@@ -32,7 +32,8 @@ const pityOption = computed<EChartsOption>(() => {
   const actual = Array.from({ length: bins }, () => 0)
   for (const n of intervals) actual[Math.min(bins - 1, Math.floor((n - 1) / BIN))]!++
   const expected = Array.from({ length: bins }, () => 0)
-  records.model.dist.pmf.forEach((prob, i) => (expected[Math.min(bins - 1, Math.floor(i / BIN))]! += prob * intervals.length))
+  const dist = records.model.dist
+  dist?.pmf.forEach((prob, i) => (expected[Math.min(bins - 1, Math.floor(i / BIN))]! += prob * intervals.length))
   const labels = Array.from({ length: bins }, (_, i) => `${i * BIN + 1}–${Math.min(hard, (i + 1) * BIN)}`)
   return {
     grid: { left: 36, right: 12, top: 36, bottom: 28 },
@@ -42,14 +43,19 @@ const pityOption = computed<EChartsOption>(() => {
     yAxis: { type: 'value', minInterval: 1, ...axisStyle() },
     series: [
       { name: '你的 6★', type: 'bar', data: actual, itemStyle: { color: p.rarity6, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 28 },
-      {
-        name: '理论期望',
-        type: 'line',
-        data: expected.map((v) => Number(v.toFixed(2))),
-        symbol: 'none',
-        lineStyle: { color: p.primary, width: 2 },
-        areaStyle: { color: p.primary, opacity: 0.08 },
-      },
+      // 没有概率模型（终末地武器池）时不画理论曲线
+      ...(dist
+        ? [
+            {
+              name: '理论期望',
+              type: 'line' as const,
+              data: expected.map((v) => Number(v.toFixed(2))),
+              symbol: 'none',
+              itemStyle: { color: p.primary }, lineStyle: { color: p.primary, width: 2 },
+              areaStyle: { color: p.primary, opacity: 0.08 },
+            },
+          ]
+        : []),
     ],
   }
 })
@@ -81,7 +87,9 @@ const monthlyOption = computed<EChartsOption>(() => {
 
 // ── 星级分布 ──
 const expectedRates = computed(() => {
-  const six = 1 / records.model.dist.mean
+  const dist = records.model.dist
+  if (!dist) return null
+  const six = 1 / dist.mean
   return records.game === 'arknights' ? { 6: six, 5: 0.08, 4: 0.5, 3: 0.42 - six } : { 6: six, 5: 0.08, 4: 0.92 - six, 3: 0 }
 })
 const rarityOption = computed<EChartsOption>(() => {
@@ -132,9 +140,12 @@ const families = computed(() => {
           <p class="eyebrow">LUCK PERCENTILE</p>
           <p class="mt-2 font-display text-5xl font-semibold text-highlighted">{{ a.luck === null ? '—' : formatPercent(a.luck, 0) }}</p>
           <p class="mt-1 text-sm font-medium" style="color: var(--color-rarity-6)">{{ luck.text }}</p>
-          <p class="mt-3 text-xs leading-relaxed text-muted">
+          <p v-if="records.model.dist" class="mt-3 text-xs leading-relaxed text-muted">
             根据游戏的保底规则精确计算：和同样出了 {{ a.mainIntervals.length }} 个 6★ 的理论玩家相比，你花的总抽数比这个比例的人更少。
             50% 表示正好符合期望。计算全部在你的浏览器里完成，不依赖任何人的数据。
+          </p>
+          <p v-else class="mt-3 text-xs leading-relaxed text-muted">
+            武器池只公布了“{{ records.model.hardPity }} 抽内必出 6★”，没有可靠的基础概率，因此不计算运气百分位和理论分布。
           </p>
         </div>
         <div class="rounded-(--ui-radius) border border-default p-4 lg:col-span-2">
@@ -184,7 +195,7 @@ const families = computed(() => {
             <li v-for="s in [6, 5, 4, 3] as const" :key="s" class="flex justify-between text-muted">
               <span>{{ s }}★ 实际 / 理论</span>
               <span class="font-display">
-                {{ a.total ? formatPercent(a.stars[s] / a.total, 2) : '—' }} / {{ formatPercent(expectedRates[s], 2) }}
+                {{ a.total ? formatPercent(a.stars[s] / a.total, 2) : '—' }} / {{ expectedRates ? formatPercent(expectedRates[s], 2) : '—' }}
               </span>
             </li>
           </ul>
