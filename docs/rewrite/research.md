@@ -128,7 +128,7 @@ POST /user/auth/v1/token_by_scan_code {scanCode}
   - `all[]` 给出 `{id: "chr_0025_ardelia", name, rarity(4–6)}`，可作为角色名录来源。
   - 常驻池的 `up6_image`、`up6_avatar`、`rotate_list` 均为空。
   - `data.timezone` 为 8。
-  - 浏览器跨域请求（CORS）是否被允许尚未测试。
+  - **不允许浏览器跨域请求**（2026-10-16 实测）：从 `https://www.bilibili.com` 发起 `fetch`，上游返回 200，但响应没有 `Access-Control-Allow-Origin` 头，被浏览器的 CORS 策略拦截。因此必须经 Worker 转发。
 - 翻页：首次不带 `seq_id`，之后取上一页最后一条的 `seqId`，直到 `hasMore` 为假；记录按时间倒序返回。
 - 角色记录：`{poolId, poolName, charId, charName, rarity(4–6), isFree, isNew, gachaTs(毫秒字符串), seqId, kind, poolVersion}`。
 - 武器记录：`{poolId, poolName, weaponId, weaponName, weaponType, rarity, isNew, gachaTs, seqId, poolType, kind}`。

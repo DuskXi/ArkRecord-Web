@@ -20,6 +20,42 @@
 
 Worker 与前端放在同一个开源仓库，页面上“不上传你的数据”的承诺可以被验证。
 
+### 源码标注要求：写明为什么必须转发
+
+Worker 的存在**只是因为上游接口不允许浏览器直接请求**，不是为了获取任何信息。这一点必须在源码里写清楚：
+- 白名单文件顶部写总体说明；
+- 每个上游条目写明具体原因（CORS 被拦截，或需要浏览器无法设置的 Cookie），以及实测日期和方式；
+- 尚未实测的条目标注“未实测”，测到后再更新；
+- 应用内的“关于与透明度”页面列出同样的上游清单和原因。
+
+模板：
+
+```ts
+// worker/upstreams.ts
+//
+// Worker 允许转发的全部上游。
+//
+// 为什么需要转发：下列鹰角接口不允许浏览器跨域（CORS）请求，或者依赖浏览器 JS
+// 无法设置 / 读取的 Cookie，网页无法直接调用。转发只为绕过这一浏览器限制，
+// 不是为了获取任何信息：Worker 不解析、不记录、不存储任何请求或响应内容（包括 token），
+// 所有数据处理都在用户浏览器本地完成。
+export const UPSTREAMS = [
+  {
+    host: 'ef-webview.hypergryph.com',
+    paths: ['/api/content', '/api/record/'],
+    // 原因：响应不带 Access-Control-Allow-Origin，浏览器请求被 CORS 拦截。
+    // 实测：2026-10-16，从 https://www.bilibili.com 发起 fetch，上游返回 200 但被浏览器拦截。
+  },
+  {
+    host: 'ak.hypergryph.com',
+    paths: ['/user/api/role/login', '/user/api/inquiry/gacha/'],
+    // 原因：数据接口依赖 Cookie ak-user-center，浏览器 JS 无法设置 Cookie，也读不到 Set-Cookie。
+    // CORS：未实测。
+  },
+  // as.hypergryph.com、binding-api-account-prod.hypergryph.com 同理，逐条写明原因和实测情况。
+] as const
+```
+
 ## 2. 技术栈
 
 | 层 | 选择 | 理由 |

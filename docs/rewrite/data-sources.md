@@ -68,7 +68,7 @@ CDN 方面：
 ## 3. 终末地
 
 - 记录本身已带名称和星级，元数据需求较小。
-- 卡池信息来自官方 `ef-webview.hypergryph.com/api/content?pool_id=…&server_id=1&lang=zh-cn`（无需 token，含 `up6_name`、`up6_image`、`up6_avatar`、`all[]`）。不支持 CORS，**需要经 Worker 转发**，结果按 poolId 缓存在 IndexedDB。
+- 卡池信息来自官方 `ef-webview.hypergryph.com/api/content?pool_id=…&server_id=1&lang=zh-cn`（无需 token，含 `up6_name`、`up6_image`、`up6_avatar`、`all[]`）。**不允许浏览器跨域请求**（2026-10-16 实测：上游返回 200，但没有 `Access-Control-Allow-Origin` 头），因此**需要经 Worker 转发**，结果按 poolId 缓存在 IndexedDB。
 - 构建时快照：`555me/beyondGameData`（2026-10-16 更新）的 `tableCfg/GachaCharPoolTable.json`（含 `upCharIds`）和 `GachaWeaponPoolTable.json`。
 - 图标：**没有持续维护、按 ID 索引的图标仓库**。
   - `BoxCatTeam/endfield-cat-metadata` 自 2026-03 停更；
