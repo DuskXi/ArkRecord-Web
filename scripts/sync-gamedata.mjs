@@ -132,6 +132,8 @@ function buildPools(gachaTable, upLists) {
     const generic = nameCount.get(p.gachaPoolName) > 5
     const name = generic ? `${RULE_LABEL[p.gachaRuleType] ?? p.gachaPoolName} · ${DAY.format(p.openTime * 1000)}` : p.gachaPoolName
     const pool = { n: name, t: p.gachaRuleType, o: p.openTime, e: p.endTime }
+    // 泛称卡池：名称可由 PRTS 卡池一览中的具体名称替换（见 applyPrtsPoolPages），写出前删除这个标记
+    if (generic) pool.generic = true
     if (p.linkageParam?.loopTarget6Count) pool.loop6 = p.linkageParam.loopTarget6Count
     if (p.linkageParam?.guaranteeTarget6Count) pool.g6 = p.linkageParam.guaranteeTarget6Count
     if (p.linkageParam?.guaranteeTarget6Char) pool.g6c = p.linkageParam.guaranteeTarget6Char
@@ -178,6 +180,106 @@ async function fetchPrtsChars() {
     await sleep(1000)
   }
   return chars
+}
+
+// ───────────── PRTS 卡池一览（卡池具体名称 + 与现有数据的比对） ─────────────
+
+const PRTS_POOL_PAGES = (year) => [
+  { group: 'limited', page: '卡池一览/限时寻访' },
+  ...Array.from({ length: year - 2018 }, (_, i) => ({ group: 'standard', page: `卡池一览/常驻标准寻访/${2019 + i}` })),
+  ...Array.from({ length: year - 2022 }, (_, i) => ({ group: 'kernel', page: `卡池一览/常驻中坚寻访&中坚甄选/${2023 + i}` })),
+]
+/** 常规轮换池保持“标准寻访 · 日期”，比 PRTS 的编号名称好认 */
+const ROTATION_NAME = /^(?:中坚)?干员轮换卡池\d+$/
+const POOL_TIME = /(\d{4}-\d{2}-\d{2} \d{2}:\d{2})~<br\/>(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/g
+
+const cnTime = (text) => Date.parse(`${text.replace(' ', 'T')}:00+08:00`) / 1000
+const looseName = (name) => name.replace(/[\s·【】・]|复刻/g, '')
+
+/** 单元格里 {{干员头像|名称}} 模板中的干员名 */
+const avatarNames = (cell = '') => [...cell.matchAll(/\{\{干员头像\|([^|}]+)/g)].map((x) => x[1].trim())
+
+/** 解析卡池一览的表格：每行有卡池名、开放与结束时间、6★ 与 5★ 特定干员 */
+function parsePrtsPoolPage(wikitext, group) {
+  const rows = []
+  for (const m of wikitext.matchAll(POOL_TIME)) {
+    const head = wikitext.slice(wikitext.lastIndexOf('\n|-', m.index), m.index)
+    const rest = wikitext.slice(m.index + m[0].length)
+    // 甄选卡池的单元格里嵌套了表格，嵌套表格的行以“{{干员头像”开头，不当作下一行
+    const next = rest.search(/\n\|-\s*\n\|(?!\s*\{\{干员头像)/)
+    const body = next === -1 ? rest : rest.slice(0, next)
+    const label = [...head.matchAll(/\[\[(?!文件:)([^|\]]+)(?:\|([^\]]+))?\]\]/g)].at(-1)
+    const linkTarget = head.match(/link=([^|\]]+)/)?.[1]
+    const name = (label ? label[2] || label[1] : linkTarget ?? '').replace(/^寻访模拟\//, '').trim()
+    const cells = body.split('\n|')
+    rows.push({
+      group,
+      name,
+      o: cnTime(m[1]),
+      e: cnTime(m[2]),
+      up6: avatarNames(cells[1]),
+      // 甄选（玩家自选）和“寻访池内只有以上干员”的卡池，列出的不是概率提升对象
+      notUp: /可甄选|寻访池内只有以上/.test(body),
+    })
+  }
+  return rows
+}
+
+async function fetchPrtsPoolRows() {
+  const rows = []
+  for (const { group, page } of PRTS_POOL_PAGES(new Date().getFullYear())) {
+    const params = new URLSearchParams({ action: 'parse', page, prop: 'wikitext', format: 'json' })
+    const data = await fetchJson(`${PRTS_API}?${params}`)
+    if (data.parse?.wikitext?.['*']) rows.push(...parsePrtsPoolPage(data.parse.wikitext['*'], group))
+    await sleep(1000)
+  }
+  return rows
+}
+
+function poolGroup(ruleType) {
+  if (ruleType === 'NORMAL' || ruleType === 'DOUBLE') return 'standard'
+  if (ruleType.startsWith('CLASSIC') || ruleType === 'FESCLASSIC') return 'kernel'
+  return 'limited'
+}
+
+/**
+ * 按开放时间（12 小时内）和名称把 PRTS 的行对应到游戏数据的卡池；
+ * 给泛称卡池换上具体名称，并在日志中列出 UP 名单不一致、以及 PRTS 有而游戏数据还没有的近期卡池。
+ */
+function applyPrtsPoolPages(pools, rows, chars) {
+  const nameToId = new Map()
+  for (const [id, c] of Object.entries(chars)) if (!nameToId.has(c.n)) nameToId.set(c.n, id)
+  const stats = { matched: 0, renamed: 0, mismatched: [], recentMissing: [] }
+  const now = Date.now() / 1000
+  for (const row of rows) {
+    const sameGroup = Object.entries(pools).filter(([, p]) => p.o && Math.abs(p.o - row.o) <= 12 * 3600 && poolGroup(p.t) === row.group)
+    // 联合行动在游戏数据里是普通标准池，但 PRTS 列在限时寻访里：同组找不到时按开放时间完全一致跨组匹配
+    const near = sameGroup.length ? sameGroup : Object.entries(pools).filter(([, p]) => p.o && Math.abs(p.o - row.o) <= 60)
+    const named = near.filter(([, p]) => row.name && (looseName(row.name).includes(looseName(p.n)) || looseName(p.n).includes(looseName(row.name))))
+    const exact = near.filter(([, p]) => Math.abs(p.o - row.o) <= 60)
+    const match = named.length === 1 ? named[0] : exact.length === 1 ? exact[0] : near.length === 1 ? near[0] : null
+    if (!match) {
+      if (row.o > now - 30 * 86400) stats.recentMissing.push(`${row.name}（${DAY.format(row.o * 1000)}）`)
+      continue
+    }
+    stats.matched++
+    const [id, pool] = match
+    if (pool.generic && row.name && !ROTATION_NAME.test(row.name)) {
+      // 不带编号的名称（如早期的“联合行动”“定向甄选”）加上开放日期以便区分
+      pool.n = /\d/.test(row.name) ? row.name : `${row.name} · ${DAY.format(pool.o * 1000)}`
+      stats.renamed++
+    }
+    const have = pool.up?.['6']
+    if (row.notUp || !have || !row.up6.length) continue
+    const fromPage = row.up6.map((n) => nameToId.get(n))
+    if (fromPage.includes(undefined)) continue
+    if (fromPage.toSorted().join() !== have.toSorted().join()) {
+      stats.mismatched.push(`${id} ${pool.n}：PRTS 卡池一览 ${row.up6.join('、')}，现有 ${have.map((c) => chars[c]?.n ?? c).join('、')}`)
+    }
+  }
+  console.log(`PRTS 卡池一览：${rows.length} 行，对应上 ${stats.matched} 个卡池，换上具体名称 ${stats.renamed} 个`)
+  for (const line of stats.mismatched) console.warn(`  UP 名单不一致：${line}`)
+  if (stats.recentMissing.length) console.warn(`  PRTS 有、游戏数据还没有的近期卡池：${stats.recentMissing.join('、')}`)
 }
 
 /** 与前端 akRuleType 的回退规则一致：按 poolId 前缀推断规则类型 */
@@ -277,6 +379,12 @@ async function syncArknights() {
     wikiOnlyPools.push(id)
   }
   console.log(`卡池：${Object.keys(pools).length}，UP 名单 ${Object.keys(upLists).length}${wikiOnlyPools.length ? `，仅 PRTS 有：${wikiOnlyPools.join('、')}` : ''}`)
+  try {
+    applyPrtsPoolPages(pools, await fetchPrtsPoolRows(), chars)
+  } catch (error) {
+    console.warn(`PRTS 卡池一览拉取失败，卡池名保持“类型 · 日期”：${error.message}`)
+  }
+  for (const pool of Object.values(pools)) delete pool.generic
 
   const ids = Object.keys(chars)
   const outcomes = await mapLimited(ids, CONCURRENCY, downloadAvatar)
@@ -336,6 +444,12 @@ async function syncEndfield() {
     items[id] = { n: item.name?.cn || id, r: Number(item.rarity) || 0 }
   }
 
+  try {
+    await checkBwikiRoster(items)
+  } catch (error) {
+    console.warn(`BWIKI 名单比对失败：${error.message}`)
+  }
+
   let avatars = []
   try {
     avatars = await syncEndfieldAvatars(items)
@@ -352,6 +466,41 @@ async function syncEndfield() {
 }
 
 const normalizeName = (name) => name.replaceAll('_', '').replaceAll(' ', '')
+
+/** BWIKI 某个分类下的全部页面名 */
+async function listBwikiCategory(category) {
+  const names = []
+  let cont = {}
+  for (let page = 0; page < 10; page++) {
+    const params = new URLSearchParams({ action: 'query', list: 'categorymembers', cmtitle: `Category:${category}`, cmlimit: '500', cmtype: 'page', format: 'json', ...cont })
+    const res = await fetch(`${BWIKI_API}?${params}`, { headers: BWIKI_HEADERS, signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) throw new Error(`BWIKI 分类 ${category} HTTP ${res.status}`)
+    const data = await res.json()
+    names.push(...(data.query?.categorymembers ?? []).map((m) => m.title))
+    if (!data.continue) break
+    cont = data.continue
+    await sleep(500)
+  }
+  return names
+}
+
+/**
+ * 比对 BWIKI 的“干员”“武器”分类与游戏数据的名单，只在构建日志里提示差异，不影响生成的数据。
+ * 名单以游戏数据为准；BWIKI 更新后，这里可以发现改名、漏收录等问题。
+ */
+async function checkBwikiRoster(items) {
+  for (const [category, prefix] of [['干员', 'chr_'], ['武器', 'wpn_']]) {
+    const wiki = new Set((await listBwikiCategory(category)).map(normalizeName))
+    const game = new Set(Object.entries(items).filter(([id]) => id.startsWith(prefix)).map(([, item]) => normalizeName(item.n)))
+    const missingInWiki = [...game].filter((n) => !wiki.has(n))
+    const missingInGame = [...wiki].filter((n) => !game.has(n))
+    console.log(
+      `BWIKI 名单比对（${category}）：游戏数据 ${game.size}，BWIKI ${wiki.size}` +
+        `${missingInWiki.length ? `；BWIKI 还没有：${missingInWiki.join('、')}` : ''}` +
+        `${missingInGame.length ? `；游戏数据里没有（可能改名或未实装）：${missingInGame.join('、')}` : ''}`,
+    )
+  }
+}
 
 /** 列出 BWIKI 上全部“XX头像.png”“XX图标.png”文件：名称 → { url, sha1 } */
 async function listBwikiImages() {

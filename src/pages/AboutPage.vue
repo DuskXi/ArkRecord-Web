@@ -10,7 +10,7 @@ const imageSources = Object.values(IMAGE_SOURCES)
 
 const sources = [
   { name: '鹰角网络', desc: '寻访记录、卡池信息（经本站转发，见上表）', url: 'https://www.hypergryph.com/' },
-  { name: 'PRTS', desc: '明日方舟干员名单、UP 名单、头像（构建时获取并镜像到本站）；新干员头像经本站图片缓存', url: 'https://prts.wiki/' },
+  { name: 'PRTS', desc: '明日方舟干员名单、UP 名单、卡池名称、头像（构建时获取并镜像到本站）；新干员头像经本站图片缓存', url: 'https://prts.wiki/' },
   { name: 'Kengxxiao/ArknightsGameData', desc: '卡池类型与开放时间；干员名单的备用来源（构建时获取）', url: 'https://github.com/Kengxxiao/ArknightsGameData' },
   { name: 'yuanyan3060/ArknightsGameResource', desc: '干员头像的备用来源（构建时镜像到本站）', url: 'https://github.com/yuanyan3060/ArknightsGameResource' },
   { name: '555me/beyondGameData', desc: '终末地卡池类型、UP 名单、角色与武器名称（构建时获取）', url: 'https://github.com/555me/beyondGameData' },
