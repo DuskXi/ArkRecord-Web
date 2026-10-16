@@ -10,8 +10,10 @@ function sameOriginHeaders(extra: Record<string, string> = {}): Record<string, s
   return { 'x-arkrecord-client': '1', 'sec-fetch-site': 'same-origin', ...extra }
 }
 
+const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as never
+
 function call(path: string, init: RequestInit = {}, env: Env = {}): Promise<Response> {
-  return worker.fetch(new Request(`${SELF}${path}`, init) as never, env) as Promise<Response>
+  return worker.fetch(new Request(`${SELF}${path}`, init) as never, env, ctx) as Promise<Response>
 }
 
 function mockUpstream(response: Response = new Response('{"code":0}', { headers: { 'content-type': 'application/json' } })) {
@@ -239,5 +241,72 @@ describe('限速与容错', () => {
     expect(res.status).toBe(401)
     expect(res.headers.get('x-arkrecord-proxy')).toBeNull()
     expect(await res.json()).toEqual({ reason: 'UN_LOGIN' })
+  })
+})
+
+/** 每次调用都返回新的响应（响应体只能读一次） */
+function image(body = 'png', type = 'image/png', status = 200) {
+  const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(status === 200 ? body : null, { status, headers: { 'content-type': type } }))
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+describe('图片缓存转发', () => {
+  it('只允许白名单内的来源和路径，不转发查询参数', async () => {
+    const fetchMock = image()
+    const cases = [
+      call('/api/img/prts-avatar/../../w/index.php'),
+      call('/api/img/prts-avatar/char_002_amiya.png'),
+      call('/api/img/prts/char_002_amiya'),
+      call('/api/img/hycdn/upload/image/20260109/not-a-hash.png'),
+      call('/api/img/prts-avatar/char_002_amiya?x=1'),
+      call('/api/img/__proto__/x'),
+    ]
+    expect((await Promise.all(cases)).map((r) => r.status)).toEqual([404, 404, 404, 404, 404, 404])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('拒绝其他网站引用（盗链），允许本站页面与直接打开', async () => {
+    const fetchMock = image()
+    const crossSite = await call('/api/img/prts-avatar/char_002_amiya', { headers: { 'sec-fetch-site': 'cross-site' } })
+    const otherReferer = await call('/api/img/prts-avatar/char_002_amiya', { headers: { referer: 'https://evil.example/' } })
+    expect([crossSite.status, otherReferer.status]).toEqual([403, 403])
+    expect(fetchMock).not.toHaveBeenCalled()
+    const sameOrigin = await call('/api/img/prts-avatar/char_002_amiya', { headers: { 'sec-fetch-site': 'same-origin', referer: `${SELF}/history` } })
+    const direct = await call('/api/img/prts-avatar/char_002_amiya', { headers: { 'sec-fetch-site': 'none' } })
+    expect([sameOrigin.status, direct.status]).toEqual([200, 200])
+  })
+
+  it('按来源映射地址，返回可长期缓存的同源图片', async () => {
+    const fetchMock = image()
+    const avatar = await call('/api/img/prts-avatar/char_002_amiya', { headers: { 'sec-fetch-site': 'same-origin' } })
+    const banner = await call('/api/img/hycdn/upload/image/20260109/63d80a250a50a5ce2affa145c7c6dca5.png', { headers: { 'sec-fetch-site': 'same-origin' } })
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://torappu.prts.wiki/assets/char_avatar/char_002_amiya.png',
+      'https://web.hycdn.cn/upload/image/20260109/63d80a250a50a5ce2affa145c7c6dca5.png',
+    ])
+    expect(avatar.headers.get('cache-control')).toBe('public, max-age=2592000, immutable')
+    expect(avatar.headers.get('content-type')).toBe('image/png')
+    expect(banner.headers.get('cross-origin-resource-policy')).toBe('same-origin')
+    expect(fetchMock.mock.calls[0]![1].redirect).toBe('manual')
+  })
+
+  it('不是图片的响应不转发；来源站 404 时短时间缓存', async () => {
+    image('<html>', 'text/html')
+    const html = await call('/api/img/prts-avatar/char_002_amiya')
+    expect(html.status).toBe(502)
+    expect(html.headers.get('x-arkrecord-proxy')).toBe('upstream_not_image')
+    image('', 'text/html', 404)
+    const missing = await call('/api/img/prts-avatar/char_9999_none')
+    expect(missing.status).toBe(404)
+    expect(missing.headers.get('cache-control')).toBe('public, max-age=3600')
+  })
+
+  it('回源受限速保护', async () => {
+    const fetchMock = image()
+    const env = { RL_DATA: { limit: vi.fn(async () => ({ success: false })) } } as unknown as Env
+    const res = await call('/api/img/prts-avatar/char_002_amiya', {}, env)
+    expect(res.status).toBe(429)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

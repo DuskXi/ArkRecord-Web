@@ -4,6 +4,7 @@ import PageShell from '@/components/shell/PageShell.vue'
 import CharAvatar from '@/components/ui/CharAvatar.vue'
 import { formatDate } from '@/lib/format'
 import { ruleLabel } from '@/lib/labels'
+import { efImageUrl } from '@/lib/meta'
 import { useAppStore } from '@/stores/app'
 import { useRecordsStore } from '@/stores/records'
 
@@ -43,7 +44,7 @@ const pools = computed(() =>
         badge: ruleLabel(p.ruleType),
         period: meta?.o ? `${formatDate(meta.o * 1000)} — ${formatDate(meta.e * 1000)}` : `${formatDate(p.firstTs)} — ${formatDate(p.lastTs)}`,
         upNames: meta?.up?.['6']?.map((id) => app.meta?.chars[id]?.n ?? id) ?? (efUp.length ? efUp : info?.up6Name ? [info.up6Name] : []),
-        art: info?.up6Image,
+        art: efImageUrl(info?.up6Image),
       }
     }),
 )

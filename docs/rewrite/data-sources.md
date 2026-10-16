@@ -102,15 +102,19 @@ CDN 方面：
 - 卡池时间：BWIKI“寻访一览”，加一份按官方公告手工维护的覆盖文件。
 - 森空岛（需要签名）、灰机（需要 key）不采用。游戏美术的版权都归鹰角，页面上注明来源与版权。
 
-## 4. Worker 只转发这些
+## 4. Worker 的访问范围
 
 - `as.hypergryph.com`（grant）
 - `binding-api-account-prod.hypergryph.com`（binding_list、u8_token_by_uid）
 - `ak.hypergryph.com`（role/login、`user/api/inquiry/gacha/*`，以及确认后的源石 / 充值接口）
 - `ef-webview.hypergryph.com`（`api/record/*`、`api/content`）
-- 可选：终末地官方图片 CDN（仅限 canvas 导出时）
 
-PRTS 不在其中。
+图片缓存转发（`worker/images.ts`，2026-10-16 按维护者要求加入，用 Cloudflare 缓存减少对来源站的请求）：
+- `torappu.prts.wiki/assets/char_avatar/{charId}.png`：只用于构建时还没镜像的新干员头像，下一次构建后改用本站静态文件；
+- `web.hycdn.cn/upload/image/{日期}/{哈希}.{png|jpg|webp}`：终末地卡池图。
+
+规则：路径严格匹配白名单；只接受本站页面引用（拒绝其他网站盗链）；每个机房缓存 30 天，来源站 404 缓存 1 小时；只有未命中缓存时才回源，回源受限速。
+大部分图片仍在构建时镜像为本站静态文件，线上不访问来源站。
 
 ## 主要来源
 

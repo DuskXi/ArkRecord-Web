@@ -2,15 +2,18 @@
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { APP_VERSION } from '@/stores/app'
+import { IMAGE_SOURCES } from '../../worker/images'
 import { UPSTREAMS } from '../../worker/upstreams'
 
 const upstreams = Object.values(UPSTREAMS)
+const imageSources = Object.values(IMAGE_SOURCES)
 
 const sources = [
   { name: '鹰角网络', desc: '寻访记录、卡池信息（经本站转发，见上表）', url: 'https://www.hypergryph.com/' },
   { name: 'Kengxxiao/ArknightsGameData', desc: '干员表与卡池表（构建时获取）', url: 'https://github.com/Kengxxiao/ArknightsGameData' },
   { name: 'yuanyan3060/ArknightsGameResource', desc: '干员头像（构建时镜像到本站）', url: 'https://github.com/yuanyan3060/ArknightsGameResource' },
-  { name: 'PRTS', desc: 'UP 名单（构建时获取）；本站缺失的头像由浏览器直接从 PRTS 加载', url: 'https://prts.wiki/' },
+  { name: 'PRTS', desc: 'UP 名单（构建时获取）；本站镜像里还没有的新干员头像（经本站图片缓存）', url: 'https://prts.wiki/' },
+  { name: '555me/beyondGameData', desc: '终末地卡池类型、UP 名单、角色与武器名称（构建时获取）', url: 'https://github.com/555me/beyondGameData' },
 ]
 </script>
 
@@ -44,6 +47,16 @@ const sources = [
             <p class="mt-1 font-mono text-[11px] text-dimmed">
               {{ u.routes.map((r) => `${r.method} ${r.path}`).join(' · ') }}
             </p>
+          </div>
+        </div>
+        <p class="mt-4 mb-3 text-sm text-muted">
+          图片缓存（<code class="font-mono text-xs">worker/images.ts</code>）：大部分头像在构建时已镜像为本站静态文件；
+          构建时拿不到的少量图片由 Worker 取回并缓存在 Cloudflare 30 天，同一张图在每个机房只向来源站请求一次，且只供本站页面使用。
+        </p>
+        <div class="divide-y divide-default rounded-(--ui-radius) border border-default">
+          <div v-for="s in imageSources" :key="s.host" class="flex flex-wrap items-baseline justify-between gap-2 p-4">
+            <p class="font-mono text-sm text-highlighted">{{ s.host }}</p>
+            <p class="text-xs text-muted">{{ s.purpose }}</p>
           </div>
         </div>
       </section>

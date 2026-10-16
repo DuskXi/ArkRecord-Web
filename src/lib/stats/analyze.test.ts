@@ -143,7 +143,7 @@ describe('终末地', () => {
   })
 
   it('旧卡池（官方接口已下线）按游戏数据表的 UP 名单判断；辉光庆典单独计数且不参与运气评估', () => {
-    const meta: EfMeta = {
+    const efMeta: EfMeta = {
       generatedAt: '',
       items: {},
       pools: {
@@ -156,7 +156,7 @@ describe('终末地', () => {
       ef('special_1_0_1', '骏卫', 6, 2, { itemId: 'chr_0029_pograni' }),
       ef('joint_1_2_2', '洁尔佩塔', 6, 3, { itemId: 'chr_0013_aglina', poolName: '辉光庆典', poolType: 'E_CharacterGachaPoolType_Joint' }),
     ]
-    const events = normalizeEndfield(pulls, new Map(), meta)
+    const events = normalizeEndfield(pulls, new Map(), efMeta)
     expect(events.map((e) => e.isUp)).toEqual([true, false, true])
     expect(events[2]).toMatchObject({ family: 'ef:pool:joint_1_2_2', familyLabel: '辉光庆典', isolated: true, mainModel: false })
     // 没有元数据、官方接口也查不到时，UP 未知

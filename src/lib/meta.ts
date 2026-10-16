@@ -57,11 +57,14 @@ export function loadAkMeta(): Promise<AkMeta> {
   return metaPromise
 }
 
-/** 头像：优先用本站镜像（同源，分享图导出不受跨域影响），否则浏览器直连 PRTS 的 torappu */
+/**
+ * 头像：优先用构建时镜像到本站的静态文件；还没镜像的新干员经本站的图片缓存转发（worker/images.ts），
+ * 同一张图在每个 Cloudflare 机房只向 PRTS 请求一次。两种方式都同源，分享图导出不受跨域影响。
+ */
 export function akAvatarUrl(charId: string | null | undefined): string | undefined {
   if (!charId) return undefined
   if (avatarSet.has(charId)) return `/gamedata/avatars/${charId}.webp`
-  return `https://torappu.prts.wiki/assets/char_avatar/${charId}.png`
+  return /^char_\w{1,60}$/.test(charId) ? `/api/img/prts-avatar/${charId}` : undefined
 }
 
 /** 按名称反查 charId（旧版数据没有 charId）。重名时取干员表中先出现的一个，通常是较早实装的那位。 */
@@ -112,4 +115,10 @@ export function loadEfMeta(): Promise<EfMeta> {
     .then((r) => (r.ok ? (r.json() as Promise<EfMeta>) : EMPTY_EF_META))
     .catch(() => EMPTY_EF_META)
   return efMetaPromise
+}
+
+/** 终末地官方 CDN 的卡池图经本站的图片缓存转发（worker/images.ts）；其他地址不加载 */
+export function efImageUrl(url: string | undefined): string | undefined {
+  const match = url?.match(/^https:\/\/web\.hycdn\.cn\/(upload\/image\/\d{8}\/[0-9a-f]{32}\.(?:png|jpe?g|webp))$/)
+  return match ? `/api/img/hycdn/${match[1]}` : undefined
 }

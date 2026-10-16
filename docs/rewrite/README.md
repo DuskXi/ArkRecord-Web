@@ -12,7 +12,7 @@
 
 | # | 决策 | 说明 |
 |---|---|---|
-| 1 | 部署到 Cloudflare **Workers + Static Assets** | 同一个 Worker 托管 SPA，并在同域 `/api/*` 上做转发。Worker 只转发鹰角接口，**不访问 PRTS**（见 data-sources.md） |
+| 1 | 部署到 Cloudflare **Workers + Static Assets** | 同一个 Worker 托管 SPA，并在同域 `/api/*` 上做转发。Worker 转发鹰角接口；图片尽量在构建时镜像为静态文件，构建时拿不到的少量图片（新干员头像、终末地卡池图）经 Worker 转发并缓存在 Cloudflare（见 data-sources.md 第 4 节） |
 | 2 | 计算全部在浏览器本地 | Worker 无状态，不存储、不记录 token |
 | 3 | 在新分支上从零重写 | 切换前 master 保持现状 |
 | 4 | 终末地只支持国服 | 国际服（Gryphline）暂不支持 |

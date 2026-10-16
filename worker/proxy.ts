@@ -3,6 +3,7 @@
  * Workers 要求入口模块的命名导出都是处理器，所以工具函数和常量放在这个文件里。
  */
 
+import { handleImage, IMAGE_PREFIX } from './images'
 import { checkSameOrigin, rateLimitClient } from './security'
 import { findRoute, type Limiter, type Upstream } from './upstreams'
 
@@ -27,9 +28,15 @@ const COOKIE_VALUE_PATTERN = /^[\w%.~+/=-]{1,4096}$/
 
 
 /** Worker 的请求入口 */
-export async function handleRequest(request: Request, env: Env): Promise<Response> {
+export async function handleRequest(request: Request, env: Env, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
   const url = new URL(request.url)
   if (url.pathname.startsWith(API_PREFIX)) return handleProxy(request, env, url)
+  if (url.pathname.startsWith(IMAGE_PREFIX)) {
+    return handleImage(request, url, {
+      allowUpstream: () => withinRateLimit(env, 'data', request),
+      waitUntil: ctx ? (promise) => ctx.waitUntil(promise) : undefined,
+    })
+  }
   if (url.pathname === '/api/health') return proxyError(200, 'ok')
   if (env.ASSETS) return env.ASSETS.fetch(request)
   return proxyError(404, 'not_found')
