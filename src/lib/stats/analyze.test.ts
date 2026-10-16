@@ -99,29 +99,31 @@ describe('明日方舟保底分组', () => {
   })
 })
 
+function ef(poolId: string, name: string, star: number, n: number, extra: Partial<EfPull> = {}): EfPull {
+  return {
+    accountId: 'e',
+    key: `char:${poolId}:${n}`,
+    type: 'char',
+    poolId,
+    poolName: poolId,
+    poolType: poolId.startsWith('special') ? 'E_CharacterGachaPoolType_Special' : 'E_CharacterGachaPoolType_Standard',
+    itemId: name,
+    itemName: name,
+    rarity: star,
+    isNew: false,
+    isFree: false,
+    kind: 'draw',
+    gachaTs: 1_790_000_000_000 + n * 1000,
+    seqId: String(n),
+    source: 'api',
+    ...extra,
+  }
+}
+
 describe('终末地', () => {
   const model = { dist: distribution(endfieldRate), softPity: 65, hardPity: 80 }
 
-  function ef(poolId: string, name: string, star: number, n: number, extra: Partial<EfPull> = {}): EfPull {
-    return {
-      accountId: 'e',
-      key: `char:${poolId}:${n}`,
-      type: 'char',
-      poolId,
-      poolName: poolId,
-      poolType: poolId.startsWith('special') ? 'E_CharacterGachaPoolType_Special' : 'E_CharacterGachaPoolType_Standard',
-      itemId: name,
-      itemName: name,
-      rarity: star,
-      isNew: false,
-      isFree: false,
-      kind: 'draw',
-      gachaTs: 1_790_000_000_000 + n * 1000,
-      seqId: String(n),
-      source: 'api',
-      ...extra,
-    }
-  }
+
 
   it('免费十连和赠送条目不计入保底；特许寻访之间共享计数', () => {
     const pulls: EfPull[] = []

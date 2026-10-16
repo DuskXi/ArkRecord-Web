@@ -1,7 +1,130 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import CalendarHeatmap from '@/components/charts/CalendarHeatmap.vue'
+import PageShell from '@/components/shell/PageShell.vue'
+import PityCard from '@/components/ui/PityCard.vue'
+import SectionHeader from '@/components/ui/SectionHeader.vue'
+import SixStarWall from '@/components/ui/SixStarWall.vue'
+import StatTile from '@/components/ui/StatTile.vue'
+import { formatDate, formatNumber, formatPercent } from '@/lib/format'
+import { luckLabel } from '@/lib/stats/analyze'
+import { useAppStore } from '@/stores/app'
+import { useRecordsStore } from '@/stores/records'
+
+const app = useAppStore()
+const records = useRecordsStore()
+const a = computed(() => records.analysis)
+
+const RECENT = 21 * 86_400_000
+const pityCards = computed(() =>
+  a.value.pity
+    .filter((p) => p.mainModel && (!p.isolated || (p.current > 0 && Date.now() - p.lastTs < RECENT)))
+    .toSorted((x, y) => Number(x.isolated) - Number(y.isolated) || y.current - x.current),
+)
+
+const luck = computed(() => luckLabel(a.value.luck))
+const luckColor = computed(
+  () =>
+    ({ great: 'var(--color-rarity-6)', good: 'var(--color-rarity-5)', neutral: undefined, bad: 'var(--color-sky-500)', awful: 'var(--color-zinc-400)' })[
+      luck.value.tone
+    ],
+)
+const currency = computed(() =>
+  records.game === 'arknights'
+    ? `约 ${formatNumber(a.value.total * 600)} 合成玉`
+    : '含免费十连与赠送条目',
+)
+</script>
+
 <template>
-  <div class="p-8">
-    <p class="eyebrow">ArkRecord</p>
-    <h1 class="text-2xl font-semibold">寻访记录</h1>
-    <UButton icon="i-lucide-refresh-cw">同步</UButton>
-  </div>
+  <PageShell id="overview" title="总览" eyebrow="OVERVIEW">
+    <div v-if="a.total === 0" class="mt-10">
+      <UEmpty
+        icon="i-lucide-inbox"
+        title="还没有寻访记录"
+        description="点击右上角的“同步”从鹰角服务器拉取最近 90 天的记录，或在“数据”页导入旧数据。"
+        :actions="[{ label: '去导入', icon: 'i-lucide-upload', to: '/data', color: 'neutral', variant: 'outline' }]"
+      />
+    </div>
+
+    <div v-else class="space-y-8">
+      <div class="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p class="eyebrow">{{ records.game === 'arknights' ? 'DOCTOR' : 'ENDMINISTRATOR' }}</p>
+          <p class="text-2xl font-semibold text-highlighted">{{ app.activeAccount?.nickName }}</p>
+        </div>
+        <p v-if="a.firstTs && a.lastTs" class="text-xs text-muted">
+          存档范围 <span class="font-display">{{ formatDate(a.firstTs) }} — {{ formatDate(a.lastTs) }}</span>
+        </p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <StatTile label="TOTAL PULLS" :value="formatNumber(a.total)" :hint="currency" icon="i-lucide-sigma" />
+        <StatTile
+          label="6★ OPERATORS"
+          :value="a.stars[6]"
+          :hint="a.total ? `出货率 ${formatPercent(a.stars[6] / a.total, 2)}` : ''"
+          icon="i-lucide-star"
+          accent="var(--color-rarity-6)"
+        />
+        <StatTile
+          label="AVG PER 6★"
+          :value="a.avgPerSix ? a.avgPerSix.toFixed(1) : '—'"
+          :hint="`理论期望 ${records.model.dist.mean.toFixed(2)} 抽`"
+          icon="i-lucide-gauge"
+        />
+        <StatTile
+          label="UP WIN RATE"
+          :value="a.upTotal ? formatPercent(a.upWins / a.upTotal, 0) : '—'"
+          :hint="a.upTotal ? `${a.upWins} / ${a.upTotal} 个 6★ 为当期 UP` : 'UP 名单未知'"
+          icon="i-lucide-target"
+        />
+        <StatTile
+          label="LUCK"
+          :value="a.luck === null ? '—' : formatPercent(a.luck, 0)"
+          :hint="a.luck === null ? '还没有出过 6★' : `${luck.text} · 比这个比例的玩家更欧`"
+          icon="i-lucide-sparkles"
+          :accent="luckColor"
+          class="col-span-2 md:col-span-1"
+        />
+      </div>
+
+      <section>
+        <SectionHeader index="01" eyebrow="PITY" title="当前保底" />
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <PityCard v-for="p in pityCards" :key="p.family" :state="p" />
+        </div>
+      </section>
+
+      <section v-if="records.guarantees.length">
+        <SectionHeader index="02" eyebrow="GUARANTEE" title="定向保底与累计奖励" />
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div v-for="g in records.guarantees" :key="g.poolName + g.label" class="rounded-(--ui-radius) border border-default p-4">
+            <p class="truncate text-xs text-dimmed">{{ g.poolName }}</p>
+            <p class="truncate font-medium text-highlighted">{{ g.label }}</p>
+            <div class="mt-2 flex items-center gap-3">
+              <UProgress :model-value="Math.min(g.current, g.target)" :max="g.target" :color="g.done ? 'success' : 'primary'" class="flex-1" />
+              <span class="font-display text-sm tabular-nums text-muted">
+                {{ g.done ? '已达成' : `${g.current} / ${g.target}` }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <SectionHeader index="03" eyebrow="RECENT 6★" title="最近的 6★">
+          <UButton to="/timeline" label="时间线" variant="link" trailing-icon="i-lucide-arrow-right" />
+        </SectionHeader>
+        <SixStarWall :hits="a.hits" :hard-pity="records.model.hardPity" :game="records.game" :limit="12" />
+      </section>
+
+      <section>
+        <SectionHeader index="04" eyebrow="ACTIVITY" title="抽卡日历" />
+        <div class="rounded-(--ui-radius) border border-default p-3">
+          <CalendarHeatmap :per-day="a.perDay" />
+        </div>
+      </section>
+    </div>
+  </PageShell>
 </template>

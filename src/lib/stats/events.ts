@@ -80,7 +80,7 @@ export function normalizeArknights(pulls: AkPull[], meta: AkMeta): PullEvent[] {
         itemId: p.charId,
         name: p.charName,
         poolId: p.poolId,
-        poolName: p.poolName,
+        poolName: (p.poolId && meta.pools[p.poolId]?.n) || p.poolName,
         ruleType,
         family,
         familyLabel: label,

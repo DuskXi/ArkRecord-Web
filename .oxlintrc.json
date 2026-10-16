@@ -36,6 +36,14 @@
           "fake-indexeddb/auto"
         ]
       }
+    ],
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": [
+          "__APP_VERSION__"
+        ]
+      }
     ]
   },
   "overrides": [

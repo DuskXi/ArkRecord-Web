@@ -26,6 +26,10 @@ export interface Route {
 
 export interface Upstream {
   host: string
+  /** 用途（同时显示在网站的“关于”页面） */
+  purpose: string
+  /** 需要转发的原因，以及实测情况（同时显示在网站的“关于”页面） */
+  reason: string
   routes: readonly Route[]
   /** 需要把 `x-cookie` 中的 ak-user-center 转成 Cookie，并把 Set-Cookie 转成可读的响应头 */
   relayAkCookie?: boolean
@@ -38,6 +42,8 @@ export const UPSTREAMS = {
   // 原因：响应不带 Access-Control-Allow-Origin，POST 的 CORS 预检即失败（2026-10-16 实测）。
   as: {
     host: 'as.hypergryph.com',
+    purpose: '鹰角通行证：用账号 token 换取授权',
+    reason: '响应不带 Access-Control-Allow-Origin，POST 的 CORS 预检即失败（2026-10-16 实测）',
     routes: [{ method: 'POST', path: '/user/oauth2/v2/grant', limiter: 'auth' }],
   },
 
@@ -45,6 +51,8 @@ export const UPSTREAMS = {
   // 原因：响应不带 Access-Control-Allow-Origin（2026-10-16 实测：上游返回 400，仍被浏览器拦截）。
   binding: {
     host: 'binding-api-account-prod.hypergryph.com',
+    purpose: '查询通行证下绑定的游戏角色，换取游戏 token',
+    reason: '响应不带 Access-Control-Allow-Origin（2026-10-16 实测：上游返回 400，仍被浏览器拦截）',
     routes: [
       { method: 'GET', path: '/account/binding/v1/binding_list', limiter: 'auth' },
       { method: 'POST', path: '/account/binding/v1/u8_token_by_uid', limiter: 'auth' },
@@ -56,6 +64,9 @@ export const UPSTREAMS = {
   //       另外数据接口依赖 Cookie ak-user-center，浏览器 JS 无法设置 Cookie，也读不到 Set-Cookie。
   ak: {
     host: 'ak.hypergryph.com',
+    purpose: '明日方舟官网用户中心：角色登录与寻访记录',
+    reason:
+      '响应不带 Access-Control-Allow-Origin（2026-10-16 实测：上游返回 401，仍被浏览器拦截）；数据接口还依赖 Cookie ak-user-center，浏览器 JS 无法设置 Cookie，也读不到 Set-Cookie',
     relayAkCookie: true,
     extraHeaders: { referer: 'https://ak.hypergryph.com/user/headhunting' },
     routes: [
@@ -69,6 +80,8 @@ export const UPSTREAMS = {
   // 原因：响应不带 Access-Control-Allow-Origin（2026-10-16 实测：上游返回 200，仍被浏览器拦截）。
   ef: {
     host: 'ef-webview.hypergryph.com',
+    purpose: '终末地游戏内网页背后的寻访记录与卡池信息接口',
+    reason: '响应不带 Access-Control-Allow-Origin（2026-10-16 实测：上游返回 200，仍被浏览器拦截）',
     routes: [
       { method: 'GET', path: '/api/record/char', limiter: 'data' },
       { method: 'GET', path: '/api/record/char/meta', limiter: 'data' },

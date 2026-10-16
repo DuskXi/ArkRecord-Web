@@ -66,10 +66,26 @@ function extractUpLists(weedy) {
   return result
 }
 
+const RULE_LABEL = {
+  NORMAL: '标准寻访',
+  DOUBLE: '标准寻访',
+  SINGLE: '标准寻访',
+  SPECIAL: '标准寻访',
+  CLASSIC: '中坚寻访',
+  CLASSIC_DOUBLE: '中坚寻访',
+  FESCLASSIC: '中坚甄选',
+}
+const DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' })
+
 function buildPools(gachaTable, upLists) {
   const pools = {}
+  // 常驻卡池在游戏数据里都叫同一个泛称（如“适合多种场合的强力干员”），改成“类型 · 开放日期”便于区分
+  const nameCount = new Map()
+  for (const p of gachaTable.gachaPoolClient) nameCount.set(p.gachaPoolName, (nameCount.get(p.gachaPoolName) ?? 0) + 1)
   for (const p of gachaTable.gachaPoolClient) {
-    const pool = { n: p.gachaPoolName, t: p.gachaRuleType, o: p.openTime, e: p.endTime }
+    const generic = nameCount.get(p.gachaPoolName) > 5
+    const name = generic ? `${RULE_LABEL[p.gachaRuleType] ?? p.gachaPoolName} · ${DAY.format(p.openTime * 1000)}` : p.gachaPoolName
+    const pool = { n: name, t: p.gachaRuleType, o: p.openTime, e: p.endTime }
     if (p.linkageParam?.loopTarget6Count) pool.loop6 = p.linkageParam.loopTarget6Count
     if (p.linkageParam?.guaranteeTarget6Count) pool.g6 = p.linkageParam.guaranteeTarget6Count
     if (p.linkageParam?.guaranteeTarget6Char) pool.g6c = p.linkageParam.guaranteeTarget6Char

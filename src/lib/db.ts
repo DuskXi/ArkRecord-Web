@@ -14,7 +14,7 @@ export class ArkRecordDB extends Dexie {
   constructor(name = 'arkrecord') {
     super(name)
     this.version(1).stores({
-      accounts: 'id, game, uid',
+      accounts: 'id, game, uid, createdAt',
       akPulls: '[accountId+key], accountId, [accountId+gachaTs], [accountId+tsSec], [accountId+poolId]',
       efPulls: '[accountId+key], accountId, [accountId+gachaTs], [accountId+poolId]',
       akLedger: '[accountId+kind+key], accountId',
