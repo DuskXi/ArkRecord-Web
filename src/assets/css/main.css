@@ -1,0 +1,78 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+@import 'misans/lib/Normal/MiSansVF.min.css';
+@import '@fontsource-variable/oxanium/index.css';
+
+@theme {
+  --font-sans: 'MiSans VF', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  /* 数字、英文标签用的工业风字体 */
+  --font-display: 'Oxanium Variable', 'MiSans VF', ui-sans-serif, sans-serif;
+
+  /* 星级色：各工具基本一致的约定 */
+  --color-rarity-6: #ff8a32;
+  --color-rarity-5: #f5c518;
+  --color-rarity-4: #a47cf3;
+  --color-rarity-3: #9aa3ab;
+
+  /* 终末地品牌色 */
+  --color-ef-yellow: #fffa00;
+  --color-ef-black: #0a0a0a;
+}
+
+:root {
+  --ui-radius: 0.375rem;
+  font-feature-settings: 'tnum';
+}
+
+/* ── 明日方舟（罗德岛）主题：冷色强调，干净的工业风 ── */
+html[data-game='arknights'] {
+  --ui-primary: var(--color-sky-600);
+}
+html[data-game='arknights'].dark {
+  --ui-primary: var(--color-sky-400);
+  --ui-bg: #0b0d10;
+  --ui-bg-muted: #12151a;
+  --ui-bg-elevated: #161a20;
+  --ui-border: #23272e;
+}
+
+/* ── 终末地主题：黑黄配色，零圆角 ── */
+html[data-game='endfield'] {
+  --ui-radius: 0rem;
+  --ui-primary: #141414;
+}
+html[data-game='endfield'].dark {
+  --ui-primary: var(--color-ef-yellow);
+  --ui-bg: var(--color-ef-black);
+  --ui-bg-muted: #111111;
+  --ui-bg-elevated: #141414;
+  --ui-border: #2a2a2a;
+  --ui-border-accented: #333333;
+}
+
+body {
+  background: var(--ui-bg);
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+
+/* 宽字距的英文小标签，配合中文标题使用 */
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ui-text-muted);
+}
+
+/* 细网格背景，营造工业感 */
+.grid-backdrop {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--ui-border) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--ui-border) 55%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+}

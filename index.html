@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN" data-game="arknights">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="明日方舟 / 终末地 寻访记录本地存档与分析。所有数据只保存在你的浏览器里。" />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="icon" type="image/png" href="/icons/record-128.png" />
+    <title>ArkRecord</title>
+    <script>
+      // 在页面渲染前确定深浅色和游戏主题，避免首屏闪烁。
+      ;(function () {
+        try {
+          var root = document.documentElement
+          var mode = localStorage.getItem('vueuse-color-scheme') || 'auto'
+          var dark = mode === 'dark' || (mode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)
+          root.classList.toggle('dark', dark)
+          root.style.colorScheme = dark ? 'dark' : 'light'
+          root.dataset.game = localStorage.getItem('arkrecord:game') === 'endfield' ? 'endfield' : 'arknights'
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app" class="isolate"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
