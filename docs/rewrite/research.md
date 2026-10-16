@@ -61,6 +61,7 @@
 | `binding-api-account-prod.hypergryph.com`（GET binding_list） | 上游返回 400，但响应没有 `Access-Control-Allow-Origin`，被拦截 |
 | `ak.hypergryph.com`（GET gacha/cate） | 上游返回 401，但响应没有 `Access-Control-Allow-Origin`，被拦截 |
 | `ef-webview.hypergryph.com`（GET api/content） | 上游返回 200，但响应没有 `Access-Control-Allow-Origin`，被拦截 |
+| `u8.hypergryph.com`（POST pay/v1/recent，curl 模拟预检） | 预检返回 204，但只对鹰角自己的域名带 `Access-Control-Allow-Origin` |
 
 四个上游都不允许浏览器跨域请求。另外，浏览器 JS 不能设置 `Cookie`，也读不到 `Set-Cookie`。因此转发层需要做两件事：
 - 把请求头 `x-cookie` 转成 `Cookie`；
@@ -68,9 +69,27 @@
 
 Cloudea 的浏览器版工具（`scripts/cloudflare-worker.mjs`）就是这么做的。
 
-### 1.6 源石 / 充值记录（未确认）
+### 1.6 源石 / 充值记录
 
-官方用户中心仍有“源石记录”“充值记录”入口，但**没有任何 2025–2026 年的开源实现**使用新接口。旧的 `inquiry/diamond` 与 `u8/pay/v1/recent` 很可能已经和寻访接口一样失效（推测）。需要在 DevTools 里抓取实际请求。
+2026-10-16 从官网用户中心当前的代码（`web.hycdn.cn/arknights/user/index.*.js` 及其加载的 `hg-account-web-sdk`）中确认：
+
+```
+# 源石记录（“可查询 30 日、100 条以内有效数据”）：与寻访记录相同的登录态（X-Role-Token + Cookie ak-user-center）
+GET ak.hypergryph.com/user/api/inquiry/diamond?uid=&size=10[&pos=&eventTs=]
+→ {code:0, data:{list:[{operation, changeNum, after, eventTs(秒), pos}], hasMore}}
+  翻页时带上一页最后一条的 pos 和 eventTs
+
+# 充值记录（“可查询 30 日、30 条以内有效数据”）：鹰角 U8 支付服务
+POST u8.hypergryph.com/u8/pay/v1/recent
+  {token: <这个角色的 u8 token>}
+  或 {appCode: "9aa9768a549ddaa186b7", channelMasterId: 1, channelToken: {token: <通行证账号 token>}}（官网的做法，仅官服）
+→ {status:0, data:[{orderId, productName, amount(分), platform(0 iOS / 1 安卓), payTime(秒)}]}
+```
+
+- 两个接口都在线：无效 token 时分别返回 401 `UN_LOGIN` 与 401 `{status:3, msg:"token错误或已失效"}`；`{token}` 形式会校验 token 为 base64。
+- `u8.hypergryph.com` 的 CORS 只允许鹰角自己的域名（来源为 `ak.hypergryph.com` 时预检带 `Access-Control-Allow-Origin`，来源为本站时不带），所以同样需要经 Worker 转发。
+- 新版同步时先用 u8 token 查询（只对应这一个角色，官服、B 服都适用），不被接受时官服角色再按官网的方式查询；B 服角色不用账号 token 查询，否则查到的是官服角色的订单。
+- 旧版（2022–2023）用的是 `inquiry/diamond?channelId=&page=&token=` 与 `as.hypergryph.com/u8/pay/v1/recent`，字段为 `{ts, operation, changes:[{type, before, after}]}`；新旧两种格式在 `src/lib/ledger.ts` 统一解析和去重。
 
 ### 1.7 森空岛
 

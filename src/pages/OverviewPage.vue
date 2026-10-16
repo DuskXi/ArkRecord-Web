@@ -55,9 +55,13 @@ const currency = computed(() =>
           <p class="eyebrow">{{ records.game === 'arknights' ? 'DOCTOR' : 'ENDMINISTRATOR' }}</p>
           <p class="text-2xl font-semibold text-highlighted">{{ app.activeAccount?.nickName }}</p>
         </div>
-        <p v-if="a.firstTs && a.lastTs" class="text-xs text-muted">
-          存档范围 <span class="font-display">{{ formatDate(a.firstTs) }} — {{ formatDate(a.lastTs) }}</span>
-        </p>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p v-if="a.firstTs && a.lastTs" class="text-xs text-muted">
+            存档范围 <span class="font-display">{{ formatDate(a.firstTs) }} — {{ formatDate(a.lastTs) }}</span>
+          </p>
+          <!-- 手机底部导航放不下，从这里进入 -->
+          <UButton v-if="records.game === 'arknights'" label="源石与充值" icon="i-lucide-gem" to="/ledger" size="xs" color="neutral" variant="outline" />
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">

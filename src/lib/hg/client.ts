@@ -5,7 +5,7 @@
  * /api/hg/* 转发。Worker 只做转发，所有解析都在这里、在用户浏览器里完成。
  */
 
-export type Upstream = 'as' | 'binding' | 'ak' | 'ef'
+export type Upstream = 'as' | 'binding' | 'ak' | 'u8' | 'ef'
 
 export type HgErrorKind =
   /** 转发层拒绝（限速、白名单等），见 Worker 的 x-arkrecord-proxy 响应头 */
@@ -55,7 +55,7 @@ async function pace(): Promise<void> {
 
 const AUTH_REASONS = new Set(['UN_LOGIN', 'MissingCookie', 'DETECTED_ROLE_CHANGED'])
 
-/** 鹰角各域名的响应格式不同：as./binding 为 {status,msg,data}，ak./ef 为 {code,msg,data} */
+/** 鹰角各域名的响应格式不同：as./binding/u8 为 {status,msg,data}，ak./ef 为 {code,msg,data} */
 interface Envelope {
   status?: number
   code?: number

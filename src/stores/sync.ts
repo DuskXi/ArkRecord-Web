@@ -27,10 +27,19 @@ export const useSyncStore = defineStore('sync', () => {
       const result = await run(account, token, { full: options.full, onProgress: (p) => (progress.value = p) })
       toast.add({
         title: result.added ? `同步完成，新增 ${result.added} 条记录` : '同步完成，没有新记录',
-        description: `${account.nickName} · 本次读取 ${result.fetched} 条`,
+        description: `${account.nickName} · 本次读取 ${result.fetched} 条${result.ledger ? `，源石 / 充值新增 ${result.ledger} 条` : ''}`,
         color: 'success',
         icon: 'i-lucide-circle-check',
       })
+      if (result.warnings?.length) {
+        toast.add({
+          title: '部分记录没有同步成功',
+          description: `${result.warnings.join('；')}。寻访记录不受影响，可以稍后再同步一次。`,
+          color: 'warning',
+          icon: 'i-lucide-triangle-alert',
+          duration: 10_000,
+        })
+      }
       return true
     } catch (error) {
       if (error instanceof HgError && error.kind === 'auth') {

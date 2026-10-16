@@ -28,3 +28,7 @@ export function rarityTextVar(star: number): string {
 export function rarityVar(star: number): string {
   return star >= 6 ? 'var(--color-rarity-6)' : star === 5 ? 'var(--color-rarity-5)' : star === 4 ? 'var(--color-rarity-4)' : 'var(--color-rarity-3)'
 }
+
+const yuan = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' })
+/** 例如“¥648.00” */
+export const formatYuan = (n: number) => yuan.format(n)

@@ -59,12 +59,12 @@ export const UPSTREAMS = {
     ],
   },
 
-  // 明日方舟官网用户中心：角色登录与寻访记录。
+  // 明日方舟官网用户中心：角色登录、寻访记录与源石记录。
   // 原因：响应不带 Access-Control-Allow-Origin（2026-10-16 实测：上游返回 401，仍被浏览器拦截）；
   //       另外数据接口依赖 Cookie ak-user-center，浏览器 JS 无法设置 Cookie，也读不到 Set-Cookie。
   ak: {
     host: 'ak.hypergryph.com',
-    purpose: '明日方舟官网用户中心：角色登录与寻访记录',
+    purpose: '明日方舟官网用户中心：角色登录、寻访记录与源石记录',
     reason:
       '响应不带 Access-Control-Allow-Origin（2026-10-16 实测：上游返回 401，仍被浏览器拦截）；数据接口还依赖 Cookie ak-user-center，浏览器 JS 无法设置 Cookie，也读不到 Set-Cookie',
     relayAkCookie: true,
@@ -73,7 +73,19 @@ export const UPSTREAMS = {
       { method: 'POST', path: '/user/api/role/login', limiter: 'auth' },
       { method: 'GET', path: '/user/api/inquiry/gacha/cate', limiter: 'data' },
       { method: 'GET', path: '/user/api/inquiry/gacha/history', limiter: 'data' },
+      { method: 'GET', path: '/user/api/inquiry/diamond', limiter: 'data' },
     ],
+  },
+
+  // 鹰角 U8 支付服务：明日方舟官网用户中心“充值记录”页使用的接口。
+  // 原因：只允许鹰角自己的域名跨域（2026-10-16 实测：本站来源的 CORS 预检返回 204，
+  //       但不带 Access-Control-Allow-Origin；来源为 ak.hypergryph.com 时才带）。
+  u8: {
+    host: 'u8.hypergryph.com',
+    purpose: '明日方舟充值记录（官网用户中心“充值记录”页使用的接口）',
+    reason:
+      '只允许鹰角自己的域名跨域（2026-10-16 实测：本站来源的 CORS 预检返回 204，但不带 Access-Control-Allow-Origin）',
+    routes: [{ method: 'POST', path: '/u8/pay/v1/recent', limiter: 'data' }],
   },
 
   // 终末地游戏内网页（ef-webview）背后的寻访记录与卡池信息接口。

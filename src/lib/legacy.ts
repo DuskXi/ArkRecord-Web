@@ -8,6 +8,7 @@
  *
  * 旧版每条记录是一次寻访（十连合并为一条），字段为 { timestamp(秒), pool(卡池名), result: [{ name, rarity(从 0 开始), isNew }] }。
  */
+import { toLedgerEntries } from './ledger'
 import type { AkMeta } from './meta'
 import { buildNameIndex, resolvePoolId } from './meta'
 import type { AkLedgerEntry, AkPull } from './types'
@@ -128,22 +129,7 @@ export function legacyToAkPulls(accountId: string, pools: LegacyPoolEntry[], met
   return out
 }
 
-/** 旧版源石 / 充值记录原样保留 */
-/** 原始条目先序列化一遍：调用方传入的可能是 Vue 响应式代理，IndexedDB 无法克隆代理对象（DataCloneError） */
-function plain<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
-}
-
+/** 旧版源石 / 充值记录原样保留（解析与去重规则见 ledger.ts） */
 export function legacyLedger(accountId: string, stone: unknown[], recharge: unknown[]): AkLedgerEntry[] {
-  const out: AkLedgerEntry[] = []
-  for (const s of stone as { timestamp?: number; operation?: string; changes?: { before?: number; after?: number }[] }[]) {
-    if (typeof s?.timestamp !== 'number') continue
-    const change = s.changes?.[0]
-    out.push({ accountId, kind: 'stone', key: `${s.timestamp}:${s.operation}:${change?.before}:${change?.after}`, ts: s.timestamp * 1000, raw: plain(s) })
-  }
-  for (const r of recharge as { timestamp?: number; orderId?: string }[]) {
-    if (typeof r?.timestamp !== 'number') continue
-    out.push({ accountId, kind: 'recharge', key: String(r.orderId ?? r.timestamp), ts: r.timestamp * 1000, raw: plain(r) })
-  }
-  return out
+  return [...toLedgerEntries(accountId, 'stone', stone), ...toLedgerEntries(accountId, 'recharge', recharge)]
 }

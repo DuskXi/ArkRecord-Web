@@ -60,3 +60,59 @@ export async function fetchHistoryPage(
   })
   return { list: data.list ?? [], hasMore: Boolean(data.hasMore) }
 }
+
+/** 官网“源石记录”页的一条记录（时间为秒；只能查询最近 30 天、最多 100 条） */
+export interface AkDiamondRecord {
+  operation: string
+  changeNum: number
+  after: number
+  eventTs: number | string
+  pos: number
+}
+
+export async function fetchDiamondPage(
+  session: AkSession,
+  cursor?: { pos: number; eventTs: number | string },
+  size = 10,
+): Promise<{ list: AkDiamondRecord[]; hasMore: boolean }> {
+  const { data } = await hg<{ list?: AkDiamondRecord[]; hasMore?: boolean }>('ak', '/user/api/inquiry/diamond', {
+    query: { uid: session.uid, size, pos: cursor?.pos, eventTs: cursor?.eventTs },
+    roleToken: session.roleToken,
+    akCookie: session.akCookie,
+  })
+  return { list: data?.list ?? [], hasMore: Boolean(data?.hasMore) }
+}
+
+/** 官网“充值记录”页的一条记录（金额为分，时间为秒；只能查询最近 30 天、最多 30 条） */
+export interface AkOrder {
+  orderId: string
+  productName: string
+  amount: number
+  /** 0 为 iOS，1 为安卓 */
+  platform: number
+  payTime: number
+}
+
+/** 明日方舟在鹰角 U8 支付服务中的 appCode（取自官网用户中心加载的 hg-account-web-sdk） */
+const AK_U8_APP_CODE = '9aa9768a549ddaa186b7'
+
+/**
+ * 充值记录由鹰角的 U8 支付服务提供，有两种查询方式：
+ *   1. 用这个角色的 u8 token 查询（只对应这一个角色，官服、B 服都适用）；
+ *   2. 官网的做法：用通行证账号 token 查询官服角色。
+ * 先用第一种；不被接受时，官服角色再用第二种。
+ */
+export async function fetchRecentOrders(u8Token: string, officialAccountToken?: string): Promise<AkOrder[]> {
+  try {
+    const { data } = await hg<AkOrder[] | null>('u8', '/u8/pay/v1/recent', { method: 'POST', body: { token: u8Token } })
+    return data ?? []
+  } catch (error) {
+    const rejected = error instanceof HgError && (error.kind === 'auth' || error.kind === 'upstream')
+    if (!rejected || !officialAccountToken) throw error
+  }
+  const { data } = await hg<AkOrder[] | null>('u8', '/u8/pay/v1/recent', {
+    method: 'POST',
+    body: { appCode: AK_U8_APP_CODE, channelMasterId: 1, channelToken: { token: officialAccountToken } },
+  })
+  return data ?? []
+}

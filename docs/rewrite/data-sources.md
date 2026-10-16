@@ -142,7 +142,8 @@ CDN 方面：
 
 - `as.hypergryph.com`（grant）
 - `binding-api-account-prod.hypergryph.com`（binding_list、u8_token_by_uid）
-- `ak.hypergryph.com`（role/login、`user/api/inquiry/gacha/*`，以及确认后的源石 / 充值接口）
+- `ak.hypergryph.com`（role/login、`user/api/inquiry/gacha/*`、`user/api/inquiry/diamond` 源石记录）
+- `u8.hypergryph.com`（`u8/pay/v1/recent` 充值记录）
 - `ef-webview.hypergryph.com`（`api/record/*`、`api/content`）
 
 图片缓存转发（`worker/images.ts`，2026-10-16 按维护者要求加入，用 Cloudflare 缓存减少对来源站的请求）：

@@ -7,8 +7,12 @@ import UsageBadge from '@/components/shell/UsageBadge.vue'
 import UsageNotice from '@/components/UsageNotice.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import LegacyMigration from '@/components/LegacyMigration.vue'
-import { NAV_ITEMS } from '@/navigation'
-import { APP_VERSION } from '@/stores/app'
+import { computed } from 'vue'
+import { navItemsFor } from '@/navigation'
+import { APP_VERSION, useAppStore } from '@/stores/app'
+
+const app = useAppStore()
+const navItems = computed(() => navItemsFor(app.game))
 </script>
 
 <template>
@@ -31,7 +35,7 @@ import { APP_VERSION } from '@/stores/app'
         <template #default="{ collapsed }">
           <GameSwitcher :collapsed="collapsed" />
           <AccountMenu :collapsed="collapsed" />
-          <UNavigationMenu :collapsed="collapsed" :items="NAV_ITEMS" orientation="vertical" tooltip popover class="mt-2" />
+          <UNavigationMenu :collapsed="collapsed" :items="navItems" orientation="vertical" tooltip popover class="mt-2" />
         </template>
 
         <template #footer="{ collapsed }">

@@ -85,14 +85,20 @@ describe('白名单', () => {
     const fetchMock = mockUpstream()
     const cases = [
       call('/api/hg/prts/w/干员一览', { headers: sameOriginHeaders() }),
-      call('/api/hg/ak/user/api/inquiry/diamond', { headers: sameOriginHeaders() }),
+      call('/api/hg/ak/user/api/inquiry/recharge', { headers: sameOriginHeaders() }),
+      call('/api/hg/u8/u8/pay/v1/recent', { headers: sameOriginHeaders() }), // 应为 POST
+      call('/api/hg/u8/u8/user/info/v1/basic', {
+        method: 'POST',
+        headers: sameOriginHeaders({ 'content-type': 'application/json' }),
+        body: '{}',
+      }),
       call('/api/hg/ak/user/api/inquiry/gacha/cate/../../role/info', { headers: sameOriginHeaders() }),
       call('/api/hg/as/user/oauth2/v2/grant', { headers: sameOriginHeaders() }), // 应为 POST
       call('/api/hg/__proto__/x', { headers: sameOriginHeaders() }),
       call('/api/hg/', { headers: sameOriginHeaders() }),
     ]
     const statuses = (await Promise.all(cases)).map((r) => r.status)
-    expect(statuses).toEqual([404, 404, 404, 404, 404, 404])
+    expect(statuses).toEqual([404, 404, 404, 404, 404, 404, 404, 404])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -108,6 +114,24 @@ describe('白名单', () => {
     )
     expect(init.method).toBe('GET')
     expect(init.redirect).toBe('manual')
+  })
+
+  it('源石记录与充值记录', async () => {
+    const fetchMock = mockUpstream()
+    await call('/api/hg/ak/user/api/inquiry/diamond?uid=1&size=10', { headers: sameOriginHeaders({ 'x-role-token': 'role' }) })
+    await call('/api/hg/u8/u8/pay/v1/recent', {
+      method: 'POST',
+      headers: sameOriginHeaders({ 'content-type': 'application/json', 'x-ak-user-center': 'abc' }),
+      body: '{"token":"dTg="}',
+    })
+    const [diamondUrl] = fetchMock.mock.calls[0]!
+    const [rechargeUrl, rechargeInit] = fetchMock.mock.calls[1]!
+    expect(diamondUrl).toBe('https://ak.hypergryph.com/user/api/inquiry/diamond?uid=1&size=10')
+    expect(rechargeUrl).toBe('https://u8.hypergryph.com/u8/pay/v1/recent')
+    expect(rechargeInit.method).toBe('POST')
+    expect(rechargeInit.body).toBe('{"token":"dTg="}')
+    // 充值接口不需要、也不会收到明日方舟用户中心的 Cookie
+    expect(new Headers(rechargeInit.headers).get('cookie')).toBeNull()
   })
 
   it('POST 只接受小体积 JSON', async () => {

@@ -5,6 +5,7 @@
  * 记录保留鹰角接口的原始字段名和类型，便于其他工具读取。
  */
 import { db } from './db'
+import { mergeLedger, toLedgerEntries } from './ledger'
 import type { LegacyAccount } from './legacy'
 import { legacyLedger, legacyToAkPulls } from './legacy'
 import type { AkMeta } from './meta'
@@ -88,14 +89,6 @@ export async function mergeLegacyPulls(accountId: string, pulls: AkPull[]): Prom
     added = toAdd.length
   })
   return added
-}
-
-/** 写入源石 / 充值记录，返回新增的条数（已有的记录按主键覆盖，不重复） */
-export async function mergeLedger(entries: AkLedgerEntry[]): Promise<number> {
-  if (!entries.length) return 0
-  const existing = await db.akLedger.bulkGet(entries.map((e): [string, string, string] => [e.accountId, e.kind, e.key]))
-  await db.akLedger.bulkPut(entries)
-  return new Set(entries.filter((_, i) => !existing[i]).map((e) => `${e.kind}:${e.key}`)).size
 }
 
 export interface ImportSummary {
@@ -236,10 +229,10 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
       const existing = new Set((await db.akPulls.bulkGet(modern.map((p) => [account.id, p.key]))).filter(Boolean).map((p) => p!.key))
       summary.pulls += await mergeAkPulls(account.id, modern.filter((p) => !existing.has(p.key)))
     }
+    // 原始条目可能来自旧版，也可能来自新接口，ledger.ts 统一识别
     const ledger: AkLedgerEntry[] = []
     for (const l of entry.ledger ?? []) {
-      const parsed = l.kind === 'stone' ? legacyLedger(account.id, [l.raw], []) : legacyLedger(account.id, [], [l.raw])
-      ledger.push(...parsed)
+      if (l.kind === 'stone' || l.kind === 'recharge') ledger.push(...toLedgerEntries(account.id, l.kind, [l.raw]))
     }
     summary.ledger += await mergeLedger(ledger)
   }

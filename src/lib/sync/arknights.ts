@@ -3,8 +3,9 @@
  */
 import { db } from '../db'
 import { getU8Token, grantOAuthToken } from '../hg/auth'
-import { type AkRawRecord, fetchCategories, fetchHistoryPage, roleLogin } from '../hg/arknights'
-import type { Account, AkPull } from '../types'
+import { type AkRawRecord, type AkSession, fetchCategories, fetchDiamondPage, fetchHistoryPage, fetchRecentOrders, roleLogin } from '../hg/arknights'
+import { ledgerKeys, mergeLedger, toLedgerEntries } from '../ledger'
+import type { Account, AkLedgerEntry, AkPull } from '../types'
 
 export interface SyncProgress {
   stage: string
@@ -15,6 +16,10 @@ export interface SyncProgress {
 export interface SyncResult {
   added: number
   fetched: number
+  /** 新增的源石 / 充值记录条数（仅明日方舟） */
+  ledger?: number
+  /** 没能同步成功、但不影响寻访记录的部分 */
+  warnings?: string[]
 }
 
 export function akKey(r: Pick<AkRawRecord, 'poolId' | 'charId' | 'gachaTs' | 'pos'>): string {
@@ -153,6 +158,56 @@ export async function syncArknights(
 
   report('正在保存')
   await mergeAkPulls(account.id, collected)
+
+  // 源石、充值记录：官网只能查到最近 30 天，每次同步都顺便保存下来。失败不影响寻访记录。
+  let ledger = 0
+  const warnings: string[] = []
+  try {
+    ledger += await syncStone(account.id, session, Boolean(options.full), report)
+  } catch (error) {
+    warnings.push(`源石记录：${reason(error)}`)
+  }
+  try {
+    report('正在读取充值记录')
+    const official = account.isOfficial || account.channelName === '官服'
+    const orders = await fetchRecentOrders(u8, official ? accountToken : undefined)
+    ledger += await mergeLedger(toLedgerEntries(account.id, 'recharge', orders))
+  } catch (error) {
+    warnings.push(`充值记录：${reason(error)}`)
+  }
+
   await db.accounts.update(account.id, { lastSyncAt: Date.now() })
-  return { added: collected.length, fetched }
+  return { added: collected.length, fetched, ledger, warnings }
+}
+
+function reason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** 官网最多给 100 条源石记录（每页 10 条），这里多留一点余量 */
+const MAX_STONE_PAGES = 15
+
+/** 逐页拉取源石记录，遇到已保存的记录就停止（full 时读完全部） */
+async function syncStone(
+  accountId: string,
+  session: AkSession,
+  full: boolean,
+  report: (stage: string, detail?: string) => void,
+): Promise<number> {
+  const existing = await ledgerKeys(accountId, 'stone')
+  const fresh: AkLedgerEntry[] = []
+  let cursor: { pos: number; eventTs: number | string } | undefined
+  for (let page = 1; page <= MAX_STONE_PAGES; page++) {
+    report('源石记录', `第 ${page} 页`)
+    const result = await fetchDiamondPage(session, cursor)
+    const entries = toLedgerEntries(accountId, 'stone', result.list)
+    const added = entries.filter((e) => !existing.has(e.key))
+    for (const e of added) existing.add(e.key)
+    fresh.push(...added)
+    if (!full && added.length < entries.length) break
+    const last = result.list.at(-1)
+    if (!result.hasMore || !last) break
+    cursor = { pos: last.pos, eventTs: last.eventTs }
+  }
+  return mergeLedger(fresh)
 }

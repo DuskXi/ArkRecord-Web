@@ -14,6 +14,7 @@ import {
   isExportFile,
 } from '@/lib/archive'
 import { db, requestPersistence } from '@/lib/db'
+import { dateStamp, downloadFile, toCsv } from '@/lib/download'
 import { DEMO_ACCOUNT_ID, loadDemo } from '@/lib/demo'
 import { formatDateTime, formatNumber } from '@/lib/format'
 import { isLegacyExport, type LegacyExport, parseLegacyExport, readLegacyLocalStorage } from '@/lib/legacy'
@@ -122,25 +123,12 @@ async function migrateLocal() {
 }
 
 // ── 导出 ──
-function download(name: string, content: string, type: string) {
-  const url = URL.createObjectURL(new Blob([content], { type }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-const stamp = () => new Date().toISOString().slice(0, 10)
-
 async function exportJson() {
-  download(`ArkRecord_${stamp()}.json`, JSON.stringify(await buildExport(APP_VERSION), null, 2), 'application/json')
+  downloadFile(`ArkRecord_${dateStamp()}.json`, JSON.stringify(await buildExport(APP_VERSION), null, 2), 'application/json')
 }
 function exportCsv() {
-  const header = '时间,卡池,干员,星级,NEW\n'
-  const lines = records.events.map((e) =>
-    [formatDateTime(e.ts), e.poolName, e.name, e.star, e.isNew ? '是' : ''].map((v) => `"${String(v).replaceAll('"', '""')}"`).join(','),
-  )
-  download(`ArkRecord_${app.activeAccount?.nickName ?? ''}_${stamp()}.csv`, `﻿${header}${lines.join('\n')}`, 'text/csv')
+  const rows = records.events.map((e) => [formatDateTime(e.ts), e.poolName, e.name, e.star, e.isNew ? '是' : ''])
+  downloadFile(`ArkRecord_${app.activeAccount?.uid ?? ''}_${dateStamp()}.csv`, toCsv(['时间', '卡池', '干员', '星级', 'NEW'], rows), 'text/csv')
 }
 
 // ── 快照 ──
@@ -286,7 +274,7 @@ async function demo() {
             <span class="min-w-0 flex-1 truncate text-sm">{{ s.reason }}</span>
             <span class="font-display text-xs text-muted">{{ formatDateTime(s.createdAt) }}</span>
             <UButton label="恢复" size="xs" color="neutral" variant="outline" @click="restoreSnapshot(s.payload)" />
-            <UButton icon="i-lucide-download" size="xs" color="neutral" variant="ghost" aria-label="下载快照" @click="download(`ArkRecord_snapshot_${s.id}.json`, s.payload, 'application/json')" />
+            <UButton icon="i-lucide-download" size="xs" color="neutral" variant="ghost" aria-label="下载快照" @click="downloadFile(`ArkRecord_snapshot_${s.id}.json`, s.payload, 'application/json')" />
           </div>
         </div>
         <p v-else class="text-sm text-muted">导入、迁移、删除之前会自动保存快照，最多保留 10 份。</p>
