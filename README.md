@@ -9,6 +9,21 @@
 > 1.0 是全新重写的版本（旧版为 2022–2023 年的 v0.1.0.1_alpha，代码在 [`legacy-v0.1`](https://github.com/DuskXi/ArkRecord-Web/tree/legacy-v0.1) 分支，旧版的 README 见 [docs/archive/README-v0.1.md](docs/archive/README-v0.1.md)）。
 > 老用户第一次打开新版时，旧数据会自动导入；遇到问题可以在旧版网页里手动导出，再到新版导入，见[从旧版迁移](#从旧版迁移)。
 
+## 截图
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/overview.jpg" alt="总览：当前保底与定向保底进度"><br><sub>总览：当前保底、预计还需抽数、定向保底与累计奖励</sub></td>
+    <td width="50%"><img src="docs/images/pity-analysis.jpg" alt="高级统计：出金分析"><br><sub>高级统计：出金抽数分布、歪不歪的概率分布（精确计算）</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/records.jpg" alt="寻访记录：按十连分组"><br><sub>寻访记录：按十连分组，高星级染色，保底与歪 / UP 标记</sub></td>
+    <td width="50%"><img src="docs/images/endfield-timeline.jpg" alt="终末地：时间线"><br><sub>终末地：以 6★ 分段的时间线，角色池与武器池分开</sub></td>
+  </tr>
+</table>
+
+<sub>截图使用演示 / 模拟数据。</sub>
+
 ## 快速开始
 
 1. 在浏览器里登录 [鹰角网络通行证](https://user.hypergryph.com/)。B 服玩家需要先在通行证里绑定游戏角色。

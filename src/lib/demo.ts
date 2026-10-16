@@ -4,6 +4,7 @@
  */
 import { db } from './db'
 import type { AkMeta } from './meta'
+import { akCodexItems } from './stats/codex'
 import { akFamily, akRuleType } from './stats/events'
 import { arknightsRate } from './stats/pity'
 import type { Account, AkPull } from './types'
@@ -27,10 +28,13 @@ const UP_SHARE: Record<string, number> = { LIMITED: 0.7, SINGLE: 0.5, LINKAGE: 0
 export function generateDemoPulls(meta: AkMeta, now = Date.now(), seed = 20261016): AkPull[] {
   const rand = random(seed)
   const pick = <T>(list: T[]): T => list[Math.floor(rand() * list.length)]!
+  // 只从寻访里抽得到的干员中选（排除预备干员、活动赠送等）；元数据里没有获得方式时退回全部干员
+  const items = akCodexItems(meta)
+  const gacha = items.some((i) => i.approach) ? items.filter((i) => i.gacha) : items
   const byRarity = new Map<number, string[]>()
-  for (const [id, c] of Object.entries(meta.chars)) {
-    if (!byRarity.has(c.r)) byRarity.set(c.r, [])
-    byRarity.get(c.r)!.push(id)
+  for (const item of gacha) {
+    if (!byRarity.has(item.star)) byRarity.set(item.star, [])
+    byRarity.get(item.star)!.push(item.id)
   }
   const nowSec = now / 1000
   const pools = Object.entries(meta.pools)
