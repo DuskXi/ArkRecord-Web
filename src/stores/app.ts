@@ -4,8 +4,11 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { useLiveQuery } from '@/composables/useLiveQuery'
 import { db } from '@/lib/db'
 import { type AkMeta, type EfMeta, loadAkMeta, loadEfMeta } from '@/lib/meta'
+import { markWelcomeSeen, welcomeSeen } from '@/lib/onboarding'
 import type { Account, Game } from '@/lib/types'
-import { fetchUsageSummary, reportUsage, setUsageOptOut, type UsageSummary, usageNoticeSeen, usageOptedOut } from '@/lib/usage'
+import { loadCloudflareAnalytics } from '@/lib/analytics'
+import { type Consent, readConsent, writeConsent } from '@/lib/consent'
+import { fetchUsageSummary, reportUsage, type UsageSummary, usageNoticeSeen } from '@/lib/usage'
 
 export const APP_VERSION = __APP_VERSION__
 
@@ -42,18 +45,41 @@ export const useAppStore = defineStore('app', () => {
 
   const loginOpen = ref(false)
 
-  // ── 匿名使用统计（见 src/lib/usage.ts） ──
-  const usage = shallowRef<UsageSummary | null>(null)
-  const usageOptOut = ref(usageOptedOut())
-  function setUsageParticipation(participate: boolean) {
-    setUsageOptOut(!participate)
-    usageOptOut.value = !participate
+  // ── 第一次访问的引导：欢迎窗口 → 旧版数据迁移（有旧数据时）→ 统计同意 ──
+  const consent = ref<Consent | null>(readConsent())
+  /** 全新访问（没看过欢迎窗口、没做过统计选择、也没用过之前的版本）才显示欢迎窗口 */
+  const welcomeOpen = ref(!welcomeSeen() && consent.value === null && !usageNoticeSeen())
+  function closeWelcome() {
+    markWelcomeSeen()
+    welcomeOpen.value = false
   }
+  /** 旧版数据迁移的进度（由 LegacyMigration 更新）：检查中 / 窗口打开 / 结束或不需要 */
+  const legacyStep = ref<'checking' | 'open' | 'done'>('checking')
+  /** 前面的窗口都关掉之后，才显示统计同意 */
+  const introDone = computed(() => !welcomeOpen.value && legacyStep.value === 'done')
+  /** 在“关于”页主动打开统计设置 */
+  const consentRequested = ref(false)
+  const consentOpen = computed(() => consentRequested.value || (consent.value === null && introDone.value))
+
+  // ── 统计（见 src/lib/consent.ts）：本站匿名使用统计 + Cloudflare Web Analytics，只在“全部接受”后启用 ──
+  const usage = shallowRef<UsageSummary | null>(null)
   void fetchUsageSummary().then((s) => (usage.value = s))
-  // 等账号列表从 IndexedDB 读出来之后再上报（每天最多一次）。
-  // 第一次打开时先显示统计说明，等说明消失（约 20 秒）后再上报，让用户有机会先选择不参与。
-  const firstVisit = !usageNoticeSeen()
-  setTimeout(() => void reportUsage(accounts.value.map((a) => a.game)), firstVisit ? 25_000 : 3000)
+  function reportUsageNow() {
+    void reportUsage(accounts.value.map((a) => a.game))
+  }
+  function startAnalytics() {
+    loadCloudflareAnalytics()
+    // 等账号列表从 IndexedDB 读出来之后再上报（每天最多一次）
+    setTimeout(reportUsageNow, 3000)
+  }
+  function setConsent(value: Consent) {
+    writeConsent(value)
+    const wasAll = consent.value === 'all'
+    consent.value = value
+    consentRequested.value = false
+    if (value === 'all' && !wasAll) startAnalytics()
+  }
+  if (consent.value === 'all') startAnalytics()
 
   return {
     game,
@@ -66,8 +92,14 @@ export const useAppStore = defineStore('app', () => {
     akAvatars,
     efAvatars,
     loginOpen,
+    welcomeOpen,
+    closeWelcome,
+    legacyStep,
+    introDone,
+    consent,
+    consentOpen,
+    consentRequested,
+    setConsent,
     usage,
-    usageOptOut,
-    setUsageParticipation,
   }
 })

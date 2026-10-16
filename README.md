@@ -9,6 +9,21 @@
 > 1.0 是全新重写的版本（旧版为 2022–2023 年的 v0.1.0.1_alpha，代码在 [`legacy-v0.1`](https://github.com/DuskXi/ArkRecord-Web/tree/legacy-v0.1) 分支，旧版的 README 见 [docs/archive/README-v0.1.md](docs/archive/README-v0.1.md)）。
 > 老用户第一次打开新版时，旧数据会自动导入；遇到问题可以在旧版网页里手动导出，再到新版导入，见[从旧版迁移](#从旧版迁移)。
 
+## 截图
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/overview.jpg" alt="总览：当前保底与定向保底进度"><br><sub>总览：当前保底、预计还需抽数、定向保底与累计奖励</sub></td>
+    <td width="50%"><img src="docs/images/pity-analysis.jpg" alt="高级统计：出金分析"><br><sub>高级统计：出金抽数分布、歪不歪的概率分布（精确计算）</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/records.jpg" alt="寻访记录：按十连分组"><br><sub>寻访记录：按十连分组，高星级染色，保底与歪 / UP 标记</sub></td>
+    <td width="50%"><img src="docs/images/endfield-timeline.jpg" alt="终末地：时间线"><br><sub>终末地：以 6★ 分段的时间线，角色池与武器池分开</sub></td>
+  </tr>
+</table>
+
+<sub>截图使用演示 / 模拟数据。</sub>
+
 ## 快速开始
 
 1. 在浏览器里登录 [鹰角网络通行证](https://user.hypergryph.com/)。B 服玩家需要先在通行证里绑定游戏角色。
@@ -55,7 +70,8 @@
 
 - 所有记录、统计结果和账号 token 只保存在你浏览器的 IndexedDB 里，本站没有数据库或用户系统。“记住登录”可以关闭，公用电脑请不要开启。
 - 鹰角的接口不允许网页直接调用（不支持 CORS，并依赖浏览器无法设置的 Cookie），所以由同一域名下的 Cloudflare Worker 原样转发。Worker 不解析、不记录、不存储任何内容，只接受本站同源请求，并有限速保护。转发清单与原因见 [`worker/upstreams.ts`](worker/upstreams.ts)，网站“关于”页显示的是同一份清单。
-- 匿名使用人数统计：每天最多上报一次，只有四个开关字段（是否第一次来、本月是否第一次来、有哪些游戏的账号、其中哪些是新加的），不含账号、UID、记录或任何标识符，服务端只保存计数器。可以在“关于”页关闭。
+- 本站不用 Cookie 追踪访客。第一次访问时会询问是否参与统计：“全部接受”启用本站的匿名使用人数统计和 Cloudflare Web Analytics（不使用 Cookie 的访问量统计）；“仅必要”只保留网站功能本身需要的本地存储。做出选择之前两项统计都不启用，之后可以在“关于”页修改。
+- 匿名使用人数统计：每天最多上报一次，只有四个开关字段（是否第一次来、本月是否第一次来、有哪些游戏的账号、其中哪些是新加的），不含账号、UID、记录或任何标识符，服务端只保存计数器。
 
 ## 常见问题
 

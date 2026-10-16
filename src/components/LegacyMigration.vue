@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { createSnapshot, type ImportSummary, importLegacyAccounts, makeAccountId } from '@/lib/archive'
 import { db } from '@/lib/db'
 import { formatNumber } from '@/lib/format'
@@ -30,12 +30,29 @@ const legacyUrl = `${location.host}${LEGACY_APP_PATH}`
 const totalPulls = computed(() => legacy.value.reduce((n, a) => n + a.pools.reduce((m, p) => m + p.result.length, 0), 0))
 const hasTokens = computed(() => legacy.value.some((a) => a.accountToken))
 
-onMounted(async () => {
-  if (await db.kv.get('legacyMigrated')) return
+// 等欢迎窗口关掉之后再开始（第一次访问的顺序：欢迎窗口 → 旧数据迁移 → 统计同意）
+let started = false
+async function start() {
+  if (started) return
+  started = true
+  if (await db.kv.get('legacyMigrated')) return void (app.legacyStep = 'done')
   legacy.value = readLegacyLocalStorage(localStorage).filter((a) => a.pools.length || a.stone.length || a.recharge.length)
-  if (!legacy.value.length) return
+  if (!legacy.value.length) return void (app.legacyStep = 'done')
   open.value = true
+  app.legacyStep = 'open'
   await migrate()
+}
+onMounted(() => {
+  watch(
+    () => app.welcomeOpen,
+    (welcome) => {
+      if (!welcome) void start()
+    },
+    { immediate: true },
+  )
+})
+watch(open, (value) => {
+  if (!value && app.legacyStep === 'open') app.legacyStep = 'done'
 })
 
 async function migrate() {

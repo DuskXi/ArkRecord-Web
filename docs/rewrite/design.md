@@ -275,11 +275,10 @@ interface EfPull {
   - 每次 push / PR：lint、类型检查、测试、构建；
   - 重写分支 push 后：构建并部署到**测试域名**（`ark-next.kaltsit.dev`）；
   - 构建时从 GitHub 拉取最新的游戏数据和头像，所以每次部署都带上最新元数据；每日定时任务只重新部署测试环境。
-- **测试优先**：在维护者完成测试之前，不创建也不运行生产部署，`ark.kaltsit.dev` 保持原样。
-  - Wrangler 配置里**默认环境就是测试环境**；生产环境必须显式加 `--env production` 才会部署。
-  - 生产部署工作流等测试通过后再添加。
+- **测试优先**：新功能先部署到测试域名，维护者测试后再合并进 master 部署到正式域名（2026-10-16 起正式域名已切换到新版）。
+  - Wrangler 配置里**默认环境就是测试环境**；正式环境在构建时设置 `CLOUDFLARE_ENV=production`（deploy-production.yml）。
 - **Wrangler 配置**：`assets.not_found_handling = "single-page-application"`，`run_worker_first = ["/api/*"]`，各环境分别配置自定义域名、允许的 origin 和限速命名空间。
-- **使用统计**：Cloudflare Web Analytics，不使用 Cookie，也不需要自建后端。
+- **使用统计**：本站匿名使用人数统计（Durable Object 计数器，见 worker/stats.ts）与 Cloudflare Web Analytics（不使用 Cookie）。两项都只在用户在统计同意里选择“全部接受”后启用（src/lib/consent.ts）；“仅必要”只保留本地存储。Cloudflare Web Analytics 由网页在同意后加载（src/lib/analytics.ts），Cloudflare 后台需要关闭自动注入。
 
 ## 9. 风险
 

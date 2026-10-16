@@ -7,12 +7,13 @@
  *   newMonth  本月是否第一次上报
  *   games     这个浏览器里有哪些游戏的账号（arknights / endfield）
  *   newGames  其中第一次出现的
- * 用户可以在“关于”页关闭统计；关闭后不再发出任何上报请求。
+ * 只有用户在统计同意里选择“全部接受”之后才会上报（见 consent.ts）；选择“仅必要”或还没选择时不发出任何请求。
  */
+import { readConsent } from './consent'
 import type { Game } from './types'
 
 const STATE_KEY = 'arkrecord:usage'
-const OPT_OUT_KEY = 'arkrecord:usage-optout'
+/** 旧版本显示过统计说明的标记，现在只用来判断是不是第一次访问 */
 const NOTICE_KEY = 'arkrecord:usage-notice'
 
 interface UsageState {
@@ -49,20 +50,9 @@ function write(key: string, value: string | null): void {
   }
 }
 
-export function usageOptedOut(): boolean {
-  return read(OPT_OUT_KEY) === '1'
-}
-
-export function setUsageOptOut(optOut: boolean): void {
-  write(OPT_OUT_KEY, optOut ? '1' : null)
-}
-
-/** 第一次打开时的说明只显示一次 */
+/** 这个浏览器是否用过之前带统计说明的版本 */
 export function usageNoticeSeen(): boolean {
   return read(NOTICE_KEY) === '1'
-}
-export function markUsageNoticeSeen(): void {
-  write(NOTICE_KEY, '1')
 }
 
 /** 根据本地记录决定今天是否需要上报，以及上报什么；不需要时返回 null */
@@ -79,7 +69,7 @@ export function buildPing(games: Game[], state: UsageState | null, now = Date.no
 }
 
 export async function reportUsage(games: Game[]): Promise<void> {
-  if (usageOptedOut()) return
+  if (readConsent() !== 'all') return
   let state: UsageState | null = null
   try {
     state = JSON.parse(read(STATE_KEY) ?? 'null') as UsageState | null
