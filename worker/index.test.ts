@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as entry from './index'
 import worker from './index'
 import type { Env } from './proxy'
+import { rateLimitClient } from './security'
 
 const SELF = 'https://ark-next.kaltsit.dev'
 
@@ -196,6 +197,28 @@ describe('限速与容错', () => {
     expect(auth.limit).toHaveBeenCalledWith({ key: 'auth:198.51.100.7' })
     expect(limited.status).toBe(429)
     expect(limited.headers.get('retry-after')).toBe('60')
+  })
+
+  it('IPv4 按单个地址限速，IPv6 按 /64 前缀限速', () => {
+    expect(rateLimitClient('198.51.100.7')).toBe('198.51.100.7')
+    expect(rateLimitClient('2001:db8:0:12:aaaa::1')).toBe('2001:db8:0:12::/64')
+    expect(rateLimitClient('2001:DB8:0000:0012:ffff:1:2:3')).toBe('2001:db8:0:12::/64')
+    expect(rateLimitClient('2001:db8::1')).toBe('2001:db8:0:0::/64')
+    expect(rateLimitClient('::1')).toBe('0:0:0:0::/64')
+    expect(rateLimitClient(null)).toBe('unknown')
+  })
+
+  it('同一 /64 内换地址仍计入同一个限速键', async () => {
+    mockUpstream()
+    const data = { limit: vi.fn(async (_options: RateLimitOptions) => ({ success: true })) }
+    const env = { RL_DATA: data } as unknown as Env
+    for (const ip of ['2001:db8:1:2::a', '2001:db8:1:2:ffff::b']) {
+      await call('/api/hg/ef/api/content?pool_id=standard', { headers: sameOriginHeaders({ 'cf-connecting-ip': ip }) }, env)
+    }
+    expect(data.limit.mock.calls.map(([arg]) => arg)).toEqual([
+      { key: 'data:2001:db8:1:2::/64' },
+      { key: 'data:2001:db8:1:2::/64' },
+    ])
   })
 
   it('上游不可达时返回 502', async () => {

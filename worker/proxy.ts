@@ -3,7 +3,7 @@
  * Workers 要求入口模块的命名导出都是处理器，所以工具函数和常量放在这个文件里。
  */
 
-import { checkSameOrigin } from './security'
+import { checkSameOrigin, rateLimitClient } from './security'
 import { findRoute, type Limiter, type Upstream } from './upstreams'
 
 export interface Env {
@@ -81,8 +81,8 @@ export async function handleProxy(request: Request, env: Env, url: URL): Promise
 async function withinRateLimit(env: Env, limiter: Limiter, request: Request): Promise<boolean> {
   const binding = limiter === 'auth' ? env.RL_AUTH : env.RL_DATA
   if (!binding) return true
-  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
-  const { success } = await binding.limit({ key: `${limiter}:${ip}` })
+  const client = rateLimitClient(request.headers.get('cf-connecting-ip'))
+  const { success } = await binding.limit({ key: `${limiter}:${client}` })
   return success
 }
 

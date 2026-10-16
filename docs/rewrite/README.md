@@ -30,6 +30,7 @@
 - [x] 阶段 2（初版）：终末地国服同步与保底规则（待真实账号测试）
 - [x] 阶段 3（部分）：分析、时间线、分享卡片
 - [ ] 源石 / 充值（等待接口抓包）
+- [x] 测试环境已部署到 https://ark-next.kaltsit.dev（2026-10-16，GitHub Actions）。已验证：安全响应头、SPA 回退、元数据与头像、同源检查（预检 405、缺少标记头 / 跨站 403、白名单外 404）、浏览器内同源请求可用而其他网站的页面被浏览器拦截、经 Worker 访问鹰角接口可达、Cloudflare 限速会触发
 - [ ] 真实账号端到端测试（维护者在测试域名进行）
 - [ ] 阶段 4：切换正式域名
 
@@ -62,7 +63,8 @@
 - **B 服明日方舟**：已绑定到鹰角通行证的 B 服角色应该会出现在 `binding_list` 中，这一点只有部分项目验证过。
 - **鹰角接口基本未经实测**（云端容器连不到鹰角域名）。目前只有终末地 `api/content` 由维护者在浏览器中实测可用（见 research.md 2.2）。其余结论来自多个 2025–2026 年仍在维护的开源实现的源码交叉核对。实测由项目维护者在本地浏览器完成，**账号 token 不要交给 AI 助手**。
 - **终末地头像**：目前没有持续维护、按 ID 索引的图标源（见 data-sources.md）。
-- **现有部署情况**：`ark.kaltsit.dev` / `api.kaltsit.dev` 由哪个平台托管尚未确认，等有 Cloudflare 只读权限后核查。
+- **现有部署情况**（2026-10-16 只读核查）：`ark.kaltsit.dev` 是 Cloudflare Pages 项目 `arkrecord-web`（生产分支 `master`，构建命令 `quasar build`）；`api.kaltsit.dev` 是 Worker `ak`（对所有网站开放 CORS 的旧转发）；`statistics.kaltsit.dev` 是 Worker `arkrecord-extension`。切换正式域名时需要先从 Pages 项目上移除 `ark.kaltsit.dev`，并处理 master 合并后 Pages 会自动触发旧构建的问题。
+- **Cloudflare Web Analytics**：测试域名的页面已被 Cloudflare 自动注入统计脚本（`static.cloudflareinsights.com`），CSP 已放行，无需改代码。
 
 ## 给 AI 助手 Cloudflare 只读权限的方式
 

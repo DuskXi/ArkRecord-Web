@@ -105,7 +105,7 @@ const currency = computed(() =>
             <p class="truncate text-xs text-dimmed">{{ g.poolName }}</p>
             <p class="truncate font-medium text-highlighted">{{ g.label }}</p>
             <div class="mt-2 flex items-center gap-3">
-              <UProgress :model-value="Math.min(g.current, g.target)" :max="g.target" :color="g.done ? 'success' : 'primary'" class="flex-1" />
+              <UProgress :model-value="g.done ? g.target : Math.min(g.current, g.target)" :max="g.target" :color="g.done ? 'success' : 'primary'" class="flex-1" />
               <span class="font-display text-sm tabular-nums text-muted">
                 {{ g.done ? '已达成' : `${g.current} / ${g.target}` }}
               </span>

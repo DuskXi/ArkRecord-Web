@@ -40,3 +40,21 @@ function originOf(value: string): string | null {
     return null
   }
 }
+
+/**
+ * 限速用的客户端标识。IPv4 按单个地址计；IPv6 按 /64 前缀计，
+ * 因为一个家庭宽带或一台云主机通常就分到一整个 /64，按完整地址计数很容易被绕开。
+ */
+export function rateLimitClient(ip: string | null): string {
+  if (!ip) return 'unknown'
+  if (!ip.includes(':')) return ip
+  const [head = '', tail] = ip.toLowerCase().split('::')
+  const left = head ? head.split(':') : []
+  const right = tail ? tail.split(':') : []
+  const groups =
+    tail === undefined ? left : [...left, ...Array.from({ length: 8 - left.length - right.length }, () => '0'), ...right]
+  return `${groups
+    .slice(0, 4)
+    .map((g) => g.replace(/^0+(?=.)/, ''))
+    .join(':')}::/64`
+}
