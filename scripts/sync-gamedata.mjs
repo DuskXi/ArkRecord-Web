@@ -112,7 +112,7 @@ async function downloadAvatar(id) {
 }
 
 async function mapLimited(items, limit, fn) {
-  const results = new Array(items.length)
+  const results = Array.from({ length: items.length })
   let next = 0
   await Promise.all(
     Array.from({ length: limit }, async () => {

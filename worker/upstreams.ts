@@ -72,6 +72,7 @@ export const UPSTREAMS = {
     routes: [
       { method: 'GET', path: '/api/record/char', limiter: 'data' },
       { method: 'GET', path: '/api/record/char/meta', limiter: 'data' },
+      { method: 'GET', path: '/api/record/char/pool', limiter: 'data' },
       { method: 'GET', path: '/api/record/weapon', limiter: 'data' },
       { method: 'GET', path: '/api/record/weapon/pool', limiter: 'data' },
       { method: 'GET', path: '/api/content', limiter: 'data' },

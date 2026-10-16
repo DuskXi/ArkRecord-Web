@@ -32,9 +32,20 @@
       "warn",
       {
         "allow": [
-          "**/*.css"
+          "**/*.css",
+          "fake-indexeddb/auto"
         ]
       }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "scripts/**"
+      ],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
 }
