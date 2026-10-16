@@ -1,0 +1,33 @@
+name: Feature request (English)
+description: Suggest a new feature or an improvement
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: You may want to check the roadmap in the README and existing issues first.
+  - type: textarea
+    id: want
+    attributes:
+      label: What would you like
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The problem it solves, or when you would use it.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Possible approach (optional)
+      description: Mockups, references to other sites or tools, screenshots are all welcome.
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - Arknights
+        - "Arknights: Endfield"
+        - Both
+        - Not game-specific

@@ -1,0 +1,55 @@
+name: 数据不对
+description: 卡池名称、UP 名单、保底计算、干员名称或头像不对，新卡池或新干员缺失
+title: "[数据] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        卡池、UP 名单、干员和头像来自游戏数据表与 PRTS、BWIKI 等 wiki，网站每次部署时更新。新卡池刚开放时可能要晚一点才有。
+        **请不要贴出账号 token、Cookie 等隐私信息。**
+  - type: dropdown
+    id: game
+    attributes:
+      label: 游戏
+      options:
+        - 明日方舟
+        - 终末地
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 哪类数据
+      options:
+        - 卡池名称 / 卡池类型
+        - UP 名单（歪 / 不歪判断不对）
+        - 保底计算
+        - 干员 / 武器名称或头像
+        - 新卡池或新干员缺失
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: 涉及的卡池或干员
+      placeholder: 例如：“万物更新”卡池，祀
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 哪里不对，正确的应该是什么
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: 参考来源（可选）
+      description: 官方公告、PRTS、BWIKI 等页面链接。
+  - type: input
+    id: version
+    attributes:
+      label: 网站版本
+      placeholder: v1.0.0

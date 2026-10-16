@@ -1,0 +1,82 @@
+name: Bug report (English)
+description: Something is broken, sync fails, wrong display or errors
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please [search existing issues](https://github.com/DuskXi/ArkRecord-Web/issues?q=is%3Aissue) first.
+        **Never post your account token, cookies or other private information**, and hide them in screenshots.
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options:
+        - Arknights
+        - "Arknights: Endfield"
+        - Both
+        - Not game-specific
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Sign in / add account
+        - Sync
+        - Legacy data migration
+        - Import / export / snapshots
+        - Overview
+        - Records
+        - Banners
+        - Analysis / advanced stats
+        - Timeline / share card
+        - Codex
+        - Originium & top-ups
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The message you saw, or what is displayed wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the Overview page
+        2. Click "同步" (Sync)
+        3. ...
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: input
+    id: version
+    attributes:
+      label: Site version
+      description: Shown at the bottom of the sidebar, e.g. v1.0.0.
+      placeholder: v1.0.0
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: e.g. Chrome 130 / Windows 11, Safari / iPhone 15
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or error messages
+      description: You can paste images directly. Hide tokens and UIDs first.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Confirmation
+      options:
+        - label: I confirm this issue contains no account token, cookies or other private information
+          required: true

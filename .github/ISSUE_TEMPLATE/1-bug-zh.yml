@@ -1,0 +1,84 @@
+name: 问题 / 报错
+description: 网站用不了、同步失败、显示不对、报错等
+title: "[问题] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请先[搜索已有的 Issue](https://github.com/DuskXi/ArkRecord-Web/issues?q=is%3Aissue)，看看是不是已经有人提过了。
+        **请不要贴出账号 token、Cookie、手机号等隐私信息**，截图前也请把它们遮住。
+  - type: dropdown
+    id: game
+    attributes:
+      label: 游戏
+      options:
+        - 明日方舟
+        - 终末地
+        - 两个都有
+        - 和游戏无关
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 出问题的地方
+      options:
+        - 登录 / 添加账号
+        - 同步
+        - 旧数据导入 / 迁移
+        - 导入 / 导出 / 快照
+        - 总览
+        - 寻访记录
+        - 卡池
+        - 分析 / 高级统计
+        - 时间线 / 分享卡片
+        - 图鉴
+        - 源石与充值
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 看到了什么提示、哪里显示不对。
+      placeholder: 例如：点“同步”后提示“请求太频繁”，等了几分钟还是一样。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      description: 做了哪些操作会出现这个问题。
+      placeholder: |
+        1. 打开总览页
+        2. 点右上角“同步”
+        3. ……
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望的结果
+  - type: input
+    id: version
+    attributes:
+      label: 网站版本
+      description: 侧栏左下角，例如 v1.0.0。
+      placeholder: v1.0.0
+  - type: input
+    id: browser
+    attributes:
+      label: 浏览器与设备
+      placeholder: 例如 Chrome 130 / Windows 11，Safari / iPhone 15
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截图或报错信息
+      description: 可以直接粘贴图片。请先遮住 token、UID 等信息。
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 确认
+      options:
+        - label: 我确认上面的内容里没有账号 token、Cookie 等隐私信息
+          required: true

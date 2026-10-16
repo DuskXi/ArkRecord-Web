@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: ArkRecord 网站 / Website
+    url: https://ark.kaltsit.dev
+    about: 不方便用 GitHub 的话，也可以在网站的“反馈”页留言。 / You can also leave feedback on the website's 反馈 (Feedback) page.
+  - name: 旧版浏览器插件（已暂停开发） / Legacy browser extension (paused)
+    url: https://github.com/DuskXi/ArkRecord
+    about: 插件版的问题请到这里查看说明。 / Notes for the legacy browser extension.
