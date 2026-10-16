@@ -35,8 +35,11 @@ export const useAppStore = defineStore('app', () => {
   void loadAkMeta().then((m) => (meta.value = m))
   const efMeta = shallowRef<EfMeta | null>(null)
   void loadEfMeta().then((m) => (efMeta.value = m))
+  /** 已镜像到本站的头像，元数据加载完成后头像组件会自动切换到图片 */
+  const akAvatars = computed(() => new Set(meta.value?.avatars ?? []))
+  const efAvatars = computed(() => new Set(efMeta.value?.avatars ?? []))
 
   const loginOpen = ref(false)
 
-  return { game, accounts, gameAccounts, activeAccount, selectAccount, meta, efMeta, loginOpen }
+  return { game, accounts, gameAccounts, activeAccount, selectAccount, meta, efMeta, akAvatars, efAvatars, loginOpen }
 })

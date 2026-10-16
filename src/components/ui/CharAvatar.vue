@@ -1,14 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { rarityVar } from '@/lib/format'
-import { akAvatarUrl } from '@/lib/meta'
+import { akAvatarUrl, efAvatarUrl } from '@/lib/meta'
+import { useAppStore } from '@/stores/app'
 
 const props = withDefaults(
   defineProps<{ charId?: string | null; name: string; star: number; size?: number; game?: 'arknights' | 'endfield' }>(),
   { size: 48, game: 'arknights' },
 )
+const app = useAppStore()
 const failed = ref(false)
-const src = computed(() => (props.game === 'arknights' && !failed.value ? akAvatarUrl(props.charId) : undefined))
+// 虚拟列表会复用组件，换了角色要重新尝试加载
+watch(
+  () => props.charId,
+  () => (failed.value = false),
+)
+const src = computed(() => {
+  if (failed.value) return undefined
+  return props.game === 'arknights' ? akAvatarUrl(props.charId, app.akAvatars) : efAvatarUrl(props.charId, app.efAvatars)
+})
 </script>
 
 <template>

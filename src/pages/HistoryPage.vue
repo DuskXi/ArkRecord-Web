@@ -13,6 +13,8 @@ import { useRecordsStore } from '@/stores/records'
 const records = useRecordsStore()
 
 const view = useLocalStorage<'batch' | 'list'>('arkrecord:history-view', 'batch')
+/** 终末地没有 3★ */
+const starOptions = computed(() => (records.game === 'endfield' ? [6, 5, 4] : [6, 5, 4, 3]))
 const stars = ref<number[]>([6, 5, 4, 3])
 const pool = ref<string | undefined>()
 const search = ref('')
@@ -124,7 +126,7 @@ function toggleStar(s: number) {
       <div class="flex flex-wrap items-center gap-2">
         <UFieldGroup>
           <UButton
-            v-for="s in [6, 5, 4, 3]"
+            v-for="s in starOptions"
             :key="s"
             :label="`${s}★`"
             size="sm"
@@ -163,7 +165,7 @@ function toggleStar(s: number) {
             <p class="eyebrow">SHOWING</p>
             <p class="font-display text-2xl font-semibold text-highlighted">{{ formatNumber(summary.total) }} <span class="text-sm font-normal text-muted">抽</span></p>
           </div>
-          <div v-for="s in [6, 5, 4, 3]" :key="s" class="min-w-16">
+          <div v-for="s in starOptions" :key="s" class="min-w-16">
             <p class="font-display text-xs font-semibold" :style="{ color: rarityTextVar(s) }">{{ s }}★</p>
             <p class="font-display text-lg font-semibold text-highlighted">
               {{ summary.counts[s] ?? 0 }}

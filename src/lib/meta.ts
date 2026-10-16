@@ -44,16 +44,11 @@ export interface AkMeta {
 const EMPTY_META: AkMeta = { version: '', generatedAt: '', upAvailable: false, chars: {}, pools: {}, avatars: [] }
 
 let metaPromise: Promise<AkMeta> | null = null
-let avatarSet: Set<string> = new Set()
 
 export function loadAkMeta(): Promise<AkMeta> {
   metaPromise ??= fetch('/gamedata/ak-meta.json')
     .then((r) => (r.ok ? (r.json() as Promise<AkMeta>) : EMPTY_META))
     .catch(() => EMPTY_META)
-    .then((meta) => {
-      avatarSet = new Set(meta.avatars)
-      return meta
-    })
   return metaPromise
 }
 
@@ -61,9 +56,9 @@ export function loadAkMeta(): Promise<AkMeta> {
  * 头像：优先用构建时镜像到本站的静态文件；还没镜像的新干员经本站的图片缓存转发（worker/images.ts），
  * 同一张图在每个 Cloudflare 机房只向 PRTS 请求一次。两种方式都同源，分享图导出不受跨域影响。
  */
-export function akAvatarUrl(charId: string | null | undefined): string | undefined {
+export function akAvatarUrl(charId: string | null | undefined, mirrored: ReadonlySet<string>): string | undefined {
   if (!charId) return undefined
-  if (avatarSet.has(charId)) return `/gamedata/avatars/${charId}.webp`
+  if (mirrored.has(charId)) return `/gamedata/avatars/${charId}.webp`
   return /^char_\w{1,60}$/.test(charId) ? `/api/img/prts-avatar/${charId}` : undefined
 }
 
@@ -103,9 +98,16 @@ export interface EfMeta {
   pools: Record<string, EfPoolMeta>
   /** 角色与武器：ID → 名称、星级 */
   items: Record<string, { n: string; r: number }>
+  /** 已镜像到本站的头像 / 武器图标（来自 BWIKI、森空岛） */
+  avatars?: string[]
 }
 
-export const EMPTY_EF_META: EfMeta = { generatedAt: '', pools: {}, items: {} }
+export const EMPTY_EF_META: EfMeta = { generatedAt: '', pools: {}, items: {}, avatars: [] }
+
+/** 终末地头像：只用构建时镜像到本站的文件；没有时显示文字 */
+export function efAvatarUrl(itemId: string | null | undefined, mirrored: ReadonlySet<string>): string | undefined {
+  return itemId && mirrored.has(itemId) ? `/gamedata/ef-avatars/${itemId}.webp` : undefined
+}
 
 let efMetaPromise: Promise<EfMeta> | null = null
 

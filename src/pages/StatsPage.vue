@@ -276,7 +276,7 @@ const collectionShown = computed(() =>
         <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(4.75rem,1fr))] gap-3">
           <div v-for="c in collectionShown" :key="c.id" class="min-w-0">
             <div class="relative">
-              <CharAvatar :char-id="c.weapon ? null : c.itemId" :name="c.name" :star="c.star" :size="76" :game="records.game" class="!size-full aspect-square" />
+              <CharAvatar :char-id="c.itemId" :name="c.name" :star="c.star" :size="76" :game="records.game" class="!size-full aspect-square" />
               <span v-if="c.count > 1" class="absolute top-1 right-1 rounded-sm bg-black/65 px-1 font-display text-[11px] font-semibold text-white">×{{ c.count }}</span>
             </div>
             <p class="mt-1 truncate text-xs font-medium text-highlighted">{{ c.name }}</p>

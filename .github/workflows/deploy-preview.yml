@@ -6,9 +6,10 @@ on:
   push:
     branches: [claude/laughing-mccarthy-yfzd6y]
   workflow_dispatch:
-  # 每天更新一次游戏数据（UP 名单、新干员头像）。定时任务只在默认分支上生效。
+  # 每 3 小时更新一次游戏数据（卡池、UP 名单、新角色头像），新卡池和新角色最多晚 3 小时出现；
+  # 图片只下载新增的，对来源站的请求很少。定时任务只在默认分支上生效。
   schedule:
-    - cron: '17 20 * * *'
+    - cron: '17 */3 * * *'
 
 permissions:
   contents: read
@@ -32,7 +33,9 @@ jobs:
 
       - uses: actions/cache@v6
         with:
-          path: public/gamedata/avatars
+          path: |
+            public/gamedata/avatars
+            public/gamedata/ef-avatars
           key: avatars-${{ github.run_id }}
           restore-keys: avatars-
 

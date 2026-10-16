@@ -14,6 +14,8 @@ const sources = [
   { name: 'yuanyan3060/ArknightsGameResource', desc: '干员头像（构建时镜像到本站）', url: 'https://github.com/yuanyan3060/ArknightsGameResource' },
   { name: 'PRTS', desc: 'UP 名单（构建时获取）；本站镜像里还没有的新干员头像（经本站图片缓存）', url: 'https://prts.wiki/' },
   { name: '555me/beyondGameData', desc: '终末地卡池类型、UP 名单、角色与武器名称（构建时获取）', url: 'https://github.com/555me/beyondGameData' },
+  { name: '明日方舟终末地 BWIKI', desc: '终末地角色头像与武器图标（构建时镜像到本站）', url: 'https://wiki.biligame.com/zmd/' },
+  { name: '森空岛', desc: 'BWIKI 暂缺的终末地角色头像（构建时镜像到本站；地址索引来自 cmyyx/cep）', url: 'https://wiki.skland.com/endfield' },
 ]
 </script>
 

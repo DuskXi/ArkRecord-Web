@@ -25,7 +25,9 @@ jobs:
       # 头像缓存：已下载的头像会被脚本跳过，只补新干员
       - uses: actions/cache@v6
         with:
-          path: public/gamedata/avatars
+          path: |
+            public/gamedata/avatars
+            public/gamedata/ef-avatars
           key: avatars-${{ github.run_id }}
           restore-keys: avatars-
 
