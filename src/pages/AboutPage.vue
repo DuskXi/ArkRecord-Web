@@ -115,6 +115,10 @@ const sources = [
               也可以<UButton label="重新查看网站介绍" variant="link" size="xs" class="p-0 align-baseline" @click="app.welcomeOpen = true" />。
             </li>
             <li>实现见源码 <code class="font-mono text-xs">src/lib/usage.ts</code> 与 <code class="font-mono text-xs">worker/stats.ts</code>。</li>
+            <li>
+              <b class="text-highlighted">站内反馈</b>（与统计无关）：只在你在“反馈”页主动提交时发送，保存在本站的 Cloudflare 存储里，只有作者能看到；
+              内容只有你填写的文字和联系方式，以及网站版本、当前游戏，不记录 IP、账号或 UID。见 <code class="font-mono text-xs">worker/feedback.ts</code>。
+            </li>
           </ul>
         </div>
       </section>
