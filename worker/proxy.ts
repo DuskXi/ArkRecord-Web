@@ -3,6 +3,7 @@
  * Workers 要求入口模块的命名导出都是处理器，所以工具函数和常量放在这个文件里。
  */
 
+import { FEEDBACK_PREFIX, hashToken, newFeedbackId, newFeedbackToken, parseFeedback } from './feedback'
 import { handleImage, IMAGE_PREFIX } from './images'
 import { checkSameOrigin, rateLimitClient } from './security'
 import { parsePing, STATS_PREFIX } from './stats'
@@ -14,6 +15,9 @@ export interface Env {
   RL_DATA?: RateLimit
   /** 匿名使用人数统计（见 stats.ts） */
   STATS?: DurableObjectNamespace
+  /** 站内反馈（见 feedback.ts） */
+  FEEDBACK?: DurableObjectNamespace
+  RL_FEEDBACK?: RateLimit
 }
 
 export const API_PREFIX = '/api/hg/'
@@ -35,6 +39,7 @@ export async function handleRequest(request: Request, env: Env, ctx?: Pick<Execu
   const url = new URL(request.url)
   if (url.pathname.startsWith(API_PREFIX)) return handleProxy(request, env, url)
   if (url.pathname.startsWith(STATS_PREFIX)) return handleStats(request, env, url, ctx)
+  if (url.pathname === FEEDBACK_PREFIX || url.pathname.startsWith(`${FEEDBACK_PREFIX}/`)) return handleFeedback(request, env, url)
   if (url.pathname.startsWith(IMAGE_PREFIX)) {
     return handleImage(request, url, {
       allowUpstream: () => withinRateLimit(env, 'data', request),
@@ -142,8 +147,46 @@ export async function handleStats(request: Request, env: Env, url: URL, ctx?: Pi
   return proxyError(request.method === 'OPTIONS' ? 405 : 404, 'stats_route_not_allowed')
 }
 
-async function withinRateLimit(env: Env, limiter: Limiter, request: Request): Promise<boolean> {
-  const binding = limiter === 'auth' ? env.RL_AUTH : env.RL_DATA
+const MAX_FEEDBACK_BYTES = 8192
+
+/**
+ * 站内反馈（见 feedback.ts）：
+ *   POST /api/feedback   只接受本站页面的请求，受单独的限速保护；返回反馈编号和凭证，凭证只交给提交者，服务端只存它的哈希。
+ * 用户查看回复（GET /api/feedback/{id}）和作者端还没有实现，见 feedback.ts 开头的说明。
+ */
+export async function handleFeedback(request: Request, env: Env, url: URL): Promise<Response> {
+  if (url.pathname !== FEEDBACK_PREFIX) return proxyError(404, 'not_found')
+  if (request.method !== 'POST') return proxyError(405, 'method_not_allowed')
+  const rejection = checkSameOrigin(request)
+  if (rejection) return proxyError(403, rejection)
+  if (!(request.headers.get('content-type') ?? '').startsWith('application/json')) return proxyError(415, 'json_required')
+  if (!(await withinRateLimit(env, 'feedback', request))) return proxyError(429, 'rate_limited', { 'retry-after': '60' })
+  const text = await readBodyLimited(request, MAX_FEEDBACK_BYTES)
+  if (text === null) return proxyError(413, 'body_too_large')
+  let input = null
+  try {
+    input = parseFeedback(JSON.parse(text))
+  } catch {
+    input = null
+  }
+  if (!input) return proxyError(400, 'invalid_feedback')
+  if (!env.FEEDBACK) return proxyError(503, 'feedback_unavailable')
+
+  const stub = env.FEEDBACK.get(env.FEEDBACK.idFromName('global'))
+  const token = newFeedbackToken()
+  const tokenHash = await hashToken(token)
+  // 编号有 50 位随机数，几乎不会重复；万一重复就换一个
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const id = newFeedbackId()
+    const res = await stub.fetch('https://feedback/submit', { method: 'POST', body: JSON.stringify({ ...input, id, tokenHash }) })
+    if (res.status === 201) return Response.json({ id, token }, { status: 201, headers: { 'cache-control': 'no-store' } })
+    if (res.status !== 409) return proxyError(502, 'feedback_unavailable')
+  }
+  return proxyError(502, 'feedback_unavailable')
+}
+
+async function withinRateLimit(env: Env, limiter: Limiter | 'feedback', request: Request): Promise<boolean> {
+  const binding = limiter === 'auth' ? env.RL_AUTH : limiter === 'feedback' ? env.RL_FEEDBACK : env.RL_DATA
   if (!binding) return true
   const client = rateLimitClient(request.headers.get('cf-connecting-ip'))
   const { success } = await binding.limit({ key: `${limiter}:${client}` })

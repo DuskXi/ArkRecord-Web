@@ -13,6 +13,7 @@ export const NAV_ITEMS: NavigationMenuItem[] = [
   // 只有明日方舟有源石与充值记录（App.vue 按当前游戏过滤）
   { label: '源石与充值', icon: 'i-lucide-gem', to: '/ledger' },
   { label: '数据', icon: 'i-lucide-database', to: '/data' },
+  { label: '反馈', icon: 'i-lucide-message-square-text', to: '/feedback' },
   { label: '关于', icon: 'i-lucide-shield-check', to: '/about' },
 ]
 

@@ -28,8 +28,9 @@ afterEach(() => {
 
 describe('入口模块', () => {
   it('只导出处理器和 Durable Object 类（Workers 要求入口模块的命名导出都是处理器或类，否则部署后无法启动）', () => {
-    expect(Object.keys(entry).toSorted()).toEqual(['UsageStats', 'default'])
+    expect(Object.keys(entry).toSorted()).toEqual(['FeedbackStore', 'UsageStats', 'default'])
     expect(typeof entry.UsageStats).toBe('function')
+    expect(typeof entry.FeedbackStore).toBe('function')
   })
 })
 
@@ -399,5 +400,76 @@ describe('使用人数统计', () => {
     const ok = await call('/api/stats/ping', { method: 'POST', headers: sameOriginHeaders(), body: JSON.stringify(ping) })
     const summary = await call('/api/stats/summary')
     expect([ok.status, summary.status]).toEqual([204, 503])
+  })
+})
+
+function fakeFeedback(statuses: number[] = [201]) {
+  const bodies: Record<string, unknown>[] = []
+  const stub = {
+    fetch: vi.fn(async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return new Response(null, { status: statuses.shift() ?? 201 })
+    }),
+  }
+  const env = { FEEDBACK: { idFromName: () => 'id', get: () => stub } } as unknown as Env
+  return { env, bodies }
+}
+
+function postFeedback(body: unknown, env: Env, headers = sameOriginHeaders({ 'content-type': 'application/json' })) {
+  return call('/api/feedback', { method: 'POST', headers, body: JSON.stringify(body) }, env)
+}
+
+describe('站内反馈', () => {
+  const feedback = { category: 'bug', message: '同步时提示请求太频繁', contact: 'QQ 12345', appVersion: '1.0.0', game: 'arknights' }
+  const post = postFeedback
+
+  it('只接受本站页面提交的 JSON', async () => {
+    const { env, bodies } = fakeFeedback()
+    const crossSite = await post(feedback, env, sameOriginHeaders({ 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }))
+    const notJson = await post(feedback, env, sameOriginHeaders({ 'content-type': 'text/plain' }))
+    const get = await call('/api/feedback', { headers: sameOriginHeaders() }, env)
+    const other = await call('/api/feedback/FB-00000-00000', { headers: sameOriginHeaders() }, env)
+    expect([crossSite.status, notJson.status, get.status, other.status]).toEqual([403, 415, 405, 404])
+    expect(bodies).toHaveLength(0)
+  })
+
+  it('拒绝不合规的内容', async () => {
+    const { env, bodies } = fakeFeedback()
+    const statuses = await Promise.all([
+      post({ ...feedback, category: 'spam' }, env),
+      post({ ...feedback, message: '  ' }, env),
+      post({ ...feedback, message: 'x'.repeat(2001) }, env),
+      post({ ...feedback, contact: 'x'.repeat(201) }, env),
+    ])
+    expect(statuses.map((r) => r.status)).toEqual([400, 400, 400, 400])
+    expect(bodies).toHaveLength(0)
+  })
+
+  it('返回编号和凭证；服务端只收到凭证的哈希和白名单内的字段', async () => {
+    const { env, bodies } = fakeFeedback()
+    const res = await post({ ...feedback, uid: '123', token: 'leak' }, env)
+    expect(res.status).toBe(201)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    const { id, token } = (await res.json()) as { id: string; token: string }
+    expect(id).toMatch(/^FB-[0-9A-Z]{5}-[0-9A-Z]{5}$/)
+    expect(token).toMatch(/^[\w-]{43}$/)
+    const stored = bodies[0]!
+    expect(Object.keys(stored).toSorted()).toEqual(['appVersion', 'category', 'contact', 'game', 'id', 'message', 'tokenHash'])
+    expect(stored.tokenHash).toMatch(/^[0-9a-f]{64}$/)
+    expect(JSON.stringify(stored)).not.toContain(token)
+  })
+
+  it('编号重复时换一个重试', async () => {
+    const { env, bodies } = fakeFeedback([409, 201])
+    const res = await post(feedback, env)
+    expect(res.status).toBe(201)
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0]!.id).not.toBe(bodies[1]!.id)
+  })
+
+  it('受单独的限速保护', async () => {
+    const { env } = fakeFeedback()
+    const limited = { ...env, RL_FEEDBACK: { limit: async () => ({ success: false }) } } as unknown as Env
+    expect((await post(feedback, limited)).status).toBe(429)
   })
 })
