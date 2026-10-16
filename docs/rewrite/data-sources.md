@@ -65,6 +65,19 @@ CDN 方面：
 3. **运行时兜底**（浏览器直连，不经过 Worker）：torappu `char_avatar/{charId}.png` → media 按名字 md5 → 占位图。
 4. 遇到未知 poolId 时，用接口返回的 `poolName` 加上 poolId 前缀规则兜底。
 
+### 2.4 改为以 PRTS 为主（2026-10-16，容器已放行 prts.wiki）
+
+维护者要求名单和卡池尽量直接从 wiki 获取。实测：
+- PRTS（MediaWiki 1.43，CC BY-NC-SA 4.0）装有 Cargo，`chara` 表一次查询即可得到全部干员（charId、中文名、星级、职业）。当前 463 人，与 GitHub 数据一致（多出阿米娅的两种职业形态），最新到 10-09 上线的克莱门莎。PRTS 在公告后就会收录新干员，比解包数据早。
+- PRTS 没有结构化的卡池表；`weedy.prts.wiki/gacha_table.json` 有全部 457 个卡池的 ID 和 UP 名单，但没有卡池类型和开放时间。
+- PRTS 会偶尔直接断开连接，请求需要重试。
+
+实现：
+- 干员：PRTS `chara` 为主、GitHub 干员表为备，两者合并；两边都有的用游戏内名称（PRTS 为区分页面会加“(卫戍协议)”等后缀）。
+- 卡池：类型、开放时间、联动 / 限定参数仍取 GitHub 的游戏数据卡池表（只有这里有）；UP 名单取自 PRTS；GitHub 还没收录的新卡池先按 PRTS 建一条（按 poolId 前缀推断类型），开放当天就能判断 UP。
+- 头像：PRTS（torappu）为主、GitHub 资源仓库为备，下载并发 4，只下载新增的。
+- 任一来源失败不阻塞构建，只有同一项的两个来源都失败时才报错。
+
 ## 3. 终末地
 
 - 记录本身已带名称和星级，元数据需求较小。

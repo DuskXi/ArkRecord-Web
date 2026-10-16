@@ -11,12 +11,14 @@
  *       3. 森空岛的角色头像（bbs.hycdn.cn）。森空岛 wiki 的接口需要设备签名，脚本不能直接读取，
  *          图片地址取自 cmyyx/cep 每日抓取的索引（只读取其中的地址，不分发该文件）。
  *     灰机 wiki 有人机验证，脚本无法读取。图片同样转成 128×128 WebP 放在本站。
- *   - 干员表、卡池表：Kengxxiao/ArknightsGameData（GitHub）
- *   - UP 名单：weedy.prts.wiki 的服务器侧卡池详情（拉取失败时降级为“UP 未知”，不阻塞构建）
- *   - 头像：yuanyan3060/ArknightsGameResource（GitHub），失败时改用 torappu.prts.wiki；
+ *   - 明日方舟干员：PRTS 的 Cargo 表 chara 为主（公告后就会收录），Kengxxiao/ArknightsGameData 的干员表为备，两者合并
+ *   - 明日方舟卡池：类型、开放时间、联动 / 限定参数只有游戏数据的卡池表里有（Kengxxiao/ArknightsGameData）；
+ *     UP 名单取自 PRTS（weedy.prts.wiki 的服务器侧卡池详情），GitHub 还没收录的新卡池先按 PRTS 建一条
+ *   - 明日方舟头像：PRTS（torappu.prts.wiki）为主，yuanyan3060/ArknightsGameResource（GitHub）为备；
  *     统一缩放为 128×128 WebP 后放在本站同源路径下，分享图导出时不会出现跨域问题。
+ *   任一来源拉取失败都不阻塞构建，只有全部来源都失败时才报错。
  *
- * 这些请求都发生在构建阶段（本地或 GitHub Actions），线上的 Worker 不访问 PRTS。
+ * 这些请求都发生在构建阶段（本地或 GitHub Actions），按需串行或低并发，只下载新增的图片。
  */
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -25,13 +27,17 @@ import sharp from 'sharp'
 const OUT_DIR = path.resolve('public/gamedata')
 const AVATAR_DIR = path.join(OUT_DIR, 'avatars')
 const AVATAR_SIZE = 128
-const CONCURRENCY = 12
+/** 头像下载并发数（只下载新增的头像，对来源站压力很小） */
+const CONCURRENCY = 4
 
 const GAMEDATA = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata'
 const WEEDY_GACHA = 'https://weedy.prts.wiki/gacha_table.json'
+const PRTS_API = 'https://prts.wiki/api.php'
+const PRTS_PROFESSION = { 先锋: 'PIONEER', 近卫: 'WARRIOR', 重装: 'TANK', 狙击: 'SNIPER', 术师: 'CASTER', 医疗: 'MEDIC', 辅助: 'SUPPORT', 特种: 'SPECIAL' }
+/** 按顺序尝试：PRTS 为主，GitHub 资源仓库为备 */
 const AVATAR_SOURCES = [
-  (id) => `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${id}.png`,
   (id) => `https://torappu.prts.wiki/assets/char_avatar/${id}.png`,
+  (id) => `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${id}.png`,
 ]
 
 const EF_GAMEDATA = 'https://raw.githubusercontent.com/555me/beyondGameData/main/tableCfg'
@@ -58,10 +64,20 @@ const OVERRIDES_FILE = path.resolve('scripts/ef-avatar-overrides.json')
 
 const TIER = { TIER_1: 1, TIER_2: 2, TIER_3: 3, TIER_4: 4, TIER_5: 5, TIER_6: 6 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** PRTS 偶尔会直接断开连接，失败时退避重试两次 */
 async function fetchJson(url, timeoutMs = 60_000) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`)
-  return res.json()
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { 'user-agent': SCRIPT_UA }, signal: AbortSignal.timeout(timeoutMs) })
+      if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`)
+      return await res.json()
+    } catch (error) {
+      if (attempt >= 3) throw error
+      await sleep(2000 * attempt)
+    }
+  }
 }
 
 async function fetchText(url) {
@@ -140,12 +156,45 @@ function buildChars(characterTable) {
   return chars
 }
 
+/** PRTS 的 Cargo 表 chara：charId、中文名、星级（0 起）、职业（中文） */
+async function fetchPrtsChars() {
+  const chars = {}
+  for (let offset = 0; offset < 5000; offset += 500) {
+    const params = new URLSearchParams({
+      action: 'cargoquery',
+      tables: 'chara',
+      fields: 'chara.charId=id,chara.cn=cn,chara.rarity=rarity,chara.profession=prof',
+      limit: '500',
+      offset: String(offset),
+      format: 'json',
+    })
+    const data = await fetchJson(`${PRTS_API}?${params}`)
+    const rows = data.cargoquery ?? []
+    for (const { title: row } of rows) {
+      if (!row.id?.startsWith('char_') || !row.cn) continue
+      chars[row.id] = { n: row.cn, r: Number(row.rarity) + 1, p: PRTS_PROFESSION[row.prof] ?? row.prof }
+    }
+    if (rows.length < 500) break
+    await sleep(1000)
+  }
+  return chars
+}
+
+/** 与前端 akRuleType 的回退规则一致：按 poolId 前缀推断规则类型 */
+function inferRuleType(poolId) {
+  if (poolId.startsWith('BOOT')) return 'BOOT'
+  if (poolId.startsWith('CLASSIC_ATTAIN')) return 'CLASSIC_ATTAIN'
+  if (poolId.startsWith('CLASSIC_DOUBLE')) return 'CLASSIC_DOUBLE'
+  const prefix = poolId.split('_')[0] ?? ''
+  return prefix === 'NORM' ? 'NORMAL' : prefix
+}
+
 async function downloadAvatar(id) {
   const target = path.join(AVATAR_DIR, `${id}.webp`)
   if (await exists(target)) return 'cached'
   for (const source of AVATAR_SOURCES) {
     try {
-      const res = await fetch(source(id), { signal: AbortSignal.timeout(30_000) })
+      const res = await fetch(source(id), { headers: { 'user-agent': SCRIPT_UA }, signal: AbortSignal.timeout(30_000) })
       if (!res.ok) continue
       const input = Buffer.from(await res.arrayBuffer())
       await sharp(input).resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover' }).webp({ quality: 82 }).toFile(target)
@@ -188,22 +237,46 @@ async function syncArknights() {
   const metaFile = path.join(OUT_DIR, 'ak-meta.json')
   if (await isFresh(metaFile)) return
 
-  const version = await fetchText(`${GAMEDATA}/excel/data_version.txt`)
-  console.log(`游戏数据版本：${version.split('\n').join(' ')}`)
-  const [characterTable, gachaTable] = await Promise.all([
+  const [prtsChars, characterTable, gachaTable, weedy, version] = await Promise.allSettled([
+    fetchPrtsChars(),
     fetchJson(`${GAMEDATA}/excel/character_table.json`),
     fetchJson(`${GAMEDATA}/excel/gacha_table.json`),
+    fetchJson(WEEDY_GACHA),
+    fetchText(`${GAMEDATA}/excel/data_version.txt`),
   ])
-
-  let upLists = {}
-  try {
-    upLists = extractUpLists(await fetchJson(WEEDY_GACHA))
-  } catch (error) {
-    console.warn(`UP 名单拉取失败，降级为“UP 未知”：${error.message}`)
+  for (const [label, result] of [
+    ['PRTS 干员表', prtsChars],
+    ['GitHub 干员表', characterTable],
+    ['GitHub 卡池表', gachaTable],
+    ['PRTS 卡池详情（UP 名单）', weedy],
+  ]) {
+    if (result.status === 'rejected') console.warn(`${label}拉取失败：${result.reason?.message ?? result.reason}`)
   }
+  if (prtsChars.status === 'rejected' && characterTable.status === 'rejected') throw new Error('干员表的两个来源都拉取失败')
+  if (gachaTable.status === 'rejected' && weedy.status === 'rejected') throw new Error('卡池的两个来源都拉取失败')
 
-  const chars = buildChars(characterTable)
-  const pools = buildPools(gachaTable, upLists)
+  // 干员：以 PRTS 的名单为准（公告后就会收录新干员）。两边都有的干员用游戏内名称——
+  // PRTS 为区分页面会加后缀，如“预备干员-术师(卫戍协议)”
+  const repoChars = characterTable.status === 'fulfilled' ? buildChars(characterTable.value) : {}
+  const wikiChars = prtsChars.status === 'fulfilled' ? prtsChars.value : {}
+  const chars = { ...wikiChars, ...repoChars }
+  const onlyWiki = Object.keys(wikiChars).filter((id) => !repoChars[id])
+  console.log(
+    `干员：PRTS ${Object.keys(wikiChars).length}，GitHub ${Object.keys(repoChars).length}，合并后 ${Object.keys(chars).length}` +
+      `${onlyWiki.length ? `（仅 PRTS 有：${onlyWiki.map((id) => wikiChars[id].n).join('、')}）` : ''}`,
+  )
+
+  // 卡池：类型与时间来自游戏数据；UP 名单来自 PRTS；GitHub 还没收录的新卡池先按 PRTS 建一条
+  const upLists = weedy.status === 'fulfilled' ? extractUpLists(weedy.value) : {}
+  const pools = gachaTable.status === 'fulfilled' ? buildPools(gachaTable.value, upLists) : {}
+  const wikiOnlyPools = []
+  for (const entry of weedy.status === 'fulfilled' ? (weedy.value.gachaPoolClient ?? []) : []) {
+    const id = entry.gachaPoolId
+    if (!id || pools[id]) continue
+    pools[id] = { n: '', t: inferRuleType(id), o: 0, e: 0, ...(upLists[id] ? { up: upLists[id] } : {}) }
+    wikiOnlyPools.push(id)
+  }
+  console.log(`卡池：${Object.keys(pools).length}，UP 名单 ${Object.keys(upLists).length}${wikiOnlyPools.length ? `，仅 PRTS 有：${wikiOnlyPools.join('、')}` : ''}`)
 
   const ids = Object.keys(chars)
   const outcomes = await mapLimited(ids, CONCURRENCY, downloadAvatar)
@@ -212,7 +285,7 @@ async function syncArknights() {
   console.log(`头像：新增 ${count('downloaded')}，已有 ${count('cached')}，缺失 ${count('missing')}`)
 
   const meta = {
-    version: version.split('\n')[0],
+    version: version.status === 'fulfilled' ? version.value.split('\n')[0] : `prts-${new Date().toISOString().slice(0, 10)}`,
     generatedAt: new Date().toISOString(),
     upAvailable: Object.keys(upLists).length > 0,
     chars,
@@ -278,7 +351,6 @@ async function syncEndfield() {
   )
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const normalizeName = (name) => name.replaceAll('_', '').replaceAll(' ', '')
 
 /** 列出 BWIKI 上全部“XX头像.png”“XX图标.png”文件：名称 → { url, sha1 } */
