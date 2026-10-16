@@ -76,3 +76,17 @@ body {
     linear-gradient(to bottom, color-mix(in oklab, var(--ui-border) 55%, transparent) 1px, transparent 1px);
   background-size: 32px 32px;
 }
+
+/* 寻访记录：高星级的行和卡片用星级色轻微染色 */
+.rarity-tint-6 {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--color-rarity-6) 14%, transparent), transparent 70%);
+}
+.rarity-tint-5 {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--color-rarity-5) 10%, transparent), transparent 70%);
+}
+tr.rarity-tint-6 > td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-rarity-6);
+}
+tr.rarity-tint-5 > td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-rarity-5);
+}

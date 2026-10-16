@@ -17,7 +17,7 @@ const shown = computed(() => props.hits.toReversed().slice(0, props.limit))
         <CharAvatar :char-id="h.event.itemId" :name="h.event.name" :star="6" :size="88" :game="game" class="!size-full aspect-square" />
         <span
           class="absolute top-1 right-1 rounded-sm px-1 font-display text-[11px] font-semibold text-white"
-          :class="h.pity >= 75 ? 'bg-error/90' : h.pity <= 25 ? 'bg-success/90' : 'bg-black/60'"
+          :class="h.pity / hardPity >= 0.75 ? 'bg-error/90' : h.pity / hardPity <= 0.25 ? 'bg-success/90' : 'bg-black/60'"
         >
           {{ h.pity }}
         </span>

@@ -28,7 +28,7 @@ const app = useAppStore()
     </template>
 
     <template #body>
-      <div class="mx-auto w-full max-w-7xl pb-24 lg:pb-6">
+      <div class="mx-auto w-full max-w-screen-2xl pb-24 lg:pb-6">
         <UEmpty
           v-if="requireAccount && !app.activeAccount"
           icon="i-lucide-user-round-plus"

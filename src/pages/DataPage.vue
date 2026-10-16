@@ -54,8 +54,10 @@ onMounted(async () => {
 async function persist() {
   persisted.value = await requestPersistence()
   toast.add({
-    title: persisted.value ? '已开启持久化存储' : '浏览器没有允许持久化',
-    description: persisted.value ? '浏览器不会在空间不足时自动清理本站数据。' : '可以把本站加入书签或安装为应用后再试。',
+    title: persisted.value ? '已开启持久化存储' : '浏览器暂时没有批准',
+    description: persisted.value
+      ? '浏览器不会再自动清理本站数据。'
+      : 'Chrome、Edge 不会弹窗询问，而是按你对本站的使用情况自动决定（例如加入书签、安装为应用、经常访问），过段时间可以再试。',
     color: persisted.value ? 'success' : 'warning',
   })
 }
@@ -288,10 +290,13 @@ async function demo() {
         <div class="flex flex-wrap items-center gap-3 rounded-(--ui-radius) border border-default p-4">
           <UIcon :name="persisted ? 'i-lucide-shield-check' : 'i-lucide-shield-alert'" class="size-5" :class="persisted ? 'text-success' : 'text-warning'" />
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-highlighted">{{ persisted ? '持久化存储已开启' : '未开启持久化存储' }}</p>
-            <p class="text-xs text-muted">所有数据只保存在这个浏览器里{{ usage ? `，当前占用 ${usage}` : '' }}。清理浏览器数据会删除它们，记得定期导出备份。</p>
+            <p class="text-sm font-medium text-highlighted">{{ persisted ? '持久化存储已开启' : '未开启持久化存储' }}{{ usage ? ` · 已占用 ${usage}` : '' }}</p>
+            <p class="text-xs leading-relaxed text-muted">
+              所有记录只保存在这个浏览器里。浏览器默认把网站数据当作可以清理的缓存，磁盘空间紧张时可能自动删除（Safari 在长期未访问时也会清理）。
+              开启后浏览器会保留本站数据、不再自动清理。手动清除浏览数据仍然会删除它们，请定期导出备份。
+            </p>
           </div>
-          <UButton v-if="!persisted" label="开启" size="sm" @click="persist" />
+          <UButton v-if="persisted === false" label="开启" size="sm" @click="persist" />
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
           <UButton label="载入演示数据" icon="i-lucide-flask-conical" color="neutral" variant="outline" size="sm" :loading="demoLoading" @click="demo" />

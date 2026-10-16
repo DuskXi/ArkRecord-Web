@@ -2,6 +2,7 @@
 import { BarChart, HeatmapChart, LineChart, PieChart } from 'echarts/charts'
 import {
   CalendarComponent,
+  DataZoomComponent,
   GridComponent,
   LegendComponent,
   MarkLineComponent,
@@ -20,6 +21,7 @@ use([
   LineChart,
   PieChart,
   CalendarComponent,
+  DataZoomComponent,
   GridComponent,
   LegendComponent,
   MarkLineComponent,

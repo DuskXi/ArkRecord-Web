@@ -8,6 +8,7 @@ export const router = createRouter({
     { path: '/history', name: 'history', component: () => import('./pages/HistoryPage.vue') },
     { path: '/banners', name: 'banners', component: () => import('./pages/BannersPage.vue') },
     { path: '/analysis', name: 'analysis', component: () => import('./pages/AnalysisPage.vue') },
+    { path: '/stats', name: 'stats', component: () => import('./pages/StatsPage.vue') },
     { path: '/timeline', name: 'timeline', component: () => import('./pages/TimelinePage.vue') },
     { path: '/data', name: 'data', component: () => import('./pages/DataPage.vue') },
     { path: '/about', name: 'about', component: () => import('./pages/AboutPage.vue') },

@@ -77,6 +77,26 @@ CDN 方面：
 
   第一版先用“文字 + 星级色块 + 官方卡池图”，图标作为后续优化。若要在 canvas 中绘制官方卡池图，需要经 Worker 转发。
 
+### 3.1 三个终末地 wiki 的对比（2026-10-16）
+
+维护者给的候选：森空岛 wiki、BWIKI、灰机 wiki，原则是“谁宽松、谁全面就用谁”。云端容器的网络策略拦截了这三个域名，下表来自阅读第三方开源项目的代码和数据文件，**接口行为未亲自请求验证**。
+
+| | 森空岛 wiki | BWIKI（wiki.biligame.com/zmd） | 灰机 wiki |
+|---|---|---|---|
+| 访问方式 | 数据接口需要签名（设备指纹 + token 刷新 + HMAC），否则 401；自动化抓取很可能违反用户协议 | 匿名 MediaWiki `api.php`，有 WAF | `api.php` 需要申请 `X-authkey` |
+| 角色 / 武器 | 有，`itemId` 是数字，不是游戏 ID | 有名称、星级，没有游戏 ID | 未找到抓取它的项目 |
+| 卡池时间 | 有时间戳（同样需要签名） | “寻访一览”页有时间段和 UP | 未知 |
+| 方形头像 | `bbs.hycdn.cn`（下载不需要请求头） | `patchwiki.biligame.com` 上的头像与武器图标 | 未知 |
+| 许可 | 未找到开放许可 | CC BY-NC-SA（按同平台惯例推断，待核实） | CC BY-NC-SA（推断） |
+
+**最宽松、最全的 ID 来源其实是官方 `api/content`**：每个卡池的 `all[]` 是 `{id: "chr_…", name, rarity}`，GET 请求、不需要 token。构建脚本在 GitHub Actions 里直接请求即可（服务端没有 CORS 限制），不经过 Worker。旧卡池会从接口下线，所以结果要追加保存。
+
+结论（待实现）：
+- ID → 名称 / 星级：官方 `api/content`，卡池 ID 取自游戏表（`GachaCharPoolTable.json` / `GachaWeaponPoolTable.json`）与用户记录中出现过的卡池。
+- 头像与武器图标：BWIKI（匿名 API，按中文名与上面的 ID 表关联），构建时下载并转成同源的 128×128 WebP，与明日方舟头像相同。BWIKI 被 WAF 拦截时退回到维护一张 `bbs.hycdn.cn` 头像地址表。
+- 卡池时间：BWIKI“寻访一览”，加一份按官方公告手工维护的覆盖文件。
+- 森空岛（需要签名）、灰机（需要 key）不采用。游戏美术的版权都归鹰角，页面上注明来源与版权。
+
 ## 4. Worker 只转发这些
 
 - `as.hypergryph.com`（grant）

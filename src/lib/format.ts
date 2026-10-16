@@ -8,10 +8,15 @@ const dateTime = new Intl.DateTimeFormat('zh-CN', {
 })
 const date = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
 const number = new Intl.NumberFormat('zh-CN')
+const time = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const dayHeader = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
 
 export const formatDateTime = (ts: number) => dateTime.format(ts)
 export const formatDate = (ts: number) => date.format(ts)
 export const formatNumber = (n: number) => number.format(n)
+export const formatTime = (ts: number) => time.format(ts)
+/** 例如“2026年10月9日周五” */
+export const formatDayHeader = (ts: number) => dayHeader.format(ts)
 export const formatPercent = (x: number, digits = 1) => `${(x * 100).toFixed(digits)}%`
 
 /** 用于文字的星级色：与正文高亮色混合，保证在浅色、深色背景下都有足够对比度 */
