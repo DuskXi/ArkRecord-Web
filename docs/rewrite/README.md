@@ -68,7 +68,7 @@
 | 域名 | ark-next.kaltsit.dev | ark.kaltsit.dev |
 | Worker | arkrecord-next | arkrecord |
 | 配置 | `wrangler.jsonc` 顶层 | `wrangler.jsonc` 的 `env.production`（构建时 `CLOUDFLARE_ENV=production`） |
-| 部署 | `deploy-preview.yml`：推送开发分支 | `deploy-production.yml`：推送 `v*` 标签、推送 master、每 3 小时更新游戏数据（定时任务只在默认分支上生效）、手动运行 |
+| 部署 | `deploy-preview.yml`：推送开发分支 | `deploy-production.yml`：推送 `v*` 标签、推送 master、开发分支上提交说明含 `[deploy production]` 的推送、每 3 小时更新游戏数据（定时任务只在默认分支上生效）、手动运行 |
 
 两个 Worker 的限速计数和使用人数统计互不影响。旧版网页在 `/legacy/`，由 `scripts/build-legacy.sh` 从 master 上的旧代码构建，产物提交在 `public/legacy/`。
 
