@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import CalendarHeatmap from '@/components/charts/CalendarHeatmap.vue'
+import { computed, defineAsyncComponent } from 'vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import PityCard from '@/components/ui/PityCard.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
@@ -10,6 +9,9 @@ import { formatDate, formatNumber, formatPercent } from '@/lib/format'
 import { luckLabel } from '@/lib/stats/analyze'
 import { useAppStore } from '@/stores/app'
 import { useRecordsStore } from '@/stores/records'
+
+// 图表库较大，异步加载，不阻塞首屏
+const CalendarHeatmap = defineAsyncComponent(() => import('@/components/charts/CalendarHeatmap.vue'))
 
 const app = useAppStore()
 const records = useRecordsStore()

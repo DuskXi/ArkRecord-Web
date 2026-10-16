@@ -23,6 +23,31 @@
 | 9 | Worker 只为本站服务 | 只接受同源请求，不返回 CORS 头，拒绝预检；用 Cloudflare 限速绑定加前端限速防滥用（见 design.md 第 1 节） |
 | 10 | 部署走 GitHub Actions | 部署用的 Cloudflare token 存在 GitHub 仓库级 Secrets；AI 助手只用只读方式访问 Cloudflare API |
 
+## 进度（2026-10-16）
+
+- [x] 阶段 0：新工程、Worker（同源检查 + 限速 + 白名单）、CI、测试环境部署工作流
+- [x] 阶段 1：明日方舟新接口与增量同步、数据模型、旧数据迁移、各页面
+- [x] 阶段 2（初版）：终末地国服同步与保底规则（待真实账号测试）
+- [x] 阶段 3（部分）：分析、时间线、分享卡片
+- [ ] 源石 / 充值（等待接口抓包）
+- [ ] 真实账号端到端测试（维护者在测试域名进行）
+- [ ] 阶段 4：切换正式域名
+
+## 部署所需的密钥
+
+部署由 GitHub Actions 完成（`.github/workflows/deploy-preview.yml`），需要在 GitHub 仓库 Settings → Secrets and variables → Actions 中添加**仓库级** Secrets：
+
+| 名称 | 内容 |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | 部署专用的 Cloudflare API token（见下） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账号 ID（后台右侧栏或 URL 中可见） |
+
+部署 token 的创建：Cloudflare 后台 → My Profile → API Tokens → Create Token → 模板 **Edit Cloudflare Workers**，然后：
+- Account Resources：只选自己的账号
+- Zone Resources：只选 `kaltsit.dev`
+- 可以删掉模板里用不到的权限：Workers KV Storage、Workers R2 Storage、Workers Tail
+- 保留：Account Settings Read、Workers Scripts Edit、Workers Routes Edit（创建自定义域名 `ark-next.kaltsit.dev` 需要）、User Details Read、Memberships Read
+
 ## 分阶段计划
 
 0. **脚手架**：Vue 3.5 + Vite 8 + TS 6 + Nuxt UI v4 工程；Worker 转发骨架（白名单）；CI（lint / 类型检查 / 测试 / 构建）；元数据与头像的构建脚本；部署到预览地址，不影响线上。

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import worker, { type Env } from './index'
+import * as entry from './index'
+import worker from './index'
+import type { Env } from './proxy'
 
 const SELF = 'https://ark-next.kaltsit.dev'
 
@@ -19,6 +21,12 @@ function mockUpstream(response: Response = new Response('{"code":0}', { headers:
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe('入口模块', () => {
+  it('只有默认导出（Workers 要求入口模块的命名导出都是处理器，否则部署后无法启动）', () => {
+    expect(Object.keys(entry)).toEqual(['default'])
+  })
 })
 
 describe('只服务本站', () => {
