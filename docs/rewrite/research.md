@@ -122,6 +122,13 @@ POST /user/auth/v1/token_by_scan_code {scanCode}
 | `/api/record/{char\|weapon}/rerun-counts` | — | 重构池服务器端累计抽数 |
 | `/api/content` | `pool_id`（**无需 token**） | 卡池详情：`up6_name`、`up6_image`、`all[{id,name,rarity}]` 等 |
 
+- **`/api/content` 已实测**（2026-10-16，项目维护者在浏览器中直接打开）：
+  - `GET https://ef-webview.hypergryph.com/api/content?lang=zh-cn&pool_id=standard&server_id=1` 无需 token，返回 `code: 0`。样本见 [fixtures/ef-api-content-standard.json](fixtures/ef-api-content-standard.json)。
+  - `pool_id=standard` 对应“基础寻访”，但 `pool_type` 为 `"normal"`，规则映射以 `pool_id` 为准。
+  - `all[]` 给出 `{id: "chr_0025_ardelia", name, rarity(4–6)}`，可作为角色名录来源。
+  - 常驻池的 `up6_image`、`up6_avatar`、`rotate_list` 均为空。
+  - `data.timezone` 为 8。
+  - 浏览器跨域请求（CORS）是否被允许尚未测试。
 - 翻页：首次不带 `seq_id`，之后取上一页最后一条的 `seqId`，直到 `hasMore` 为假；记录按时间倒序返回。
 - 角色记录：`{poolId, poolName, charId, charName, rarity(4–6), isFree, isNew, gachaTs(毫秒字符串), seqId, kind, poolVersion}`。
 - 武器记录：`{poolId, poolName, weaponId, weaponName, weaponType, rarity, isNew, gachaTs, seqId, poolType, kind}`。
