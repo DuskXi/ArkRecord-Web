@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import { GAME_LABEL } from '@/lib/types'
+import DemoBanner from './DemoBanner.vue'
 import ScopeSwitch from './ScopeSwitch.vue'
 import SyncButton from './SyncButton.vue'
 
@@ -32,6 +33,7 @@ const app = useAppStore()
           <SyncButton v-if="sync && app.activeAccount" />
         </template>
       </UDashboardNavbar>
+      <DemoBanner />
     </template>
 
     <template #body>
