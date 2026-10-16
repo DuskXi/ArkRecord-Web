@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { reactive } from 'vue'
 import { buildExport, importExportFile, importLegacyAccounts } from './archive'
 import { db } from './db'
 import { isLegacyExport, parseLegacyExport, readLegacyLocalStorage } from './legacy'
@@ -85,6 +86,13 @@ describe('迁移与合并', () => {
     // 重名时取先出现的干员
     expect(pulls[1]!.charId).toBe('char_512_aprot')
     expect(pulls[2]).toMatchObject({ charId: null, poolId: null })
+  })
+
+  it('传入 Vue 响应式数据也能写入 IndexedDB（代理对象不能被结构化克隆）', async () => {
+    const legacy = reactive(readLegacyLocalStorage({ getItem: () => JSON.stringify(legacyDataSet) }))
+    const summary = await importLegacyAccounts(legacy, meta)
+    expect(summary.ledger).toBe(2)
+    expect(await db.akLedger.count()).toBe(2)
   })
 
   it('重复导入不会产生重复记录', async () => {

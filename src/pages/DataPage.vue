@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { useLiveQuery } from '@/composables/useLiveQuery'
@@ -63,7 +63,8 @@ async function persist() {
 }
 
 // ── 导入 ──
-const pendingLegacy = ref<LegacyExport | null>(null)
+// shallowRef：数据要原样写入 IndexedDB，深层响应式代理无法被结构化克隆
+const pendingLegacy = shallowRef<LegacyExport | null>(null)
 const anonymousTarget = ref<string>()
 const legacyLocal = computed(() => readLegacyLocalStorage(localStorage))
 
@@ -221,7 +222,7 @@ async function demo() {
           <UFileUpload
             accept=".json,application/json"
             label="拖入或选择 JSON 文件"
-            description="支持新版导出文件，以及旧版 ArkRecord 导出的数据"
+            description="新版导出文件，或旧版 ArkRecord 导出的 ArkRecord_data_*.json"
             icon="i-lucide-file-json"
             class="min-h-40"
             :model-value="null"
@@ -239,6 +240,7 @@ async function demo() {
             />
             <div v-if="pendingLegacy" class="space-y-2 rounded-(--ui-radius) border border-default p-4">
               <p class="text-sm font-medium text-highlighted">这份旧数据没有记录 uid，请选择要导入到哪个账号</p>
+              <p v-if="!arknightsAccounts.length" class="text-xs text-warning">还没有明日方舟账号：请先在上方“添加账号”，再重新选择这个文件。</p>
               <USelect
                 v-model="anonymousTarget"
                 :items="arknightsAccounts.map((a) => ({ label: `${a.nickName}（${a.uid}）`, value: a.id }))"
@@ -250,7 +252,12 @@ async function demo() {
                 <UButton label="导入" :disabled="!anonymousTarget" @click="importAnonymous" />
               </div>
             </div>
-            <p class="text-xs text-muted">导入之前会自动保存一份快照，导入只会新增记录，不会覆盖已有记录。</p>
+            <ul class="list-disc space-y-1 pl-5 text-xs leading-relaxed text-muted">
+              <li><b class="text-highlighted">新版导出</b>：ArkRecord-*.json，包含两个游戏的全部账号。</li>
+              <li><b class="text-highlighted">旧版导出</b>：旧版“数据管理”导出的 ArkRecord_data_*.json，按 UID 自动导入到对应账号（没有的会自动创建），包括源石和充值记录。</li>
+              <li><b class="text-highlighted">更早的旧版导出</b>：只区分官服 / B 服、没有 UID，导入时需要选择导入到哪个明日方舟账号。</li>
+              <li>导入之前会自动保存一份快照；导入只会新增记录，不会覆盖或重复已有记录。</li>
+            </ul>
           </div>
         </div>
       </section>

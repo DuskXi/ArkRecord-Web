@@ -4,7 +4,7 @@
 
 鹰角官方只能查询最近 90 天的寻访记录，ArkRecord 会把每次同步到的记录追加保存在你的浏览器里，长期积累，并在本地完成所有统计分析。
 
-> 当前分支是 2.0 的全新重写版本（测试中），旧版代码保留在 `master` 分支。重构调研与设计见 [docs/rewrite](docs/rewrite/README.md)。
+> 当前分支是全新重写的 1.0 版本（测试中，旧版为 v0.1.0.1_alpha），旧版代码保留在 `master` 分支。重构调研与设计见 [docs/rewrite](docs/rewrite/README.md)。
 
 ## 功能
 

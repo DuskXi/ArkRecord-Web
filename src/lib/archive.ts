@@ -11,6 +11,7 @@ import type { AkMeta } from './meta'
 import { mergeAkPulls } from './sync/arknights'
 import type { Account, AkLedgerEntry, AkPull, EfPull, Game } from './types'
 
+/** 导出文件的格式版本（与程序版本号无关；导入时据此识别新版导出文件） */
 export const EXPORT_VERSION = 'v2.0'
 
 export interface ExportFile {
@@ -92,10 +93,15 @@ export interface ImportSummary {
 export async function importLegacyAccounts(
   legacy: LegacyAccount[],
   meta: AkMeta,
-  options: { rememberTokens?: boolean } = {},
+  options: {
+    rememberTokens?: boolean
+    /** 每个账号开始导入前调用（index 从 0 开始），用于显示进度 */
+    onProgress?: (index: number, item: LegacyAccount) => void
+  } = {},
 ): Promise<ImportSummary> {
   const summary: ImportSummary = { accounts: 0, pulls: 0, ledger: 0 }
-  for (const item of legacy) {
+  for (const [index, item] of legacy.entries()) {
+    options.onProgress?.(index, item)
     const account = await ensureAccount('arknights', item.uid, item.nickName, {
       channelName: item.channel === 'bilibili' ? 'bilibili服' : item.channel === 'official' ? '官服' : undefined,
       isOfficial: item.channel === 'official',
