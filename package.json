@@ -1,43 +1,54 @@
 {
   "name": "arkrecord",
-  "version": "v0.1.0.1_alpha",
-  "description": "明日方舟抽卡记录统计插件",
-  "productName": "ArkRecord",
-  "author": "DuskXi <84715902+DuskXi@users.noreply.github.com>",
+  "version": "1.0.0",
+  "description": "明日方舟 / 终末地 寻访记录本地存档与分析",
   "private": true,
+  "type": "module",
+  "author": "DuskXi <84715902+DuskXi@users.noreply.github.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
-    "lint": "eslint --ext .js,.vue ./",
-    "format": "prettier --write \"**/*.{js,vue,scss,html,md,json}\" --ignore-path .gitignore",
-    "test": "echo \"No test specified\" && exit 0"
+    "dev": "vite",
+    "build": "node scripts/sync-gamedata.mjs && vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "gamedata": "node scripts/sync-gamedata.mjs",
+    "typecheck": "vue-tsc -b",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "deploy:preview": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types worker/worker-configuration.d.ts"
   },
   "dependencies": {
-    "@quasar/extras": "^1.15.1",
-    "@quasar/quasar-ui-qmarkdown": "^1.4.4",
-    "apexcharts": "^3.35.3",
-    "axios": "^0.27.2",
-    "cheerio": "^1.0.0-rc.12",
-    "crypto-js": "^4.1.1",
-    "events": "^3.3.0",
-    "html2canvas": "^1.4.1",
-    "quasar": "^2.6.0",
-    "uuid": "^8.3.2",
-    "vue": "3",
-    "vue-json-viewer": "^3.0.4",
-    "vue-router": "^4.0.0",
-    "vue3-apexcharts": "^1.4.1",
-    "vue3-markdown-it": "^1.0.10"
+    "@fontsource-variable/oxanium": "^5.3.0",
+    "@nuxt/ui": "^4.12.0",
+    "@vueuse/core": "^14.4.0",
+    "@zumer/snapdom": "^3.3.4",
+    "dexie": "^4.4.6",
+    "echarts": "^6.1.0",
+    "misans": "^5.0.0",
+    "pinia": "^4.1.0",
+    "tailwindcss": "^4.3.3",
+    "vue": "^3.5.44",
+    "vue-echarts": "^8.3.2",
+    "vue-router": "^5.4.0"
   },
   "devDependencies": {
-    "@quasar/app-vite": "^1.0.6",
-    "autoprefixer": "^10.4.2",
-    "eslint": "^8.10.0",
-    "eslint-config-prettier": "^8.1.0",
-    "eslint-plugin-vue": "^8.5.0",
-    "prettier": "^2.5.1"
-  },
-  "engines": {
-    "node": "^18 || ^16 || ^14.19",
-    "npm": ">= 6.13.4",
-    "yarn": ">= 1.21.1"
+    "@cloudflare/vite-plugin": "^1.64.0",
+    "@iconify-json/lucide": "^1.2.144",
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vue/test-utils": "^2.5.1",
+    "fake-indexeddb": "^6.0.0",
+    "happy-dom": "^21.0.3",
+    "oxlint": "^1.88.0",
+    "sharp": "^0.35.5",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5",
+    "vue-tsc": "^3.3.13",
+    "wrangler": "^4.151.0"
   }
 }

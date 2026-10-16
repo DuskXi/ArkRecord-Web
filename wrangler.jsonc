@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // 顶层是测试环境（ark-next.kaltsit.dev，Worker arkrecord-next）；正式环境见下方 env.production。
+  // 正式环境只由 .github/workflows/deploy-production.yml 部署（构建时设置 CLOUDFLARE_ENV=production）。
+  "name": "arkrecord-next",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "ark-next.kaltsit.dev", "custom_domain": true }],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    // 只有 /api/* 会执行 Worker 代码，其余静态资源直接由 Cloudflare 返回（免费、不计请求数）。
+    "run_worker_first": ["/api/*"]
+  },
+  // 关闭 Workers Logs：转发请求的 URL 中可能带有用户的游戏 token（鹰角接口要求放在查询参数里），
+  // 不能让平台记录它们。
+  "observability": { "enabled": false },
+  "ratelimits": [
+    // 认证类接口（授权、绑定查询、换取 token、角色登录），按客户端 IP 计数。
+    { "name": "RL_AUTH", "namespace_id": "21001", "simple": { "limit": 20, "period": 60 } },
+    // 数据类接口（寻访记录、卡池信息），按客户端 IP 计数。前端同步时会主动放慢节奏，正常使用不会触发。
+    { "name": "RL_DATA", "namespace_id": "21002", "simple": { "limit": 120, "period": 60 } }
+  ],
+  // 匿名使用人数统计：全站一个 Durable Object，SQLite 存储，只保存计数器（见 worker/stats.ts）。
+  "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "UsageStats" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UsageStats"] }],
+
+  "env": {
+    // 正式环境：ark.kaltsit.dev。与测试环境是两个独立的 Worker，限速计数和使用人数统计互不影响。
+    "production": {
+      "name": "arkrecord",
+      "routes": [{ "pattern": "ark.kaltsit.dev", "custom_domain": true }],
+      "ratelimits": [
+        { "name": "RL_AUTH", "namespace_id": "21101", "simple": { "limit": 20, "period": 60 } },
+        { "name": "RL_DATA", "namespace_id": "21102", "simple": { "limit": 120, "period": 60 } }
+      ],
+      "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "UsageStats" }] },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UsageStats"] }]
+    }
+  }
+}

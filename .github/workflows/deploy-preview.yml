@@ -1,0 +1,58 @@
+# 部署到测试域名 ark-next.kaltsit.dev（Worker arkrecord-next）。正式域名见 deploy-production.yml。
+name: Deploy preview
+
+on:
+  push:
+    branches: [claude/laughing-mccarthy-yfzd6y]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-preview
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            public/gamedata/avatars
+            public/gamedata/ef-avatars
+          key: avatars-${{ github.run_id }}
+          restore-keys: avatars-
+
+      - name: 拉取游戏数据与头像
+        run: node scripts/sync-gamedata.mjs --force
+      - name: 检查
+        run: |
+          npx oxlint
+          npx vue-tsc -b
+          npx vitest run
+      - name: 构建
+        run: npx vite build
+
+      - name: 尚未配置 Cloudflare 密钥
+        if: env.HAS_CF_TOKEN != 'true'
+        run: echo "::notice::未配置 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，跳过部署（见 docs/rewrite/README.md）"
+
+      # 构建时没有设置 CLOUDFLARE_ENV，使用 wrangler.jsonc 顶层的测试环境配置
+      - name: 部署到 Cloudflare Workers（测试环境）
+        if: env.HAS_CF_TOKEN == 'true'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
