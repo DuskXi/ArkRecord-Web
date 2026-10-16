@@ -31,7 +31,7 @@ function ev(star: number, extra: Partial<PullEvent> = {}): PullEvent {
 
 const hit = (e: PullEvent, pity = 30): SixStarHit => ({ event: e, pity, poolPull: pity })
 
-describe('出红抽数分布', () => {
+describe('出 6★ 的抽数分布', () => {
   it('按区间统计你的 6★，理论期望个数之和等于 6★ 个数', () => {
     const bins = binPity([1, 5, 6, 60, 99], DIST, 99, 5)
     expect(bins.labels[0]).toBe('1–5')
@@ -89,7 +89,7 @@ describe('歪不歪', () => {
 })
 
 describe('欧非走势', () => {
-  it('理论累计 6★ 等于每一抽当时出红概率之和；第 99 抽必出', () => {
+  it('理论累计 6★ 等于每一抽当时出 6★ 的概率之和；第 99 抽必出', () => {
     const events = [...Array.from({ length: 98 }, () => ev(3)), ev(6)]
     const points = luckTrend(events, DIST)
     expect(points).toHaveLength(99)

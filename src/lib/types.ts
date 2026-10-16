@@ -1,5 +1,11 @@
 export type Game = 'arknights' | 'endfield'
 
+/** 抽到 6★ 的叫法：明日方舟的 6★ 是金色，叫“出金”；终末地的 6★ 是红色，叫“出红” */
+export const SIX_TERM: Record<Game, string> = {
+  arknights: '出金',
+  endfield: '出红',
+}
+
 export const GAME_LABEL: Record<Game, string> = {
   arknights: '明日方舟',
   endfield: '终末地',

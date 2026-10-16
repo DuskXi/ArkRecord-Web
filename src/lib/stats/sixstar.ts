@@ -1,12 +1,12 @@
 /**
- * 出红（6★）分析：抽数分布、歪不歪的概率分布、欧非走势。全部在本地精确计算。
+ * 6★ 分析（明日方舟叫出金，终末地叫出红）：抽数分布、歪不歪的概率分布、欧非走势。全部在本地精确计算。
  */
 import { ruleLabel } from '../labels'
 import type { SixStarHit } from './analyze'
 import type { PullEvent } from './events'
 import type { Distribution } from './pity'
 
-// ───────────────────────── 出红抽数分布 ─────────────────────────
+// ───────────────────────── 出 6★ 的抽数分布 ─────────────────────────
 
 export interface PityBins {
   labels: string[]
@@ -139,7 +139,7 @@ export interface TrendPoint {
 }
 
 /**
- * 由分布反推每一抽的出红概率：h(n) = P(T = n) / P(T ≥ n)。
+ * 由分布反推每一抽出 6★ 的概率：h(n) = P(T = n) / P(T ≥ n)。
  * P(T ≥ n) 从尾部往前累加：用 1 减去已出概率在抽数很深时会因精度丢失而严重失真。
  */
 function hazards(dist: Distribution): number[] {

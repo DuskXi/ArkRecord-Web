@@ -7,16 +7,19 @@ import { axisStyle, useChartTheme } from '@/composables/useChartTheme'
 import { formatDateTime, formatPercent } from '@/lib/format'
 import { quantile } from '@/lib/stats/pity'
 import { analyzeUp, binPity, luckTrend } from '@/lib/stats/sixstar'
+import { SIX_TERM } from '@/lib/types'
 import { useRecordsStore } from '@/stores/records'
 
 const records = useRecordsStore()
+/** 明日方舟叫“出金”，终末地叫“出红” */
+const term = computed(() => SIX_TERM[records.game])
 const palette = useChartTheme()
 const dist = computed(() => records.model.dist)
 const intervals = computed(() => records.analysis.mainIntervals)
 
 const pct = (xs: number[]) => xs.map((x) => Number((x * 100).toFixed(1)))
 
-// ── 出红抽数分布 ──
+// ── 出 6★ 的抽数分布 ──
 const bins = computed(() => binPity(intervals.value, dist.value, records.model.hardPity, 5))
 const median = computed(() => {
   const sorted = intervals.value.toSorted((a, b) => a - b)
@@ -175,7 +178,7 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
     <p v-if="!intervals.length" class="py-10 text-center text-sm text-muted">还没有 6★ 记录</p>
     <template v-else>
       <section>
-        <SectionHeader eyebrow="PITY DISTRIBUTION" title="出红抽数分布" />
+        <SectionHeader eyebrow="PITY DISTRIBUTION" :title="`${term}抽数分布`" />
         <div class="grid gap-3 lg:grid-cols-4">
           <div class="space-y-3 lg:col-span-1">
             <div class="rounded-(--ui-radius) border border-default p-4">
@@ -190,14 +193,14 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
             </div>
           </div>
           <div class="rounded-(--ui-radius) border border-default p-4 lg:col-span-3">
-            <p class="text-xs text-muted">每 5 抽一个区间。虚线是累计比例（右轴）：曲线越靠左上，出红越早。</p>
+            <p class="text-xs text-muted">每 5 抽一个区间。虚线是累计比例（右轴）：曲线越靠左上，{{ term }}越早。</p>
             <EChart :option="pityOption" height="260px" />
           </div>
         </div>
       </section>
 
       <section>
-        <SectionHeader eyebrow="UP OR NOT" title="出红歪不歪" />
+        <SectionHeader eyebrow="UP OR NOT" :title="`${term}歪不歪`" />
         <p v-if="!up.total" class="rounded-(--ui-radius) border border-default p-4 text-sm text-muted">
           {{ records.weaponScope ? '武器池的 UP 概率没有可靠来源，暂不计算。' : '没有可以判断是否为 UP 的 6★（需要卡池的 UP 名单）。' }}
         </p>

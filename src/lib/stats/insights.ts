@@ -66,9 +66,9 @@ export interface Insights {
   luckiestDay: { day: string; pulls: number; six: number } | null
   /** [星期一..星期日][0..23 时] 的抽数，北京时间 */
   hourWeek: number[][]
-  /** 同上，出红（6★）次数 */
+  /** 同上，出 6★ 的次数 */
   sixHourWeek: number[][]
-  /** 每个小时的抽数与出红数（只计入保底的抽数），用于看各时段出红率 */
+  /** 每个小时的抽数与出 6★ 数（只计入保底的抽数），用于看各时段出 6★ 的比例 */
   byHour: { pulls: number; six: number }[]
   collection: CollectionEntry[]
   /** 按时间顺序的 6★ 与截至当时的平均抽数 */

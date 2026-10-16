@@ -10,6 +10,10 @@ export interface AkCharMeta {
   r: number
   /** 职业 */
   p: string
+  /** 获得方式，如“招募寻访”“活动获得”“凭证交易所”（只有 GitHub 的干员表里有） */
+  o?: string
+  /** 1 表示不能作为普通干员获得（预备干员、特殊玩法的临时干员等） */
+  x?: 1
 }
 
 export interface AkPoolMeta {

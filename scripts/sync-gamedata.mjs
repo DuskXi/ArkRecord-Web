@@ -154,6 +154,10 @@ function buildChars(characterTable) {
   for (const [id, c] of Object.entries(characterTable)) {
     if (!id.startsWith('char_')) continue
     chars[id] = { n: c.name, r: rarityOf(c.rarity), p: c.profession }
+    // 获得方式（招募寻访 / 活动获得 / 凭证交易所 / 集成战略获得 …），用于图鉴区分能不能从寻访中抽到
+    if (c.itemObtainApproach) chars[id].o = c.itemObtainApproach
+    // 特殊玩法里的干员（预备干员、集成战略的临时干员等），不出现在图鉴里
+    if (c.isNotObtainable) chars[id].x = 1
   }
   return chars
 }

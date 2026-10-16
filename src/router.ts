@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: '/analysis', name: 'analysis', component: () => import('./pages/AnalysisPage.vue') },
     { path: '/stats', name: 'stats', component: () => import('./pages/StatsPage.vue') },
     { path: '/timeline', name: 'timeline', component: () => import('./pages/TimelinePage.vue') },
+    { path: '/codex', name: 'codex', component: () => import('./pages/CodexPage.vue') },
     { path: '/ledger', name: 'ledger', component: () => import('./pages/LedgerPage.vue') },
     { path: '/data', name: 'data', component: () => import('./pages/DataPage.vue') },
     { path: '/about', name: 'about', component: () => import('./pages/AboutPage.vue') },
