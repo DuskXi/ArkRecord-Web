@@ -8,7 +8,7 @@ import { db } from './db'
 import type { LegacyAccount } from './legacy'
 import { legacyLedger, legacyToAkPulls } from './legacy'
 import type { AkMeta } from './meta'
-import { mergeAkPulls } from './sync/arknights'
+import { coveredByModern, groupBySecond, LEGACY_MATCH_SECONDS, mergeAkPulls } from './sync/arknights'
 import type { Account, AkLedgerEntry, AkPull, EfPull, Game } from './types'
 
 /** 导出文件的格式版本（与程序版本号无关；导入时据此识别新版导出文件） */
@@ -65,23 +65,37 @@ async function ensureAccount(game: Game, uid: string, nickName: string, extra: P
 }
 
 /** 写入旧版数据：同一秒内已有接口数据时跳过（接口数据更完整） */
+/** 写入旧版数据：已有接口数据的寻访（见 coveredByModern）和已存在的记录都跳过，只新增 */
 export async function mergeLegacyPulls(accountId: string, pulls: AkPull[]): Promise<number> {
   if (!pulls.length) return 0
   let added = 0
   await db.transaction('rw', db.akPulls, async () => {
-    const seconds = [...new Set(pulls.map((p) => p.tsSec))]
-    const covered = new Set(
-      (await db.akPulls.where('[accountId+tsSec]').anyOf(seconds.map((s) => [accountId, s])).toArray())
+    const batches = groupBySecond(pulls)
+    const seconds = [...batches.keys()]
+    const lo = Math.min(...seconds) - LEGACY_MATCH_SECONDS
+    const hi = Math.max(...seconds) + LEGACY_MATCH_SECONDS
+    const modern = groupBySecond(
+      await db.akPulls
+        .where('[accountId+tsSec]')
+        .between([accountId, lo], [accountId, hi], true, true)
         .filter((p) => p.source !== 'legacy')
-        .map((p) => p.tsSec),
+        .toArray(),
     )
-    const fresh = pulls.filter((p) => !covered.has(p.tsSec))
+    const fresh = [...batches].flatMap(([second, batch]) => (coveredByModern(second, batch, modern) ? [] : batch))
     const existing = new Set((await db.akPulls.bulkGet(fresh.map((p) => [accountId, p.key]))).filter(Boolean).map((p) => p!.key))
     const toAdd = fresh.filter((p) => !existing.has(p.key))
     await db.akPulls.bulkPut(toAdd)
     added = toAdd.length
   })
   return added
+}
+
+/** 写入源石 / 充值记录，返回新增的条数（已有的记录按主键覆盖，不重复） */
+export async function mergeLedger(entries: AkLedgerEntry[]): Promise<number> {
+  if (!entries.length) return 0
+  const existing = await db.akLedger.bulkGet(entries.map((e): [string, string, string] => [e.accountId, e.kind, e.key]))
+  await db.akLedger.bulkPut(entries)
+  return new Set(entries.filter((_, i) => !existing[i]).map((e) => `${e.kind}:${e.key}`)).size
 }
 
 export interface ImportSummary {
@@ -109,9 +123,7 @@ export async function importLegacyAccounts(
     })
     summary.accounts++
     summary.pulls += await mergeLegacyPulls(account.id, legacyToAkPulls(account.id, item.pools, meta))
-    const ledger = legacyLedger(account.id, item.stone, item.recharge)
-    await db.akLedger.bulkPut(ledger)
-    summary.ledger += ledger.length
+    summary.ledger += await mergeLedger(legacyLedger(account.id, item.stone, item.recharge))
   }
   return summary
 }
@@ -123,9 +135,8 @@ export async function importAnonymousLegacy(
   meta: AkMeta,
 ): Promise<ImportSummary> {
   const pulls = await mergeLegacyPulls(account.id, legacyToAkPulls(account.id, data.pools, meta))
-  const ledger = legacyLedger(account.id, data.stone, data.recharge)
-  await db.akLedger.bulkPut(ledger)
-  return { accounts: 1, pulls, ledger: ledger.length }
+  const ledger = await mergeLedger(legacyLedger(account.id, data.stone, data.recharge))
+  return { accounts: 1, pulls, ledger }
 }
 
 export async function buildExport(version: string, accountIds?: string[]): Promise<ExportFile> {
@@ -230,8 +241,7 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
       const parsed = l.kind === 'stone' ? legacyLedger(account.id, [l.raw], []) : legacyLedger(account.id, [], [l.raw])
       ledger.push(...parsed)
     }
-    await db.akLedger.bulkPut(ledger)
-    summary.ledger += ledger.length
+    summary.ledger += await mergeLedger(ledger)
   }
   for (const entry of file.endfield) {
     const account = await ensureAccount('endfield', entry.uid, entry.nickName, { channelName: entry.channelName })

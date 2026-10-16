@@ -44,16 +44,70 @@ export function toAkPull(accountId: string, category: string, raw: AkRawRecord):
  * 写入接口数据。旧版迁移来的记录没有 poolId / charId，无法用同一个键去重；
  * 同一秒内若已有旧版记录，以接口数据为准替换掉它们。
  */
+/**
+ * 旧版存档的时间是旧接口给的秒级时间，新接口是毫秒级；同一次十连在两边可能相差一两秒。
+ * 时间相差不超过这个秒数、且内容（干员与星级）完全相同的十连，视为同一次寻访。
+ */
+export const LEGACY_MATCH_SECONDS = 3
+
+/** 一次寻访（同一秒内的若干抽）的内容签名：干员与星级的多重集合，与顺序无关 */
+export function batchSignature(pulls: Pick<AkPull, 'charName' | 'rarity'>[]): string {
+  return pulls.map((p) => `${p.charName}/${p.rarity}`).toSorted().join('|')
+}
+
+export function groupBySecond<T extends { tsSec: number }>(pulls: T[]): Map<number, T[]> {
+  const out = new Map<number, T[]>()
+  for (const p of pulls) {
+    const list = out.get(p.tsSec)
+    if (list) list.push(p)
+    else out.set(p.tsSec, [p])
+  }
+  return out
+}
+
+/**
+ * 判断一次旧版寻访是否已经有对应的接口数据：同一秒有接口数据；或者是十连（2 抽以上），
+ * 前后几秒内有内容完全相同的接口寻访。单抽内容重复的概率太高，只按同一秒判断。
+ */
+export function coveredByModern(second: number, legacyBatch: AkPull[], modern: Map<number, AkPull[]>): boolean {
+  if (modern.has(second)) return true
+  if (legacyBatch.length < 2) return false
+  const signature = batchSignature(legacyBatch)
+  for (let d = 1; d <= LEGACY_MATCH_SECONDS; d++) {
+    for (const s of [second - d, second + d]) {
+      const batch = modern.get(s)
+      if (batch && batch.length === legacyBatch.length && batchSignature(batch) === signature) return true
+    }
+  }
+  return false
+}
+
+function secondRange(pulls: AkPull[]): [number, number] {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const p of pulls) {
+    lo = Math.min(lo, p.tsSec)
+    hi = Math.max(hi, p.tsSec)
+  }
+  return [lo - LEGACY_MATCH_SECONDS, hi + LEGACY_MATCH_SECONDS]
+}
+
+/** 写入接口数据；同一次寻访的旧版数据（同一秒，或前后几秒内容相同的十连）被接口数据替换 */
 export async function mergeAkPulls(accountId: string, pulls: AkPull[]): Promise<number> {
   if (!pulls.length) return 0
-  const seconds = [...new Set(pulls.map((p) => p.tsSec))]
+  const [lo, hi] = secondRange(pulls)
+  const modern = groupBySecond(pulls)
   await db.transaction('rw', db.akPulls, async () => {
     const legacy = await db.akPulls
       .where('[accountId+tsSec]')
-      .anyOf(seconds.map((s) => [accountId, s]))
+      .between([accountId, lo], [accountId, hi], true, true)
       .filter((p) => p.source === 'legacy')
-      .primaryKeys()
-    if (legacy.length) await db.akPulls.bulkDelete(legacy)
+      .toArray()
+    const replaced: [string, string][] = []
+    for (const [second, batch] of groupBySecond(legacy)) {
+      if (coveredByModern(second, batch, modern)) replaced.push(...batch.map((p): [string, string] => [accountId, p.key]))
+    }
+    if (replaced.length) await db.akPulls.bulkDelete(replaced)
     await db.akPulls.bulkPut(pulls)
   })
   return pulls.length
