@@ -91,9 +91,14 @@ CDN 方面：
 
 **最宽松、最全的 ID 来源其实是官方 `api/content`**：每个卡池的 `all[]` 是 `{id: "chr_…", name, rarity}`，GET 请求、不需要 token。构建脚本在 GitHub Actions 里直接请求即可（服务端没有 CORS 限制），不经过 Worker。旧卡池会从接口下线，所以结果要追加保存。
 
-结论（待实现）：
-- ID → 名称 / 星级：官方 `api/content`，卡池 ID 取自游戏表（`GachaCharPoolTable.json` / `GachaWeaponPoolTable.json`）与用户记录中出现过的卡池。
-- 头像与武器图标：BWIKI（匿名 API，按中文名与上面的 ID 表关联），构建时下载并转成同源的 128×128 WebP，与明日方舟头像相同。BWIKI 被 WAF 拦截时退回到维护一张 `bbs.hycdn.cn` 头像地址表。
+实测补充（2026-10-16，云端容器可访问 `*.hypergryph.com` 和 raw.githubusercontent.com）：
+- 官方 `api/content` 对 38 个已知卡池中的 29 个返回 `40402 Pool not found`，**只保留当期卡池**，不能作为历史 UP 名单的来源。
+- `555me/beyondGameData` 的 `tableCfg/GachaCharPoolTable.json`（17 个角色池，`type` 0 特许 / 1 启程 / 2 基础 / 3 辉光庆典 / 4 重构，`upCharIds`）、`GachaWeaponPoolTable.json`（21 个武器池，`type` 0 / 1 重构，`upWeaponIds`）、`ItemTable.json`（角色 type 4、武器 type 5，含中文名与星级）完整覆盖全部卡池与角色、武器。
+
+结论：
+- **已实现**：卡池类型、UP 名单、角色与武器的名称和星级取自上述三张游戏数据表，构建时生成 `public/gamedata/ef-meta.json`（约 7 KB）。前端据此判断 6★ 是否为 UP、确定保底分组；官方接口只用于当期卡池的卡池图，下线卡池返回 40402 后一周内不再请求。
+- ID → 名称 / 星级的备用来源：官方 `api/content` 的 `all[]`（只覆盖当期卡池）。
+- 头像与武器图标（**待实现**，需要容器能访问 BWIKI 才能调试）：BWIKI（匿名 API，按中文名与上面的 ID 表关联），构建时下载并转成同源的 128×128 WebP，与明日方舟头像相同。BWIKI 被 WAF 拦截时退回到维护一张 `bbs.hycdn.cn` 头像地址表。
 - 卡池时间：BWIKI“寻访一览”，加一份按官方公告手工维护的覆盖文件。
 - 森空岛（需要签名）、灰机（需要 key）不采用。游戏美术的版权都归鹰角，页面上注明来源与版权。
 

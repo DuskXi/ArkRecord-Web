@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * 构建前运行：拉取明日方舟游戏数据，生成精简的元数据和同源头像，输出到 public/gamedata/（不提交到仓库）。
+ * 构建前运行：拉取两个游戏的数据，生成精简的元数据和同源头像，输出到 public/gamedata/（不提交到仓库）。
  *
  * 数据来源（详见 docs/rewrite/data-sources.md）：
+ *   - 终末地卡池表、物品表：555me/beyondGameData（GitHub），只取卡池类型、UP 名单和角色 / 武器的名称与星级
  *   - 干员表、卡池表：Kengxxiao/ArknightsGameData（GitHub）
  *   - UP 名单：weedy.prts.wiki 的服务器侧卡池详情（拉取失败时降级为“UP 未知”，不阻塞构建）
  *   - 头像：yuanyan3060/ArknightsGameResource（GitHub），失败时改用 torappu.prts.wiki；
@@ -25,6 +26,14 @@ const AVATAR_SOURCES = [
   (id) => `https://raw.githubusercontent.com/yuanyan3060/ArknightsGameResource/main/avatar/${id}.png`,
   (id) => `https://torappu.prts.wiki/assets/char_avatar/${id}.png`,
 ]
+
+const EF_GAMEDATA = 'https://raw.githubusercontent.com/555me/beyondGameData/main/tableCfg'
+/** GachaCharPoolTable 的 type 字段 */
+const EF_CHAR_POOL_TYPE = { 0: 'special', 1: 'beginner', 2: 'standard', 3: 'joint', 4: 'rerun' }
+/** GachaWeaponPoolTable 的 type 字段 */
+const EF_WEAPON_POOL_TYPE = { 0: 'weapon', 1: 'weapon_rerun' }
+/** ItemTable 的 type 字段：4 = 角色，5 = 武器 */
+const EF_ITEM_TYPES = new Set(['4', '5'])
 
 const TIER = { TIER_1: 1, TIER_2: 2, TIER_3: 3, TIER_4: 4, TIER_5: 5, TIER_6: 6 }
 
@@ -142,19 +151,21 @@ async function mapLimited(items, limit, fn) {
 }
 
 const FRESH_MS = 12 * 3600 * 1000
+const FORCE = process.argv.includes('--force')
 
-async function main() {
+/** 本地开发时，12 小时内生成过就跳过；CI 或需要强制更新时加 --force */
+async function isFresh(file) {
+  if (FORCE || !(await exists(file))) return false
+  const age = Date.now() - (await stat(file)).mtimeMs
+  if (age >= FRESH_MS) return false
+  console.log(`${path.basename(file)} 在 ${Math.round(age / 60000)} 分钟前已生成，跳过（加 --force 强制更新）`)
+  return true
+}
+
+async function syncArknights() {
   await mkdir(AVATAR_DIR, { recursive: true })
-
-  // 本地开发时，12 小时内生成过就跳过；CI 或需要强制更新时加 --force。
   const metaFile = path.join(OUT_DIR, 'ak-meta.json')
-  if (!process.argv.includes('--force') && (await exists(metaFile))) {
-    const age = Date.now() - (await stat(metaFile)).mtimeMs
-    if (age < FRESH_MS) {
-      console.log(`游戏数据在 ${Math.round(age / 60000)} 分钟前已生成，跳过（加 --force 强制更新）`)
-      return
-    }
-  }
+  if (await isFresh(metaFile)) return
 
   const version = await fetchText(`${GAMEDATA}/excel/data_version.txt`)
   console.log(`游戏数据版本：${version.split('\n').join(' ')}`)
@@ -193,6 +204,55 @@ async function main() {
     `已写入 ${path.relative(process.cwd(), metaFile)}：干员 ${ids.length}，卡池 ${Object.keys(pools).length}，` +
       `UP 名单 ${Object.keys(upLists).length}，大小 ${(content.length / 1024).toFixed(0)} KB`,
   )
+}
+
+/**
+ * 终末地：官方 api/content 只能查到当期卡池（旧卡池返回 40402），
+ * 所以卡池类型和 UP 名单取自游戏数据表，记录里的 6★ 才能判断是否为 UP。
+ */
+async function syncEndfield() {
+  await mkdir(OUT_DIR, { recursive: true })
+  const metaFile = path.join(OUT_DIR, 'ef-meta.json')
+  if (await isFresh(metaFile)) return
+
+  let charPools, weaponPools, itemTable
+  try {
+    ;[charPools, weaponPools, itemTable] = await Promise.all([
+      fetchJson(`${EF_GAMEDATA}/GachaCharPoolTable.json`),
+      fetchJson(`${EF_GAMEDATA}/GachaWeaponPoolTable.json`),
+      fetchJson(`${EF_GAMEDATA}/ItemTable.json`),
+    ])
+  } catch (error) {
+    // 不阻塞构建：没有元数据时，前端退回到官方接口的当期卡池信息
+    console.warn(`终末地数据拉取失败：${error.message}`)
+    if (!(await exists(metaFile))) await writeFile(metaFile, JSON.stringify({ generatedAt: '', pools: {}, items: {} }))
+    return
+  }
+
+  const pools = {}
+  for (const [id, p] of Object.entries(charPools)) {
+    pools[id] = { n: p.name?.cn || id, t: EF_CHAR_POOL_TYPE[p.type] ?? `char:${p.type}`, up: p.upCharIds ?? [] }
+  }
+  for (const [id, p] of Object.entries(weaponPools)) {
+    pools[id] = { n: p.name?.cn || id, t: EF_WEAPON_POOL_TYPE[p.type] ?? `weapon:${p.type}`, up: p.upWeaponIds ?? [] }
+  }
+  const items = {}
+  for (const [id, item] of Object.entries(itemTable)) {
+    if (!/^(chr|wpn)_/.test(id) || !EF_ITEM_TYPES.has(String(item.type))) continue
+    items[id] = { n: item.name?.cn || id, r: Number(item.rarity) || 0 }
+  }
+
+  const content = JSON.stringify({ generatedAt: new Date().toISOString(), pools, items })
+  await writeFile(metaFile, content)
+  console.log(
+    `已写入 ${path.relative(process.cwd(), metaFile)}：卡池 ${Object.keys(pools).length}，` +
+      `角色与武器 ${Object.keys(items).length}，大小 ${(content.length / 1024).toFixed(0)} KB`,
+  )
+}
+
+async function main() {
+  await syncEndfield()
+  await syncArknights()
 }
 
 main().catch((error) => {

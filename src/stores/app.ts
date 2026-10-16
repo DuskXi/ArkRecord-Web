@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useLiveQuery } from '@/composables/useLiveQuery'
 import { db } from '@/lib/db'
-import { type AkMeta, loadAkMeta } from '@/lib/meta'
+import { type AkMeta, type EfMeta, loadAkMeta, loadEfMeta } from '@/lib/meta'
 import type { Account, Game } from '@/lib/types'
 
 export const APP_VERSION = __APP_VERSION__
@@ -33,8 +33,10 @@ export const useAppStore = defineStore('app', () => {
 
   const meta = shallowRef<AkMeta | null>(null)
   void loadAkMeta().then((m) => (meta.value = m))
+  const efMeta = shallowRef<EfMeta | null>(null)
+  void loadEfMeta().then((m) => (efMeta.value = m))
 
   const loginOpen = ref(false)
 
-  return { game, accounts, gameAccounts, activeAccount, selectAccount, meta, loginOpen }
+  return { game, accounts, gameAccounts, activeAccount, selectAccount, meta, efMeta, loginOpen }
 })

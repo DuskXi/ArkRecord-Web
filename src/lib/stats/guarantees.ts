@@ -1,5 +1,5 @@
 /** 定向保底与累计奖励的进度（只显示仍在开放 / 近期有活动的卡池） */
-import type { AkMeta } from '../meta'
+import type { AkMeta, EfMeta } from '../meta'
 import type { EfPoolInfo } from '../types'
 import type { Analysis, PoolSummary } from './analyze'
 
@@ -61,14 +61,14 @@ export function arknightsGuarantees(analysis: Analysis, meta: AkMeta, now = Date
   return out
 }
 
-export function endfieldGuarantees(analysis: Analysis, pools: Map<string, EfPoolInfo>, now = Date.now()): Guarantee[] {
+export function endfieldGuarantees(analysis: Analysis, pools: Map<string, EfPoolInfo>, meta?: EfMeta, now = Date.now()): Guarantee[] {
   const out: Guarantee[] = []
   for (const pool of analysis.pools) {
     if (!pool.poolId || now - pool.lastTs > RECENT_MS) continue
     const info = pools.get(pool.poolId)
     if (pool.weapon) {
       out.push({ poolName: pool.poolName, label: '80 抽必得 UP 武器', current: pool.paid, target: 80, done: upCount(pool) >= 1 })
-    } else if (pool.poolId.startsWith('special') || info?.poolType === 'special') {
+    } else if ((meta?.pools[pool.poolId]?.t ?? info?.poolType) === 'special' || (!meta?.pools[pool.poolId] && pool.poolId.startsWith('special'))) {
       out.push({ poolName: pool.poolName, label: '120 抽必得当期 UP（不继承）', current: pool.paid, target: 120, done: upCount(pool) >= 1 })
     }
   }

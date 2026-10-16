@@ -2,7 +2,7 @@
  * 把两个游戏的原始记录统一成同一种“寻访事件”，后续的统计逻辑只处理事件。
  * 保底分组规则见 docs/rewrite/research.md 1.8 与 2.3。
  */
-import type { AkMeta } from '../meta'
+import type { AkMeta, EfMeta } from '../meta'
 import type { AkPull, EfPoolInfo, EfPull } from '../types'
 
 export interface PullEvent {
@@ -97,24 +97,41 @@ export function normalizeArknights(pulls: AkPull[], meta: AkMeta): PullEvent[] {
 
 // ───────────────────────── 终末地 ─────────────────────────
 
-export function efCharFamily(poolType: string, poolId: string): { family: string; label: string; isolated: boolean; main: boolean } {
-  const type = poolType.replace('E_CharacterGachaPoolType_', '').toLowerCase()
-  if (type === 'special' || poolId.startsWith('special')) return { family: 'ef:special', label: '特许寻访', isolated: false, main: true }
-  if (type === 'rerun' || poolId.startsWith('rerun')) return { family: 'ef:rerun', label: '重构寻访', isolated: false, main: true }
+/**
+ * 终末地角色池的保底分组。metaType 来自游戏数据表（更可靠），没有时按记录里的卡池类型和 poolId 判断。
+ * 特许寻访之间共享计数；重构寻访单独共享；基础、启程各自计数；辉光庆典等其他卡池单独计数，不参与运气评估。
+ */
+export function efCharFamily(
+  poolType: string,
+  poolId: string,
+  poolName = poolId,
+  metaType?: string,
+): { family: string; label: string; isolated: boolean; main: boolean } {
+  const type = metaType ?? poolType.replace('E_CharacterGachaPoolType_', '').toLowerCase()
+  if (type === 'special' || (!metaType && poolId.startsWith('special'))) return { family: 'ef:special', label: '特许寻访', isolated: false, main: true }
+  if (type === 'rerun' || (!metaType && poolId.startsWith('rerun'))) return { family: 'ef:rerun', label: '重构寻访', isolated: false, main: true }
   if (type === 'standard' || poolId === 'standard') return { family: 'ef:standard', label: '基础寻访', isolated: false, main: true }
   if (type === 'beginner' || poolId === 'beginner') return { family: 'ef:beginner', label: '启程寻访', isolated: false, main: false }
-  return { family: `ef:pool:${poolId}`, label: poolType, isolated: true, main: false }
+  return { family: `ef:pool:${poolId}`, label: poolName, isolated: true, main: false }
 }
 
-export function normalizeEndfield(pulls: EfPull[], pools: Map<string, EfPoolInfo>): PullEvent[] {
+/** 6★ 是否为当期 UP：优先用游戏数据表的 UP 名单（按 ID），其次用官方接口的当期 UP 名称 */
+function efIsUp(p: EfPull, info: EfPoolInfo | undefined, meta: EfMeta | undefined): boolean | null {
+  if (p.rarity !== 6) return null
+  const up = meta?.pools[p.poolId]?.up
+  if (up?.length && p.itemId) return up.includes(p.itemId)
+  if (info?.up6Name) return p.itemName === info.up6Name
+  return null
+}
+
+export function normalizeEndfield(pulls: EfPull[], pools: Map<string, EfPoolInfo>, meta?: EfMeta): PullEvent[] {
   return pulls
     .map((p) => {
       const info = pools.get(p.poolId)
       const weapon = p.type === 'weapon'
       const fam = weapon
         ? { family: `ef:weapon:${p.poolId}`, label: p.poolName, isolated: true, main: false }
-        : efCharFamily(p.poolType, p.poolId)
-      const up6 = info?.up6Name
+        : efCharFamily(p.poolType, p.poolId, p.poolName, meta?.pools[p.poolId]?.t)
       return {
         key: p.key,
         ts: p.gachaTs,
@@ -131,7 +148,7 @@ export function normalizeEndfield(pulls: EfPull[], pools: Map<string, EfPoolInfo
         mainModel: fam.main,
         isNew: p.isNew,
         countsForPity: p.kind === 'draw' && !p.isFree,
-        isUp: p.rarity === 6 && up6 ? p.itemName === up6 : null,
+        isUp: efIsUp(p, info, meta),
         weapon,
       } satisfies PullEvent
     })

@@ -1,6 +1,7 @@
 /**
  * 终末地增量同步：角色池按 pool_type、武器池按 poolId 逐页拉取，遇到本地已有记录即停止。
  */
+import { HgError } from '../hg/client'
 import { db } from '../db'
 import { getU8Token, grantOAuthToken } from '../hg/auth'
 import {
@@ -93,17 +94,31 @@ export async function syncEndfield(
   return { added: collected.length, fetched }
 }
 
-/** 补全卡池信息（UP 角色等）；失败不影响同步结果 */
+const GONE_KEY = 'efPoolGone'
+const GONE_TTL = 7 * 24 * 3600 * 1000
+
+/**
+ * 补全卡池信息（当期 UP、卡池图等）；失败不影响同步结果。
+ * 官方接口只保留当期卡池，已下线的返回 40402，记下来一周内不再请求（UP 名单改由构建时的游戏数据表提供）。
+ */
 export async function refreshPoolInfo(poolIds: string[]): Promise<void> {
+  const gone = ((await db.kv.get(GONE_KEY))?.value ?? {}) as Record<string, number>
+  let goneChanged = false
   for (const poolId of poolIds) {
     const cached = await db.efPools.get(poolId)
     if (cached && Date.now() - cached.fetchedAt < POOL_INFO_TTL) continue
+    if (Date.now() - (gone[poolId] ?? 0) < GONE_TTL) continue
     try {
       await db.efPools.put(await fetchPoolContent(poolId))
-    } catch {
-      // 忽略，下次同步再试
+    } catch (error) {
+      if (error instanceof HgError && error.code === '40402') {
+        gone[poolId] = Date.now()
+        goneChanged = true
+      }
+      // 其他错误忽略，下次同步再试
     }
   }
+  if (goneChanged) await db.kv.put({ key: GONE_KEY, value: gone })
 }
 
 export function charPoolLabel(poolType: string): string {

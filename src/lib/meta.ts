@@ -84,3 +84,32 @@ export function resolvePoolId(meta: AkMeta, poolName: string, tsSec: number): st
   }
   return best
 }
+
+// ───────────────────────── 终末地 ─────────────────────────
+
+export interface EfPoolMeta {
+  n: string
+  /** special / rerun / standard / beginner / joint / weapon / weapon_rerun */
+  t: string
+  /** UP 6★ 的角色或武器 ID */
+  up: string[]
+}
+
+export interface EfMeta {
+  generatedAt: string
+  pools: Record<string, EfPoolMeta>
+  /** 角色与武器：ID → 名称、星级 */
+  items: Record<string, { n: string; r: number }>
+}
+
+export const EMPTY_EF_META: EfMeta = { generatedAt: '', pools: {}, items: {} }
+
+let efMetaPromise: Promise<EfMeta> | null = null
+
+/** 终末地元数据：构建时由 scripts/sync-gamedata.mjs 从游戏数据表生成（卡池类型、UP 名单、名称） */
+export function loadEfMeta(): Promise<EfMeta> {
+  efMetaPromise ??= fetch('/gamedata/ef-meta.json')
+    .then((r) => (r.ok ? (r.json() as Promise<EfMeta>) : EMPTY_EF_META))
+    .catch(() => EMPTY_EF_META)
+  return efMetaPromise
+}

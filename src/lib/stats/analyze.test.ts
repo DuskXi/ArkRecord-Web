@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AkMeta } from '../meta'
+import type { AkMeta, EfMeta } from '../meta'
 import type { AkPull, EfPoolInfo, EfPull } from '../types'
 import { analyze } from './analyze'
 import { normalizeArknights, normalizeEndfield } from './events'
@@ -140,5 +140,26 @@ describe('终末地', () => {
     expect(result.hits).toHaveLength(1)
     expect(result.hits[0]!.pity).toBe(51)
     expect(result.hits[0]!.event.isUp).toBe(true)
+  })
+
+  it('旧卡池（官方接口已下线）按游戏数据表的 UP 名单判断；辉光庆典单独计数且不参与运气评估', () => {
+    const meta: EfMeta = {
+      generatedAt: '',
+      items: {},
+      pools: {
+        special_1_0_1: { n: '熔火灼痕', t: 'special', up: ['chr_0016_laevat'] },
+        joint_1_2_2: { n: '辉光庆典', t: 'joint', up: ['chr_0016_laevat', 'chr_0013_aglina'] },
+      },
+    }
+    const pulls = [
+      ef('special_1_0_1', '莱万汀', 6, 1, { itemId: 'chr_0016_laevat' }),
+      ef('special_1_0_1', '骏卫', 6, 2, { itemId: 'chr_0029_pograni' }),
+      ef('joint_1_2_2', '洁尔佩塔', 6, 3, { itemId: 'chr_0013_aglina', poolName: '辉光庆典', poolType: 'E_CharacterGachaPoolType_Joint' }),
+    ]
+    const events = normalizeEndfield(pulls, new Map(), meta)
+    expect(events.map((e) => e.isUp)).toEqual([true, false, true])
+    expect(events[2]).toMatchObject({ family: 'ef:pool:joint_1_2_2', familyLabel: '辉光庆典', isolated: true, mainModel: false })
+    // 没有元数据、官方接口也查不到时，UP 未知
+    expect(normalizeEndfield(pulls.slice(0, 1), new Map()).map((e) => e.isUp)).toEqual([null])
   })
 })

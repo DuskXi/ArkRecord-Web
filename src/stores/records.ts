@@ -36,7 +36,7 @@ export const useRecordsStore = defineStore('records', () => {
   const events = computed(() =>
     game.value === 'arknights'
       ? normalizeArknights(akPulls.value, app.meta ?? { version: '', generatedAt: '', upAvailable: false, chars: {}, pools: {}, avatars: [] })
-      : normalizeEndfield(efPulls.value, efPools.value),
+      : normalizeEndfield(efPulls.value, efPools.value, app.efMeta ?? undefined),
   )
   const model = computed(() => MODELS[game.value])
   const analysis = computed(() => analyze(events.value, model.value))
@@ -45,7 +45,7 @@ export const useRecordsStore = defineStore('records', () => {
       ? app.meta
         ? arknightsGuarantees(analysis.value, app.meta)
         : []
-      : endfieldGuarantees(analysis.value, efPools.value),
+      : endfieldGuarantees(analysis.value, efPools.value, app.efMeta ?? undefined),
   )
 
   return { game, events, model, analysis, guarantees, efPools }

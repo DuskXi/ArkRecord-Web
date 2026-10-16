@@ -25,7 +25,7 @@ const filters = computed(() => {
 
 function category(ruleType: string, weapon: boolean): Filter {
   if (weapon) return 'weapon'
-  if (['NORMAL', 'SINGLE', 'DOUBLE', 'SPECIAL', 'E_CharacterGachaPoolType_Standard'].includes(ruleType)) return 'standard'
+  if (['NORMAL', 'SINGLE', 'DOUBLE', 'SPECIAL', 'E_CharacterGachaPoolType_Standard', 'E_CharacterGachaPoolType_Beginner'].includes(ruleType)) return 'standard'
   if (['CLASSIC', 'CLASSIC_DOUBLE', 'FESCLASSIC'].includes(ruleType)) return 'kernel'
   return 'limited'
 }
@@ -36,11 +36,13 @@ const pools = computed(() =>
     .map((p) => {
       const meta = p.poolId ? app.meta?.pools[p.poolId] : undefined
       const info = p.poolId ? records.efPools.get(p.poolId) : undefined
+      const efPool = p.poolId ? app.efMeta?.pools[p.poolId] : undefined
+      const efUp = efPool?.up.map((id) => app.efMeta?.items[id]?.n ?? id) ?? []
       return {
         ...p,
         badge: ruleLabel(p.ruleType),
         period: meta?.o ? `${formatDate(meta.o * 1000)} — ${formatDate(meta.e * 1000)}` : `${formatDate(p.firstTs)} — ${formatDate(p.lastTs)}`,
-        upNames: meta?.up?.['6']?.map((id) => app.meta?.chars[id]?.n ?? id) ?? (info?.up6Name ? [info.up6Name] : []),
+        upNames: meta?.up?.['6']?.map((id) => app.meta?.chars[id]?.n ?? id) ?? (efUp.length ? efUp : info?.up6Name ? [info.up6Name] : []),
         art: info?.up6Image,
       }
     }),
