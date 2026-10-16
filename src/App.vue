@@ -3,6 +3,8 @@ import BrandMark from '@/components/shell/BrandMark.vue'
 import GameSwitcher from '@/components/shell/GameSwitcher.vue'
 import AccountMenu from '@/components/shell/AccountMenu.vue'
 import MobileNav from '@/components/shell/MobileNav.vue'
+import UsageBadge from '@/components/shell/UsageBadge.vue'
+import UsageNotice from '@/components/UsageNotice.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import LegacyMigration from '@/components/LegacyMigration.vue'
 import { NAV_ITEMS } from '@/navigation'
@@ -33,9 +35,12 @@ import { APP_VERSION } from '@/stores/app'
         </template>
 
         <template #footer="{ collapsed }">
-          <div class="flex w-full items-center gap-1" :class="collapsed ? 'flex-col' : ''">
-            <UColorModeButton color="neutral" variant="ghost" />
-            <span v-if="!collapsed" class="font-display text-xs text-dimmed">v{{ APP_VERSION }}</span>
+          <div class="flex w-full min-w-0 flex-col gap-1">
+            <UsageBadge :collapsed="collapsed" class="px-1" />
+            <div class="flex w-full items-center gap-1" :class="collapsed ? 'flex-col' : ''">
+              <UColorModeButton color="neutral" variant="ghost" />
+              <span v-if="!collapsed" class="font-display text-xs text-dimmed">v{{ APP_VERSION }}</span>
+            </div>
           </div>
         </template>
       </UDashboardSidebar>
@@ -46,5 +51,6 @@ import { APP_VERSION } from '@/stores/app'
     <MobileNav />
     <LoginModal />
     <LegacyMigration />
+    <UsageNotice />
   </UApp>
 </template>

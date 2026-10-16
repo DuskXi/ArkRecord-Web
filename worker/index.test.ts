@@ -27,8 +27,9 @@ afterEach(() => {
 })
 
 describe('入口模块', () => {
-  it('只有默认导出（Workers 要求入口模块的命名导出都是处理器，否则部署后无法启动）', () => {
-    expect(Object.keys(entry)).toEqual(['default'])
+  it('只导出处理器和 Durable Object 类（Workers 要求入口模块的命名导出都是处理器或类，否则部署后无法启动）', () => {
+    expect(Object.keys(entry).toSorted()).toEqual(['UsageStats', 'default'])
+    expect(typeof entry.UsageStats).toBe('function')
   })
 })
 
@@ -308,5 +309,71 @@ describe('图片缓存转发', () => {
     const res = await call('/api/img/prts-avatar/char_002_amiya', {}, env)
     expect(res.status).toBe(429)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+/** 模拟统计用的 Durable Object，记录收到的请求 */
+function fakeStats() {
+  const calls: { url: string; init?: RequestInit }[] = []
+  const stub = {
+    fetch: vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init })
+      return url.endsWith('/summary')
+        ? Response.json({ users: 3, games: { arknights: 2, endfield: 1 }, today: 1, todayNew: 1, month: 2, day: '2026-10-16' })
+        : new Response(null, { status: 204 })
+    }),
+  }
+  const env = { STATS: { idFromName: () => 'id', get: () => stub } } as unknown as Env
+  return { env, calls }
+}
+
+describe('使用人数统计', () => {
+  const ping = { first: true, newMonth: true, games: ['arknights'], newGames: ['arknights'] }
+
+  it('只接受本站页面的上报', async () => {
+    const { env, calls } = fakeStats()
+    const noHeader = await call('/api/stats/ping', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' }, body: JSON.stringify(ping) }, env)
+    const crossSite = await call(
+      '/api/stats/ping',
+      { method: 'POST', headers: sameOriginHeaders({ 'sec-fetch-site': 'cross-site' }), body: JSON.stringify(ping) },
+      env,
+    )
+    expect([noHeader.status, crossSite.status]).toEqual([403, 403])
+    expect(calls).toHaveLength(0)
+  })
+
+  it('校验上报内容，只把校验后的字段交给计数器', async () => {
+    const { env, calls } = fakeStats()
+    const bad = await call('/api/stats/ping', { method: 'POST', headers: sameOriginHeaders(), body: '{"first":1}' }, env)
+    const notJson = await call('/api/stats/ping', { method: 'POST', headers: sameOriginHeaders(), body: 'nope' }, env)
+    const tooLarge = await call('/api/stats/ping', { method: 'POST', headers: sameOriginHeaders(), body: 'x'.repeat(600) }, env)
+    expect([bad.status, notJson.status, tooLarge.status]).toEqual([400, 400, 400])
+    const ok = await call('/api/stats/ping', { method: 'POST', headers: sameOriginHeaders(), body: JSON.stringify({ ...ping, uid: '123' }) }, env)
+    expect(ok.status).toBe(204)
+    expect(calls).toHaveLength(1)
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual(ping)
+  })
+
+  it('上报受限速保护', async () => {
+    const { env, calls } = fakeStats()
+    const limited = { ...env, RL_DATA: { limit: vi.fn(async () => ({ success: false })) } } as unknown as Env
+    const res = await call('/api/stats/ping', { method: 'POST', headers: sameOriginHeaders(), body: JSON.stringify(ping) }, limited)
+    expect(res.status).toBe(429)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('汇总结果可以在边缘缓存，不带 CORS 头', async () => {
+    const { env } = fakeStats()
+    const res = await call('/api/stats/summary', {}, env)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('public, max-age=300')
+    expect([...res.headers.keys()].some((k) => k.startsWith('access-control-'))).toBe(false)
+    expect(await res.json()).toMatchObject({ users: 3, today: 1 })
+  })
+
+  it('未绑定统计时：上报静默成功，汇总返回 503', async () => {
+    const ok = await call('/api/stats/ping', { method: 'POST', headers: sameOriginHeaders(), body: JSON.stringify(ping) })
+    const summary = await call('/api/stats/summary')
+    expect([ok.status, summary.status]).toEqual([204, 503])
   })
 })

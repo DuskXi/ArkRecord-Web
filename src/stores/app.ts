@@ -5,6 +5,7 @@ import { useLiveQuery } from '@/composables/useLiveQuery'
 import { db } from '@/lib/db'
 import { type AkMeta, type EfMeta, loadAkMeta, loadEfMeta } from '@/lib/meta'
 import type { Account, Game } from '@/lib/types'
+import { fetchUsageSummary, reportUsage, setUsageOptOut, type UsageSummary, usageNoticeSeen, usageOptedOut } from '@/lib/usage'
 
 export const APP_VERSION = __APP_VERSION__
 
@@ -41,5 +42,32 @@ export const useAppStore = defineStore('app', () => {
 
   const loginOpen = ref(false)
 
-  return { game, accounts, gameAccounts, activeAccount, selectAccount, meta, efMeta, akAvatars, efAvatars, loginOpen }
+  // ── 匿名使用统计（见 src/lib/usage.ts） ──
+  const usage = shallowRef<UsageSummary | null>(null)
+  const usageOptOut = ref(usageOptedOut())
+  function setUsageParticipation(participate: boolean) {
+    setUsageOptOut(!participate)
+    usageOptOut.value = !participate
+  }
+  void fetchUsageSummary().then((s) => (usage.value = s))
+  // 等账号列表从 IndexedDB 读出来之后再上报（每天最多一次）。
+  // 第一次打开时先显示统计说明，等说明消失（约 20 秒）后再上报，让用户有机会先选择不参与。
+  const firstVisit = !usageNoticeSeen()
+  setTimeout(() => void reportUsage(accounts.value.map((a) => a.game)), firstVisit ? 25_000 : 3000)
+
+  return {
+    game,
+    accounts,
+    gameAccounts,
+    activeAccount,
+    selectAccount,
+    meta,
+    efMeta,
+    akAvatars,
+    efAvatars,
+    loginOpen,
+    usage,
+    usageOptOut,
+    setUsageParticipation,
+  }
 })

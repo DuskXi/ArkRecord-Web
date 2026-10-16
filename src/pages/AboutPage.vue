@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
-import { APP_VERSION } from '@/stores/app'
+import { formatNumber } from '@/lib/format'
+import { APP_VERSION, useAppStore } from '@/stores/app'
 import { IMAGE_SOURCES } from '../../worker/images'
 import { UPSTREAMS } from '../../worker/upstreams'
 
+const app = useAppStore()
 const upstreams = Object.values(UPSTREAMS)
 const imageSources = Object.values(IMAGE_SOURCES)
 
@@ -71,6 +73,44 @@ const sources = [
             <span class="text-xs text-muted">{{ s.desc }}</span>
           </li>
         </ul>
+      </section>
+
+      <section id="usage" class="scroll-mt-4">
+        <SectionHeader index="03" eyebrow="USAGE STATISTICS" title="匿名使用统计">
+          <USwitch
+            :model-value="!app.usageOptOut"
+            label="参与统计"
+            @update:model-value="(v: boolean) => app.setUsageParticipation(v)"
+          />
+        </SectionHeader>
+        <div v-if="app.usage" class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div v-for="item in [
+            { label: '累计用户', value: app.usage.users },
+            { label: '明日方舟', value: app.usage.games.arknights },
+            { label: '终末地', value: app.usage.games.endfield },
+            { label: '今日活跃', value: app.usage.today },
+            { label: '今日新增', value: app.usage.todayNew },
+            { label: '本月活跃', value: app.usage.month },
+          ]" :key="item.label" class="rounded-(--ui-radius) border border-default p-3">
+            <p class="text-xs text-muted">{{ item.label }}</p>
+            <p class="font-display text-xl font-semibold text-highlighted">{{ formatNumber(item.value) }}</p>
+          </div>
+        </div>
+        <div class="space-y-2 rounded-(--ui-radius) border border-default p-4 text-sm leading-relaxed text-muted">
+          <p>本站统计使用人数，用来了解有多少人在用、是否值得继续维护。为了让你知情，这里说明全部细节：</p>
+          <ul class="list-disc space-y-1 pl-5">
+            <li>
+              <b class="text-highlighted">上报什么</b>：每天最多一次，只有四个开关——这个浏览器是否第一次来、本月是否第一次来、这个浏览器里有哪些游戏的账号、其中哪些是新加的。
+              不包含账号、UID、昵称、寻访记录，也不生成或上传任何可以识别你的标识符；“是否来过”记在你自己浏览器的 localStorage 里。
+            </li>
+            <li><b class="text-highlighted">保存什么</b>：服务端只有几个计数器（累计人数、每天和每月的人数），没有逐条的访问记录，不保存 IP。</li>
+            <li><b class="text-highlighted">局限</b>：同一个人换浏览器、或清除了浏览器数据，会被算作新用户，所以“累计用户”是浏览器数，略多于实际人数。</li>
+            <li>
+              <b class="text-highlighted">关闭</b>：关掉右上角的“参与统计”后，本浏览器不再发出任何上报。另外，Cloudflare Web Analytics 会统计访问量（不使用 Cookie），用于站点运维。
+            </li>
+            <li>实现见源码 <code class="font-mono text-xs">src/lib/usage.ts</code> 与 <code class="font-mono text-xs">worker/stats.ts</code>。</li>
+          </ul>
+        </div>
       </section>
 
       <section class="text-xs leading-relaxed text-muted">

@@ -21,5 +21,8 @@
     { "name": "RL_AUTH", "namespace_id": "21001", "simple": { "limit": 20, "period": 60 } },
     // 数据类接口（寻访记录、卡池信息），按客户端 IP 计数。前端同步时会主动放慢节奏，正常使用不会触发。
     { "name": "RL_DATA", "namespace_id": "21002", "simple": { "limit": 120, "period": 60 } }
-  ]
+  ],
+  // 匿名使用人数统计：全站一个 Durable Object，SQLite 存储，只保存计数器（见 worker/stats.ts）。
+  "durable_objects": { "bindings": [{ "name": "STATS", "class_name": "UsageStats" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UsageStats"] }]
 }

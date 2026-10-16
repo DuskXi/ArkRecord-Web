@@ -5,12 +5,15 @@
 
 import { handleImage, IMAGE_PREFIX } from './images'
 import { checkSameOrigin, rateLimitClient } from './security'
+import { parsePing, STATS_PREFIX } from './stats'
 import { findRoute, type Limiter, type Upstream } from './upstreams'
 
 export interface Env {
   ASSETS?: Fetcher
   RL_AUTH?: RateLimit
   RL_DATA?: RateLimit
+  /** 匿名使用人数统计（见 stats.ts） */
+  STATS?: DurableObjectNamespace
 }
 
 export const API_PREFIX = '/api/hg/'
@@ -31,6 +34,7 @@ const COOKIE_VALUE_PATTERN = /^[\w%.~+/=-]{1,4096}$/
 export async function handleRequest(request: Request, env: Env, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
   const url = new URL(request.url)
   if (url.pathname.startsWith(API_PREFIX)) return handleProxy(request, env, url)
+  if (url.pathname.startsWith(STATS_PREFIX)) return handleStats(request, env, url, ctx)
   if (url.pathname.startsWith(IMAGE_PREFIX)) {
     return handleImage(request, url, {
       allowUpstream: () => withinRateLimit(env, 'data', request),
@@ -85,6 +89,59 @@ export async function handleProxy(request: Request, env: Env, url: URL): Promise
   return buildClientResponse(upstreamResponse, match.upstream)
 }
 
+const SUMMARY_CACHE_SECONDS = 300
+const MAX_PING_BYTES = 512
+
+/**
+ * 匿名使用人数统计：
+ *   POST /api/stats/ping    只接受本站页面的请求（与转发相同的同源检查），受限速保护；
+ *   GET  /api/stats/summary 汇总结果在 Cloudflare 边缘缓存 5 分钟，绝大多数读取不会到达 Durable Object。
+ */
+export async function handleStats(request: Request, env: Env, url: URL, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
+  const path = url.pathname.slice(STATS_PREFIX.length)
+  if (path === 'ping' && request.method === 'POST') {
+    const rejection = checkSameOrigin(request)
+    if (rejection) return proxyError(403, rejection)
+    if (!(await withinRateLimit(env, 'data', request))) return proxyError(429, 'rate_limited', { 'retry-after': '60' })
+    const text = await readBodyLimited(request, MAX_PING_BYTES)
+    let ping = null
+    try {
+      ping = text === null ? null : parsePing(JSON.parse(text))
+    } catch {
+      ping = null
+    }
+    if (!ping) return proxyError(400, 'invalid_ping')
+    if (!env.STATS) return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } })
+    const stub = env.STATS.get(env.STATS.idFromName('global'))
+    const res = await stub.fetch('https://stats/ping', { method: 'POST', body: JSON.stringify(ping) })
+    return new Response(null, { status: res.ok ? 204 : 502, headers: { 'cache-control': 'no-store' } })
+  }
+  if (path === 'summary' && request.method === 'GET') {
+    if (!env.STATS) return proxyError(503, 'stats_unavailable')
+    const cache = typeof caches === 'undefined' ? null : (caches as unknown as { default: Cache }).default
+    const cacheKey = new Request(`${url.origin}${STATS_PREFIX}summary`)
+    const cached = await cache?.match(cacheKey)
+    if (cached) return cached
+    const stub = env.STATS.get(env.STATS.idFromName('global'))
+    const res = await stub.fetch('https://stats/summary')
+    if (!res.ok) return proxyError(502, 'stats_unavailable')
+    const response = new Response(await res.text(), {
+      headers: {
+        'content-type': 'application/json',
+        'cache-control': `public, max-age=${SUMMARY_CACHE_SECONDS}`,
+        'x-content-type-options': 'nosniff',
+      },
+    })
+    if (cache) {
+      const put = cache.put(cacheKey, response.clone())
+      if (ctx) ctx.waitUntil(put)
+      else await put
+    }
+    return response
+  }
+  return proxyError(request.method === 'OPTIONS' ? 405 : 404, 'stats_route_not_allowed')
+}
+
 async function withinRateLimit(env: Env, limiter: Limiter, request: Request): Promise<boolean> {
   const binding = limiter === 'auth' ? env.RL_AUTH : env.RL_DATA
   if (!binding) return true
@@ -93,11 +150,11 @@ async function withinRateLimit(env: Env, limiter: Limiter, request: Request): Pr
   return success
 }
 
-async function readBodyLimited(request: Request): Promise<string | null> {
+async function readBodyLimited(request: Request, limit = MAX_BODY_BYTES): Promise<string | null> {
   const declared = Number(request.headers.get('content-length') ?? '0')
-  if (declared > MAX_BODY_BYTES) return null
+  if (declared > limit) return null
   const text = await request.text()
-  return new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES ? null : text
+  return new TextEncoder().encode(text).byteLength > limit ? null : text
 }
 
 export function buildUpstreamHeaders(request: Request, upstream: Upstream): Headers {
