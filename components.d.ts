@@ -16,6 +16,7 @@ declare module 'vue' {
     CalendarHeatmap: typeof import('./src/components/charts/CalendarHeatmap.vue')['default']
     CharAvatar: typeof import('./src/components/ui/CharAvatar.vue')['default']
     CollectionPanel: typeof import('./src/components/stats/CollectionPanel.vue')['default']
+    ConsentBanner: typeof import('./src/components/ConsentBanner.vue')['default']
     EChart: typeof import('./src/components/charts/EChart.vue')['default']
     GameSwitcher: typeof import('./src/components/shell/GameSwitcher.vue')['default']
     LegacyMigration: typeof import('./src/components/LegacyMigration.vue')['default']
@@ -60,7 +61,6 @@ declare module 'vue' {
     UNavigationMenu: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/NavigationMenu.vue')['default']
     UProgress: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Progress.vue')['default']
     UsageBadge: typeof import('./src/components/shell/UsageBadge.vue')['default']
-    UsageNotice: typeof import('./src/components/UsageNotice.vue')['default']
     USelect: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Select.vue')['default']
     USelectMenu: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/SelectMenu.vue')['default']
     USwitch: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Switch.vue')['default']
@@ -68,5 +68,6 @@ declare module 'vue' {
     UTabs: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Tabs.vue')['default']
     UTextarea: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Textarea.vue')['default']
     UTooltip: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Tooltip.vue')['default']
+    WelcomeDialog: typeof import('./src/components/WelcomeDialog.vue')['default']
   }
 }

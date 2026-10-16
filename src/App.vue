@@ -4,7 +4,8 @@ import GameSwitcher from '@/components/shell/GameSwitcher.vue'
 import AccountMenu from '@/components/shell/AccountMenu.vue'
 import MobileNav from '@/components/shell/MobileNav.vue'
 import UsageBadge from '@/components/shell/UsageBadge.vue'
-import UsageNotice from '@/components/UsageNotice.vue'
+import ConsentBanner from '@/components/ConsentBanner.vue'
+import WelcomeDialog from '@/components/WelcomeDialog.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import LegacyMigration from '@/components/LegacyMigration.vue'
 import { computed } from 'vue'
@@ -55,6 +56,7 @@ const navItems = computed(() => navItemsFor(app.game))
     <MobileNav />
     <LoginModal />
     <LegacyMigration />
-    <UsageNotice />
+    <WelcomeDialog />
+    <ConsentBanner />
   </UApp>
 </template>

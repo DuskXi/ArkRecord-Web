@@ -77,11 +77,11 @@ const sources = [
       </section>
 
       <section id="usage" class="scroll-mt-4">
-        <SectionHeader index="03" eyebrow="USAGE STATISTICS" title="匿名使用统计">
+        <SectionHeader index="03" eyebrow="USAGE STATISTICS" title="统计与 Cookie">
           <USwitch
-            :model-value="!app.usageOptOut"
+            :model-value="app.consent === 'all'"
             label="参与统计"
-            @update:model-value="(v: boolean) => app.setUsageParticipation(v)"
+            @update:model-value="(v: boolean) => app.setConsent(v ? 'all' : 'essential')"
           />
         </SectionHeader>
         <div v-if="app.usage" class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -98,6 +98,7 @@ const sources = [
           </div>
         </div>
         <div class="space-y-2 rounded-(--ui-radius) border border-default p-4 text-sm leading-relaxed text-muted">
+          <p>本站不用 Cookie 追踪访客。第一次访问时会询问你是否参与统计：“全部接受”会启用下面两项统计，“仅必要”只保留网站功能本身需要的本地存储（你自己的寻访记录、账号和设置，只存在你的浏览器里）。做出选择之前，两项统计都不启用。</p>
           <p>本站统计使用人数，用来了解有多少人在用、是否值得继续维护。为了让你知情，这里说明全部细节：</p>
           <ul class="list-disc space-y-1 pl-5">
             <li>
@@ -107,7 +108,11 @@ const sources = [
             <li><b class="text-highlighted">保存什么</b>：服务端只有几个计数器（累计人数、每天和每月的人数），没有逐条的访问记录，不保存 IP。</li>
             <li><b class="text-highlighted">局限</b>：同一个人换浏览器、或清除了浏览器数据，会被算作新用户，所以“累计用户”是浏览器数，略多于实际人数。</li>
             <li>
-              <b class="text-highlighted">关闭</b>：关掉右上角的“参与统计”后，本浏览器不再发出任何上报。另外，Cloudflare Web Analytics 会统计访问量（不使用 Cookie），用于站点运维。
+              <b class="text-highlighted">Cloudflare Web Analytics</b>：同样只在“全部接受”后加载，统计页面访问量（不使用 Cookie、不跨站追踪），用于站点运维。
+            </li>
+            <li>
+              <b class="text-highlighted">修改</b>：随时可以用右上角的“参与统计”开关修改；关闭后本浏览器不再发出统计上报，Cloudflare 的统计脚本在刷新页面后停止。
+              也可以<UButton label="重新查看网站介绍" variant="link" size="xs" class="p-0 align-baseline" @click="app.welcomeOpen = true" />。
             </li>
             <li>实现见源码 <code class="font-mono text-xs">src/lib/usage.ts</code> 与 <code class="font-mono text-xs">worker/stats.ts</code>。</li>
           </ul>
