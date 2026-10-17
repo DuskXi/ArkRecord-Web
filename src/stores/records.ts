@@ -4,7 +4,7 @@ import { useLiveQuery } from '@/composables/useLiveQuery'
 import { db } from '@/lib/db'
 import { analyze, type PityModel } from '@/lib/stats/analyze'
 import { normalizeArknights, normalizeEndfield } from '@/lib/stats/events'
-import { endfieldGifts, type GiftEvent } from '@/lib/stats/gifts'
+import { arknightsGifts, endfieldGifts, type GiftEvent } from '@/lib/stats/gifts'
 import { arknightsGuarantees, endfieldGuarantees } from '@/lib/stats/guarantees'
 import { computeInsights } from '@/lib/stats/insights'
 import { arknightsRate, distribution, endfieldRate } from '@/lib/stats/pity'
@@ -61,10 +61,13 @@ export const useRecordsStore = defineStore('records', () => {
     return allEvents.value.filter((e) => e.weapon).map((e) => ({ ...e, mainModel: true }))
   })
   /**
-   * 终末地的赠送条目（信物赠礼等，含按规则推算的）：不是抽出来的，不进任何寻访统计，只在记录、图鉴里单独列出。
-   * 和 events 一样按角色 / 武器范围筛选。
+   * 累计寻访赠送（终末地的信物赠礼、武器赠礼，明日方舟限定池的 300 抽赠送；含按规则推算的）：
+   * 不是抽出来的，不进任何寻访统计，只在记录、图鉴里单独列出。和 events 一样按角色 / 武器范围筛选。
    */
-  const allGifts = computed<GiftEvent[]>(() => (game.value === 'endfield' ? endfieldGifts(efPulls.value, efPools.value, app.efMeta ?? undefined) : []))
+  const allGifts = computed<GiftEvent[]>(() => {
+    if (game.value === 'endfield') return endfieldGifts(efPulls.value, efPools.value, app.efMeta ?? undefined)
+    return app.meta ? arknightsGifts(akPulls.value, app.meta) : []
+  })
   const gifts = computed(() => allGifts.value.filter((g) => g.weapon === weaponScope.value))
   const model = computed(() => (weaponScope.value ? MODELS.endfieldWeapon : MODELS[game.value]))
   const analysis = computed(() => analyze(events.value, model.value))

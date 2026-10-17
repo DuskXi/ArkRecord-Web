@@ -7,9 +7,11 @@
  *   - 截图之后又抽到的、又获得赠送的，不改快照，显示时用寻访记录往上加（currentState），
  *     所以截完图再抽卡、再同步，不会重复计算，也不用重新截图。
  *
- * 只存在这台设备上，会进入导出文件和本地快照；目前不参与云同步。
+ * 会进入导出文件、本地快照和云同步（cloud/codec.ts 的格式版本 2）。
+ * 多台设备之间合并与顺序无关：按（截图时间，导入时间，规范编码）取最大的一条。
  */
 import { db } from './db'
+import { compareUtf8, jcs } from './jcs'
 
 export interface RosterEntry {
   accountId: string
@@ -28,7 +30,8 @@ export interface RosterEntry {
   source: 'screenshot' | 'manual'
 }
 
-export type RosterInput = Omit<RosterEntry, 'accountId' | 'importedAt'>
+/** importedAt：从云端、导出文件来的带着原来的导入时间；这台设备上刚识别的不带（保存时记为现在） */
+export type RosterInput = Omit<RosterEntry, 'accountId' | 'importedAt'> & { importedAt?: number }
 
 export interface RosterMergeSummary {
   added: number
@@ -51,26 +54,39 @@ export function potentialFromCopies(copies: number): number {
 
 type Decision = 'add' | 'update' | 'unchanged' | 'older'
 
-/** 一条识别结果和已保存的记录相比该怎么处理（纯函数，便于测试） */
+const content = (r: Pick<RosterEntry, 'name' | 'copies' | 'potential' | 'source'>) => jcs({ name: r.name, copies: r.copies, potential: r.potential, source: r.source })
+
+/**
+ * 一条识别结果和已保存的记录相比该怎么处理（纯函数，便于测试）。
+ *   - 截图时间新的优先；
+ *   - 截图时间相同、内容也相同：不变（这台设备上重复导入同一张截图）；
+ *   - 截图时间相同、内容不同：导入时间新的优先（重新导入同一张截图、改正了识别结果）；
+ *   - 都相同时按规范编码取较大的。云端、导出文件来的记录都带着导入时间，所以合并结果与顺序无关。
+ */
 export function decide(existing: RosterEntry | undefined, incoming: RosterInput): Decision {
   if (!existing) return 'add'
-  if (incoming.observedAt < existing.observedAt) return 'older'
-  if (incoming.observedAt === existing.observedAt && incoming.copies === existing.copies && incoming.potential === existing.potential && incoming.name === existing.name) {
-    return 'unchanged'
-  }
-  return 'update'
+  if (incoming.observedAt !== existing.observedAt) return incoming.observedAt > existing.observedAt ? 'update' : 'older'
+  const a = content(incoming)
+  const b = content(existing)
+  // 这台设备上刚识别的（没有导入时间）：内容相同就什么都不做
+  if (incoming.importedAt === undefined) return a === b ? 'unchanged' : 'update'
+  if (incoming.importedAt !== existing.importedAt) return incoming.importedAt > existing.importedAt ? 'update' : 'older'
+  if (a === b) return 'unchanged'
+  return compareUtf8(a, b) > 0 ? 'update' : 'older'
 }
 
 /** 保存识别结果；同一名干员只保留截图时间最新的一条 */
 export async function mergeRoster(accountId: string, items: readonly RosterInput[]): Promise<RosterMergeSummary> {
   const summary: RosterMergeSummary = { added: 0, updated: 0, unchanged: 0, older: 0 }
-  // 同一批里同一名干员出现多次（两张截图有重叠）：取截图时间最新的
+  const importedAt = Date.now()
+  // 同一批里同一名干员出现多次（两张截图有重叠）：按同样的规则取一条
   const latest = new Map<string, RosterInput>()
   for (const item of items) {
     const prev = latest.get(item.itemId)
-    if (!prev || item.observedAt >= prev.observedAt) latest.set(item.itemId, item)
+    if (!prev || decide({ ...prev, accountId, importedAt: prev.importedAt ?? importedAt }, { ...item, importedAt: item.importedAt ?? importedAt }) === 'update') {
+      latest.set(item.itemId, item)
+    }
   }
-  const importedAt = Date.now()
   await db.transaction('rw', db.roster, async () => {
     const keys = [...latest.keys()].map((itemId) => [accountId, itemId] as [string, string])
     const existing = await db.roster.bulkGet(keys)
@@ -81,7 +97,7 @@ export async function mergeRoster(accountId: string, items: readonly RosterInput
       else if (decision === 'update') summary.updated++
       else if (decision === 'unchanged') summary.unchanged++
       else summary.older++
-      if (decision === 'add' || decision === 'update') writes.push({ ...item, accountId, importedAt })
+      if (decision === 'add' || decision === 'update') writes.push({ ...item, accountId, importedAt: item.importedAt ?? importedAt })
     })
     if (writes.length) await db.roster.bulkPut(writes)
   })

@@ -208,7 +208,9 @@ export async function buildExport(version: string, accountIds?: string[]): Promi
 
 async function exportRoster(accountId: string): Promise<ExportRoster[] | undefined> {
   const rows = await db.roster.where('accountId').equals(accountId).toArray()
-  return rows.length ? rows.map(({ itemId, name, copies, potential, observedAt, source }) => ({ itemId, name, copies, potential, observedAt, source })) : undefined
+  return rows.length
+    ? rows.map(({ itemId, name, copies, potential, observedAt, importedAt, source }) => ({ itemId, name, copies, potential, observedAt, importedAt, source }))
+    : undefined
 }
 
 const countOrNull = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null)
@@ -225,6 +227,7 @@ function importRoster(rows: unknown): RosterInput[] {
       copies: countOrNull(r.copies),
       potential: countOrNull(r.potential),
       observedAt: r.observedAt,
+      ...(typeof r.importedAt === 'number' && Number.isSafeInteger(r.importedAt) ? { importedAt: r.importedAt } : {}),
       source: r.source === 'manual' ? 'manual' : 'screenshot',
     })
   }

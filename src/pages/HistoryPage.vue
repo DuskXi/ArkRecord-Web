@@ -265,7 +265,9 @@ function toggleStar(s: number) {
                   :game="records.game"
                   class="shrink-0"
                 />
-                <UIcon v-else name="i-lucide-gift" class="size-8 shrink-0 text-muted" />
+                <div v-else class="grid size-11 shrink-0 place-items-center rounded-(--ui-radius) bg-elevated ring-1 ring-default">
+                  <UIcon :name="item.gift.kind === 'gift_intel_book' ? 'i-lucide-book-open' : 'i-lucide-gift'" class="size-6 text-muted" />
+                </div>
                 <div class="min-w-0">
                   <p class="flex flex-wrap items-center gap-1.5 text-sm">
                     <span class="font-medium text-highlighted">{{ item.gift.label }}</span>

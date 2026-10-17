@@ -42,7 +42,7 @@ describe('截图快照：幂等', () => {
   it('进入导出文件，导入后不重复', async () => {
     await mergeRoster(ACCOUNT, [input('chr_a', 4)])
     const file = JSON.parse(JSON.stringify(await buildExport('test'))) as ExportFile
-    expect(file.endfield[0]!.roster).toEqual([{ itemId: 'chr_a', name: 'chr_a', copies: 5, potential: 4, observedAt: T, source: 'screenshot' }])
+    expect(file.endfield[0]!.roster).toEqual([{ itemId: 'chr_a', name: 'chr_a', copies: 5, potential: 4, observedAt: T, importedAt: expect.any(Number), source: 'screenshot' }])
     await db.roster.clear()
     await importExportFile(file)
     await importExportFile(file)
@@ -96,5 +96,41 @@ describe('截图时间', () => {
     const bytes = new Uint8Array([0xff, 0xd8, ...head])
     expect(timeFromExif(bytes)).toBe(new Date(2026, 9, 17, 6, 5, 25).getTime())
     expect(timeFromExif(new Uint8Array([0x89, 0x50]))).toBeNull()
+  })
+})
+
+describe('多台设备之间合并：与顺序无关', () => {
+  it('同一名干员的不同版本，按任何顺序合并，结果都一样', async () => {
+    const versions: RosterInput[] = [
+      { itemId: 'chr_a', name: 'chr_a', copies: 2, potential: 1, observedAt: T, importedAt: T + 10, source: 'screenshot' },
+      { itemId: 'chr_a', name: 'chr_a', copies: 3, potential: 2, observedAt: T, importedAt: T + 20, source: 'screenshot' },
+      { itemId: 'chr_a', name: 'chr_a', copies: 1, potential: 0, observedAt: T - 1000, importedAt: T + 30, source: 'screenshot' },
+      { itemId: 'chr_a', name: 'chr_a', copies: 4, potential: 3, observedAt: T, importedAt: T + 20, source: 'manual' },
+    ]
+    const results = new Set<string>()
+    const orders = [
+      [0, 1, 2, 3],
+      [3, 2, 1, 0],
+      [2, 0, 3, 1],
+      [1, 3, 0, 2],
+    ]
+    for (const order of orders) {
+      await db.roster.clear()
+      for (const i of order) await mergeRoster(ACCOUNT, [versions[i]!])
+      results.add(JSON.stringify(await db.roster.toArray()))
+    }
+    // 一次合并一批（同一批里有重复）也一样
+    await db.roster.clear()
+    await mergeRoster(ACCOUNT, versions)
+    results.add(JSON.stringify(await db.roster.toArray()))
+    expect(results.size).toBe(1)
+    // 截图时间最新的那几条里，导入时间新的；再相同时按规范编码
+    expect((await db.roster.get([ACCOUNT, 'chr_a']))!.observedAt).toBe(T)
+  })
+
+  it('这台设备上重新导入同一张截图、改正了识别结果：改正的生效', async () => {
+    await mergeRoster(ACCOUNT, [input('chr_a', 1)])
+    expect(await mergeRoster(ACCOUNT, [input('chr_a', 2)])).toMatchObject({ updated: 1 })
+    expect((await db.roster.get([ACCOUNT, 'chr_a']))!.potential).toBe(2)
   })
 })

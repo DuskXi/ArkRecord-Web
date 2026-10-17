@@ -51,7 +51,8 @@ export function toEfPull(accountId: string, type: 'char' | 'weapon', poolType: s
     poolName: raw.poolName,
     poolType: type === 'char' ? poolType : (raw.poolType ?? poolType),
     itemId,
-    itemName: (type === 'char' ? raw.charName : raw.weaponName) ?? '',
+    // 赠送条目没有 charName / weaponName 时，用官方页面显示的 nameText（之后按它和卡池补上干员 / 武器，见 stats/gifts.ts）
+    itemName: (type === 'char' ? raw.charName : raw.weaponName) || (raw.nameText && raw.nameText !== '__unknown_item__' ? raw.nameText : '') || '',
     rarity: efRarity(raw.rarity, itemId, meta),
     isNew: Boolean(raw.isNew),
     isFree: Boolean(raw.isFree),

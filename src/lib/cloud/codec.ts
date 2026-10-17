@@ -13,9 +13,14 @@
  * 规范唯一性定义在这里的明文上；压缩、加密之后的字节不要求唯一（见 envelope.ts）。
  */
 import { CanonicalError, isWellFormed, jcs } from '../jcs'
+import type { RosterEntry } from '../roster'
 import type { AkLedgerEntry, AkPull, EfPoolInfo, EfPull, Game } from '../types'
 
-export const FORMAT_VERSION = 1
+/**
+ * 格式版本：1 是只有寻访记录（以及源石/充值、卡池信息）的格式；2 增加了截图识别的已拥有干员（roster）。
+ * 规范唯一：没有已拥有干员时一律写成版本 1（以前的网页也能读），有的时候写成版本 2。
+ */
+export const FORMAT_VERSION = 2
 
 export class CodecError extends Error {
   constructor(message: string) {
@@ -35,6 +40,8 @@ export interface CloudAccountInfo {
 export type AkRecord = Omit<AkPull, 'accountId'>
 export type EfRecord = Omit<EfPull, 'accountId'>
 export type LedgerRecord = Omit<AkLedgerEntry, 'accountId'>
+/** 截图识别的已拥有干员（roster.ts） */
+export type RosterRecord = Omit<RosterEntry, 'accountId'>
 
 export interface AkDataset {
   game: 'arknights'
@@ -42,6 +49,8 @@ export interface AkDataset {
   account: CloudAccountInfo
   pulls: AkRecord[]
   ledger: LedgerRecord[]
+  /** 截图识别的已拥有干员；没有时省略（编码为版本 1） */
+  roster?: RosterRecord[]
 }
 
 export interface EfDataset {
@@ -50,13 +59,25 @@ export interface EfDataset {
   account: CloudAccountInfo
   pulls: EfRecord[]
   pools: EfPoolInfo[]
+  roster?: RosterRecord[]
 }
 
 export type CloudDataset = AkDataset | EfDataset
 
 // ───────────── 字段表：每种记录的每个字段怎么校验（穷举，编译器检查） ─────────────
 
-type FieldKind = 'string' | 'string?' | 'nullableString' | 'int' | 'int?' | 'boolean' | 'boolean?' | 'json' | 'stringList?' | readonly string[]
+type FieldKind =
+  | 'string'
+  | 'string?'
+  | 'nullableString'
+  | 'int'
+  | 'int?'
+  | 'nullableInt'
+  | 'boolean'
+  | 'boolean?'
+  | 'json'
+  | 'stringList?'
+  | readonly string[]
 
 const AK_FIELDS = {
   key: 'string',
@@ -110,6 +131,16 @@ const POOL_FIELDS = {
   fetchedAt: 'int',
 } as const satisfies Record<keyof EfPoolInfo, FieldKind>
 
+const ROSTER_FIELDS = {
+  itemId: 'string',
+  name: 'string',
+  copies: 'nullableInt',
+  potential: 'nullableInt',
+  observedAt: 'int',
+  importedAt: 'int',
+  source: ['screenshot', 'manual'],
+} as const satisfies Record<keyof RosterRecord, FieldKind>
+
 const ACCOUNT_FIELDS = {
   nickName: 'string',
   channelName: 'string?',
@@ -134,6 +165,8 @@ function checkField(kind: FieldKind, value: unknown): boolean {
       return Number.isSafeInteger(value) && !Object.is(value, -0)
     case 'int?':
       return value === undefined || (Number.isSafeInteger(value) && !Object.is(value, -0))
+    case 'nullableInt':
+      return value === null || (Number.isSafeInteger(value) && !Object.is(value, -0))
     case 'boolean':
       return typeof value === 'boolean'
     case 'boolean?':
@@ -343,12 +376,26 @@ function encodePools(pools: readonly EfPoolInfo[]): string {
   return list(pools.toSorted((a, b) => compare(a.poolId, b.poolId)).map((p) => jcs(p)))
 }
 
+function encodeRoster(roster: readonly RosterRecord[]): string {
+  roster.forEach((r, i) => validate(r, ROSTER_FIELDS, `第 ${i + 1} 条已拥有干员`))
+  assertUniqueKeys(
+    roster.map((r) => r.itemId),
+    '已拥有干员',
+  )
+  return list(roster.toSorted((a, b) => compare(a.itemId, b.itemId)).map((r) => jcs(r)))
+}
+
 /** 把一个账号的记录编码成规范的 JSON 文本 */
 export function encodeDataset(ds: CloudDataset): string {
   if (!checkString(ds.uid) || !ds.uid || ds.uid.length > 64) throw new CodecError('UID 不合法')
-  const head = `{"v":${FORMAT_VERSION},"game":${lit(ds.game)},"uid":${lit(ds.uid)},"account":${encodeAccount(ds.account)}`
-  if (ds.game === 'arknights') return `${head},"pulls":${encodeAkPulls(ds.pulls)},"ledger":${encodeLedger(ds.ledger)}}`
-  if (ds.game === 'endfield') return `${head},"pulls":${encodeEfPulls(ds.pulls)},"pools":${encodePools(ds.pools)}}`
+  if (ds.roster !== undefined && !Array.isArray(ds.roster)) throw new CodecError('已拥有干员格式不对')
+  const roster = ds.roster ?? []
+  // 没有已拥有干员时写成版本 1：以前的网页也能读
+  const version = roster.length ? FORMAT_VERSION : 1
+  const head = `{"v":${version},"game":${lit(ds.game)},"uid":${lit(ds.uid)},"account":${encodeAccount(ds.account)}`
+  const tail = roster.length ? `,"roster":${encodeRoster(roster)}}` : '}'
+  if (ds.game === 'arknights') return `${head},"pulls":${encodeAkPulls(ds.pulls)},"ledger":${encodeLedger(ds.ledger)}${tail}`
+  if (ds.game === 'endfield') return `${head},"pulls":${encodeEfPulls(ds.pulls)},"pools":${encodePools(ds.pools)}${tail}`
   throw new CodecError('不认识的游戏')
 }
 
@@ -529,15 +576,17 @@ export function decodeDataset(text: string): CloudDataset {
     throw new CodecError('不是合法的 JSON')
   }
   const o = obj(parsed, '数据')
-  if (o.v !== FORMAT_VERSION) throw new UnsupportedVersionError(typeof o.v === 'number' ? o.v : NaN)
+  if (o.v !== 1 && o.v !== FORMAT_VERSION) throw new UnsupportedVersionError(typeof o.v === 'number' ? o.v : NaN)
   const game = o.game as Game
   const uid = str(o.uid, 'UID')
   const account = obj(o.account, '账号信息') as unknown as CloudAccountInfo
+  // 版本 1 没有这一项；版本 2 必须有（内容在重新编码时逐条校验）
+  const roster = o.v === 1 ? undefined : (arr(o.roster, '已拥有干员') as unknown as RosterRecord[])
   let ds: CloudDataset
   if (game === 'arknights') {
-    ds = { game, uid, account, pulls: decodeAkPulls(o.pulls), ledger: decodeLedger(o.ledger) }
+    ds = { game, uid, account, pulls: decodeAkPulls(o.pulls), ledger: decodeLedger(o.ledger), ...(roster ? { roster } : {}) }
   } else if (game === 'endfield') {
-    ds = { game, uid, account, pulls: decodeEfPulls(o.pulls), pools: arr(o.pools, '卡池信息') as unknown as EfPoolInfo[] }
+    ds = { game, uid, account, pulls: decodeEfPulls(o.pulls), pools: arr(o.pools, '卡池信息') as unknown as EfPoolInfo[], ...(roster ? { roster } : {}) }
   } else {
     throw new CodecError('不认识的游戏')
   }

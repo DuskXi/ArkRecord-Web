@@ -129,12 +129,7 @@ async function exportJson() {
 }
 function exportCsv() {
   const file = `ArkRecord_${app.activeAccount?.uid ?? ''}_${dateStamp()}.csv`
-  if (records.game !== 'endfield') {
-    const rows = records.events.map((e) => [formatDateTime(e.ts), e.poolName, e.name, e.star, e.isNew ? '是' : ''])
-    downloadFile(file, toCsv(['时间', '卡池', '干员', '星级', 'NEW'], rows), 'text/csv')
-    return
-  }
-  // 终末地：赠送条目（信物赠礼等，含按规则推算的）也列出来，用“来源”区分
+  // 累计寻访赠送（信物赠礼、限定干员等，含按规则推算的）也列出来，用“来源”区分
   const rows = [
     ...records.events.map((e) => ({ ts: e.ts, order: e.order, row: [formatDateTime(e.ts), e.poolName, e.name, e.star, e.isNew ? '是' : '', '寻访'] })),
     ...records.gifts.map((g) => ({

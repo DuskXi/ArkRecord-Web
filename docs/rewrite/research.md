@@ -174,6 +174,8 @@ POST /user/auth/v1/token_by_scan_code {scanCode}
 - 同一限定池第 120 抽必得当期 UP，**不继承**（重构寻访同名池跨版本继承）。
 - 信物赠礼：特许寻访本期卡池内每累计寻访 240 次（`CHAR_UP_6_ITEM_TIME`，不含免费十连）额外获得当期 UP 6★ 的信物 ×1；重构寻访同一卡池累计。记录里是 `kind: "gift_operator_token"` 的条目；查不到时按规则推算，见 `src/lib/stats/gifts.ts`。
 - 寻访情报书：特许寻访累计寻访 60 次（`CHAR_BOOK_TIME`）获得一本（`gift_intel_book`），下次特许寻访转为 10 张专有凭证。
+- 赠送条目一般没有 `charId` / `charName`，官方页面显示的是 `nameText`；按卡池的当期 UP 补上（见 `src/lib/stats/gifts.ts`）。
+- 武库申领（每次 10 把）：累计申领 10 次送武库赠礼（`gift_weapon_box`，自选箱），18 次送当期 UP 6★ 武器（`gift_weapon`），之后每 8 次交替；重构申领同一卡池累计。
 - `isFree` 的免费十连不计保底；辉光庆典（Joint）池没有保底。
 - 武器池：每次 10 连，40 抽内必出 6★，80 抽必得 UP 6★；计数不跨池继承（重构武器池除外）。
 

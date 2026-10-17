@@ -69,11 +69,13 @@ async function device(factory = new IDBFactory()) {
   const { mergeLedger } = await import('../ledger')
   const { readLocalDataset } = await import('./dataset')
   const { fingerprint } = await import('./codec')
+  const { mergeRoster } = await import('../roster')
   const accountId = `arknights:${UID}`
   return {
     factory,
     engine,
     db,
+    mergeRoster,
     accountId,
     async createAccount(nickName = '博士') {
       await db.accounts.put({ id: accountId, game: 'arknights', uid: UID, nickName, createdAt: 1, metaAt: 1 })
@@ -120,6 +122,7 @@ async function device(factory = new IDBFactory()) {
 }
 
 const target = { game: 'arknights' as const, uid: UID }
+const shot = (itemId: string, observedAt: number) => ({ itemId, name: itemId, copies: null, potential: null, observedAt, source: 'screenshot' as const })
 
 describe('云同步端到端', () => {
   it('开通 → 新设备恢复 → 双向合并 → 并发 → 收敛到同一个指纹', async () => {
@@ -374,5 +377,33 @@ describe('云同步端到端', () => {
     } finally {
       hgSecret = HG_SECRET
     }
+  })
+
+  it('截图识别的已拥有干员也会云同步：新设备取回；更新的截图覆盖旧的；重复导入不重复上传', async () => {
+    hgSecret = HG_SECRET
+    cloud = makeCloud(PEPPER, HG_SECRET)
+    const a = await device()
+    const account = await a.createAccount()
+    await a.addPulls(0, 2)
+    await a.mergeRoster(a.accountId, [shot('char_103_angel', 1000), shot('char_123_fang', 1000)])
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+
+    const b = await device()
+    await b.engine.unlockCloud(target, { password: PASSWORD, remember: true })
+    expect((await b.db.roster.toArray()).map((r) => r.itemId).toSorted()).toEqual(['char_103_angel', 'char_123_fang'])
+    expect(await b.print()).toBe(await a.print())
+
+    // B 导入一张更新的截图（多了一名干员、芬的截图时间更新）
+    await b.mergeRoster(b.accountId, [shot('char_123_fang', 2000), shot('char_124_kroos', 2000)])
+    expect((await b.engine.syncCloud(b.accountId)).uploaded).toBe(2)
+    expect((await a.engine.syncCloud(a.accountId)).uploaded).toBe(0)
+    expect((await a.db.roster.get([a.accountId, 'char_123_fang']))!.observedAt).toBe(2000)
+    expect(await a.db.roster.count()).toBe(3)
+    expect(await a.print()).toBe(await b.print())
+
+    // A 重复导入旧截图：不变，也不上传
+    await a.mergeRoster(a.accountId, [shot('char_123_fang', 1000)])
+    expect((await a.engine.syncCloud(a.accountId)).uploaded).toBe(0)
+    expect(await a.print()).toBe(await b.print())
   })
 })

@@ -307,7 +307,7 @@ describe('无歧义：不规范的写法一律拒绝', () => {
   })
 
   it('不认识的更高版本：提示刷新网页，而不是当成错误数据', () => {
-    expect(() => decodeDataset(ak.replace('"v":1', '"v":2'))).toThrow(UnsupportedVersionError)
+    expect(() => decodeDataset(ak.replace('"v":1', '"v":3'))).toThrow(UnsupportedVersionError)
   })
 
   it('不是合法 UTF-8 的字节被拒绝', () => {
@@ -328,5 +328,46 @@ describe('无歧义：不规范的写法一律拒绝', () => {
         expect(error).toBeInstanceOf(CodecError)
       }
     }
+  })
+})
+
+const roster = (r: () => number, n: number) =>
+  Array.from({ length: n }, (_, i) => ({
+    itemId: `chr_${String(i).padStart(4, '0')}_${pick(r, ['a', 'b', 'c'])}`,
+    name: pick(r, NAMES),
+    copies: r() < 0.3 ? null : Math.floor(r() * 7),
+    potential: r() < 0.3 ? null : Math.floor(r() * 6),
+    observedAt: 1_700_000_000_000 + Math.floor(r() * 1e9),
+    importedAt: 1_700_000_000_000 + Math.floor(r() * 1e9),
+    source: pick(r, ['screenshot', 'manual'] as const),
+  }))
+
+describe('截图识别的已拥有干员（格式版本 2）', () => {
+  it('没有已拥有干员时仍然写成版本 1（以前的网页也能读）；有的时候写成版本 2，无损往返', () => {
+    const plain = efDataset(31, 10)
+    expect(encodeDataset(plain).startsWith('{"v":1,')).toBe(true)
+    expect(encodeDataset({ ...plain, roster: [] })).toBe(encodeDataset(plain))
+    const r = rng(32)
+    const withRoster = { ...akDataset(33, 10), roster: roster(r, 12) }
+    const text = encodeDataset(withRoster)
+    expect(text.startsWith('{"v":2,')).toBe(true)
+    const back = decodeDataset(text)
+    expect(back.roster?.toSorted((a, b) => (a.itemId < b.itemId ? -1 : 1))).toEqual(withRoster.roster.toSorted((a, b) => (a.itemId < b.itemId ? -1 : 1)))
+    // 顺序不影响编码
+    expect(encodeDataset({ ...withRoster, roster: shuffle(r, withRoster.roster) })).toBe(text)
+  })
+
+  it('不规范的写法一律拒绝：版本 2 却没有干员、版本 1 却带着干员、顺序不对、多余字段、重复的干员', () => {
+    const r = rng(34)
+    const ds = { ...efDataset(35, 5), roster: roster(r, 3) }
+    const text = encodeDataset(ds)
+    const plain = encodeDataset(efDataset(35, 5))
+    expect(() => decodeDataset(plain.replace('{"v":1,', '{"v":2,'))).toThrow(CodecError)
+    expect(() => decodeDataset(text.replace('{"v":2,', '{"v":1,'))).toThrow(CodecError)
+    const o = JSON.parse(text) as { roster: Record<string, unknown>[] }
+    expect(() => decodeDataset(JSON.stringify({ ...o, roster: o.roster.toReversed() }))).toThrow(CodecError)
+    expect(() => decodeDataset(text.replace('"itemId":', '"extra":1,"itemId":'))).toThrow(CodecError)
+    expect(() => encodeDataset({ ...ds, roster: [...ds.roster, ds.roster[0]!] })).toThrow(CodecError)
+    expect(() => encodeDataset({ ...ds, roster: [{ ...ds.roster[0]!, copies: 1.5 }] })).toThrow(CodecError)
   })
 })
