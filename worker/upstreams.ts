@@ -8,7 +8,8 @@
  *   也读不到 Set-Cookie。网页因此无法直接调用这些接口。
  *
  * 转发只为绕过这一浏览器限制，不是为了获取任何信息：
- *   - Worker 不解析、不记录、不存储任何请求或响应内容（包括 token）；
+ *   - Worker 只把浏览器请求体里的参数按白名单拼成上游请求（见 proxy.ts），不解析响应内容，
+ *     不记录、不存储任何请求或响应内容（包括 token）；token 只在发给 Worker 的请求体里，不出现在网址和请求头里；
  *   - 所有数据处理都在用户浏览器本地完成；
  *   - 只接受本站同源请求，不返回任何 CORS 头，其他网站无法借用这个转发（见 security.ts）。
  *
@@ -18,6 +19,7 @@
 export type Limiter = 'auth' | 'data'
 
 export interface Route {
+  /** 上游实际使用的方法（浏览器发给 Worker 的请求一律是 POST，参数在请求体里，见 proxy.ts） */
   method: 'GET' | 'POST'
   /** 完整路径，必须精确匹配 */
   path: string
@@ -107,13 +109,9 @@ export const UPSTREAMS = {
 
 export type UpstreamName = keyof typeof UPSTREAMS
 
-export function findRoute(
-  name: string,
-  method: string,
-  path: string,
-): { upstream: Upstream; route: Route } | null {
+export function findRoute(name: string, path: string): { upstream: Upstream; route: Route } | null {
   if (!Object.hasOwn(UPSTREAMS, name)) return null
   const upstream: Upstream = UPSTREAMS[name as UpstreamName]
-  const route = upstream.routes.find((r) => r.method === method && r.path === path)
+  const route = upstream.routes.find((r) => r.path === path)
   return route ? { upstream, route } : null
 }

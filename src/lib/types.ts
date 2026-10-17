@@ -23,6 +23,8 @@ export interface Account {
   isOfficial?: boolean
   createdAt: number
   lastSyncAt?: number
+  /** 昵称、渠道最后一次从鹰角确认的时间（毫秒）；云同步按它合并账号信息，新的优先 */
+  metaAt?: number
   /** 鹰角通行证的账号 token，只在用户选择“记住登录”时保存在本地 */
   accountToken?: string
 }

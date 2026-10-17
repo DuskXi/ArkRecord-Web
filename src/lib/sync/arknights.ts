@@ -5,6 +5,7 @@ import { db } from '../db'
 import { getU8Token, grantOAuthToken } from '../hg/auth'
 import { type AkRawRecord, type AkSession, fetchCategories, fetchDiamondPage, fetchHistoryPage, fetchRecentOrders, roleLogin } from '../hg/arknights'
 import { ledgerKeys, mergeLedger, toLedgerEntries } from '../ledger'
+import { dedupeBy, pickAkPull, planWrites } from '../merge'
 import type { Account, AkLedgerEntry, AkPull } from '../types'
 
 export interface SyncProgress {
@@ -97,11 +98,17 @@ function secondRange(pulls: AkPull[]): [number, number] {
   return [lo - LEGACY_MATCH_SECONDS, hi + LEGACY_MATCH_SECONDS]
 }
 
-/** 写入接口数据；同一次寻访的旧版数据（同一秒，或前后几秒内容相同的十连）被接口数据替换 */
+/**
+ * 写入接口数据（也用于导入文件、云同步中的非旧版记录），返回新增的条数。
+ *   - 同一次寻访的旧版数据（同一秒，或前后几秒内容相同的十连）被接口数据替换；
+ *   - 已有同键记录时按 merge.ts 的规则保留更好的版本，结果与写入顺序无关。
+ */
 export async function mergeAkPulls(accountId: string, pulls: AkPull[]): Promise<number> {
-  if (!pulls.length) return 0
-  const [lo, hi] = secondRange(pulls)
-  const modern = groupBySecond(pulls)
+  const incoming = dedupeBy(pulls, (p) => p.key, pickAkPull)
+  if (!incoming.length) return 0
+  const [lo, hi] = secondRange(incoming)
+  const modern = groupBySecond(incoming)
+  let added = 0
   await db.transaction('rw', db.akPulls, async () => {
     const legacy = await db.akPulls
       .where('[accountId+tsSec]')
@@ -113,9 +120,12 @@ export async function mergeAkPulls(accountId: string, pulls: AkPull[]): Promise<
       if (coveredByModern(second, batch, modern)) replaced.push(...batch.map((p): [string, string] => [accountId, p.key]))
     }
     if (replaced.length) await db.akPulls.bulkDelete(replaced)
-    await db.akPulls.bulkPut(pulls)
+    const existing = await db.akPulls.bulkGet(incoming.map((p): [string, string] => [accountId, p.key]))
+    const plan = planWrites(incoming, existing, pickAkPull)
+    if (plan.writes.length) await db.akPulls.bulkPut(plan.writes)
+    added = plan.added
   })
-  return pulls.length
+  return added
 }
 
 export async function syncArknights(
@@ -123,7 +133,8 @@ export async function syncArknights(
   accountToken: string,
   options: { full?: boolean; onProgress?: (p: SyncProgress) => void } = {},
 ): Promise<SyncResult> {
-  const report = (stage: string, detail?: string) => options.onProgress?.({ stage, detail, added: collected.length })
+  let freshCount = 0
+  const report = (stage: string, detail?: string) => options.onProgress?.({ stage, detail, added: freshCount })
   const collected: AkPull[] = []
   let fetched = 0
 
@@ -147,7 +158,9 @@ export async function syncArknights(
       const records = result.list.map((raw) => toAkPull(account.id, category.id, raw))
       const fresh = records.filter((r) => !existing.has(r.key))
       for (const r of fresh) existing.add(r.key)
-      collected.push(...fresh)
+      freshCount += fresh.length
+      // 完整同步时已有的记录也交给合并规则，例如用接口版本替换导入的版本
+      collected.push(...(options.full ? records : fresh))
       // 这一页里出现了已有记录：更早的都已经同步过了
       if (!options.full && fresh.length < records.length) break
       const last = result.list.at(-1)
@@ -157,7 +170,7 @@ export async function syncArknights(
   }
 
   report('正在保存')
-  await mergeAkPulls(account.id, collected)
+  const added = await mergeAkPulls(account.id, collected)
 
   // 源石、充值记录：官网只能查到最近 30 天，每次同步都顺便保存下来。失败不影响寻访记录。
   let ledger = 0
@@ -177,7 +190,7 @@ export async function syncArknights(
   }
 
   await db.accounts.update(account.id, { lastSyncAt: Date.now() })
-  return { added: collected.length, fetched, ledger, warnings }
+  return { added, fetched, ledger, warnings }
 }
 
 function reason(error: unknown): string {

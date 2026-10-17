@@ -22,18 +22,24 @@
     // 数据类接口（寻访记录、卡池信息），按客户端 IP 计数。前端同步时会主动放慢节奏，正常使用不会触发。
     { "name": "RL_DATA", "namespace_id": "21002", "simple": { "limit": 120, "period": 60 } },
     // 站内反馈：每个客户端每分钟最多 5 条
-    { "name": "RL_FEEDBACK", "namespace_id": "21003", "simple": { "limit": 5, "period": 60 } }
+    { "name": "RL_FEEDBACK", "namespace_id": "21003", "simple": { "limit": 5, "period": 60 } },
+    // 云同步：每个客户端每分钟最多 20 次（猜密码另有按账号的退避，见 worker/cloud-vault.ts）
+    { "name": "RL_CLOUD", "namespace_id": "21004", "simple": { "limit": 20, "period": 60 } }
   ],
-  // 匿名使用人数统计（worker/stats.ts，只保存计数器）与站内反馈（worker/feedback.ts）：各一个 Durable Object，SQLite 存储。
+  // 匿名使用人数统计（worker/stats.ts，只保存计数器）、站内反馈（worker/feedback.ts）：各一个 Durable Object；
+  // 云同步（worker/cloud-vault.ts）：每个账号一个 Durable Object，只保存浏览器加密后的密文。都用 SQLite 存储（免费版可用）。
+  // 云同步还需要 Worker secret SYNC_PEPPER（在 Cloudflare 后台设置，不进仓库），见 docs/rewrite/cloud-sync.md 第 18 节。
   "durable_objects": {
     "bindings": [
       { "name": "STATS", "class_name": "UsageStats" },
-      { "name": "FEEDBACK", "class_name": "FeedbackStore" }
+      { "name": "FEEDBACK", "class_name": "FeedbackStore" },
+      { "name": "CLOUD", "class_name": "CloudVault" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["UsageStats"] },
-    { "tag": "v2", "new_sqlite_classes": ["FeedbackStore"] }
+    { "tag": "v2", "new_sqlite_classes": ["FeedbackStore"] },
+    { "tag": "v3", "new_sqlite_classes": ["CloudVault"] }
   ],
 
   "env": {
@@ -44,17 +50,20 @@
       "ratelimits": [
         { "name": "RL_AUTH", "namespace_id": "21101", "simple": { "limit": 20, "period": 60 } },
         { "name": "RL_DATA", "namespace_id": "21102", "simple": { "limit": 120, "period": 60 } },
-        { "name": "RL_FEEDBACK", "namespace_id": "21103", "simple": { "limit": 5, "period": 60 } }
+        { "name": "RL_FEEDBACK", "namespace_id": "21103", "simple": { "limit": 5, "period": 60 } },
+        { "name": "RL_CLOUD", "namespace_id": "21104", "simple": { "limit": 20, "period": 60 } }
       ],
       "durable_objects": {
         "bindings": [
           { "name": "STATS", "class_name": "UsageStats" },
-          { "name": "FEEDBACK", "class_name": "FeedbackStore" }
+          { "name": "FEEDBACK", "class_name": "FeedbackStore" },
+          { "name": "CLOUD", "class_name": "CloudVault" }
         ]
       },
       "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["UsageStats"] },
-        { "tag": "v2", "new_sqlite_classes": ["FeedbackStore"] }
+        { "tag": "v2", "new_sqlite_classes": ["FeedbackStore"] },
+        { "tag": "v3", "new_sqlite_classes": ["CloudVault"] }
       ]
     }
   }

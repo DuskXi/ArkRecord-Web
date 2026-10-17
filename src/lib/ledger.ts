@@ -16,6 +16,7 @@
  */
 import { Dexie } from 'dexie'
 import { db } from './db'
+import { dedupeBy, pickBetter, planWrites } from './merge'
 import type { AkLedgerEntry } from './types'
 
 export type LedgerKind = AkLedgerEntry['kind']
@@ -149,12 +150,27 @@ export function toLedgerEntries(accountId: string, kind: LedgerKind, raws: reado
   return out
 }
 
-/** 写入源石 / 充值记录，返回新增的条数（已有的记录按主键覆盖，不重复） */
+const FORMAT_RANK: Record<LedgerSource, number> = { api: 2, legacy: 1 }
+
+/** 同键的两个版本：新接口格式 > 旧版格式（识别不了的最低）→ 规范编码更小的（docs/rewrite/cloud-sync.md 10.1） */
+export function ledgerRank(entry: AkLedgerEntry): readonly number[] {
+  const parsed = entry.kind === 'stone' ? parseStone(entry.raw) : parseRecharge(entry.raw)
+  return [parsed ? FORMAT_RANK[parsed.source] : 0]
+}
+export const pickLedger = (a: AkLedgerEntry, b: AkLedgerEntry) => pickBetter(a, b, ledgerRank)
+
+/** 写入源石 / 充值记录，返回新增的条数。已有同键记录时按上面的规则保留更好的版本，结果与写入顺序无关 */
 export async function mergeLedger(entries: AkLedgerEntry[]): Promise<number> {
-  if (!entries.length) return 0
-  const existing = await db.akLedger.bulkGet(entries.map((e): [string, string, string] => [e.accountId, e.kind, e.key]))
-  await db.akLedger.bulkPut(entries)
-  return new Set(entries.filter((_, i) => !existing[i]).map((e) => `${e.kind}:${e.key}`)).size
+  const incoming = dedupeBy(entries, (e) => `${e.accountId}\u0000${e.kind}\u0000${e.key}`, pickLedger)
+  if (!incoming.length) return 0
+  let added = 0
+  await db.transaction('rw', db.akLedger, async () => {
+    const existing = await db.akLedger.bulkGet(incoming.map((e): [string, string, string] => [e.accountId, e.kind, e.key]))
+    const plan = planWrites(incoming, existing, pickLedger)
+    if (plan.writes.length) await db.akLedger.bulkPut(plan.writes)
+    added = plan.added
+  })
+  return added
 }
 
 /** 某个账号已保存的某类记录的主键 */

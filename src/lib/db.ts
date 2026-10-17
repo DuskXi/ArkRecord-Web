@@ -1,4 +1,5 @@
 import { Dexie, type EntityTable, type Table } from 'dexie'
+import type { CloudState } from './cloud/state'
 import type { Account, AkLedgerEntry, AkPull, EfPoolInfo, EfPull, Snapshot } from './types'
 
 /** 所有数据只存在用户浏览器的 IndexedDB 里 */
@@ -10,6 +11,7 @@ export class ArkRecordDB extends Dexie {
   efPools!: EntityTable<EfPoolInfo, 'poolId'>
   snapshots!: EntityTable<Snapshot, 'id'>
   kv!: Table<{ key: string; value: unknown }, string>
+  cloud!: EntityTable<CloudState, 'accountId'>
 
   constructor(name = 'arkrecord') {
     super(name)
@@ -22,6 +24,8 @@ export class ArkRecordDB extends Dexie {
       snapshots: '++id, createdAt',
       kv: 'key',
     })
+    // 云同步：每个开通了云同步的账号在这台设备上的状态与钥匙（见 src/lib/cloud/state.ts）
+    this.version(2).stores({ cloud: 'accountId' })
   }
 }
 

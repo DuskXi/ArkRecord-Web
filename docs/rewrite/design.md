@@ -13,8 +13,9 @@
 
 ### Worker 的职责（且只有这些）
 
-- 按白名单把 `/api/hg/{上游别名}/{路径}` 转发到鹰角域名，只放行列出的路径前缀和 HTTP 方法，其他请求一律拒绝。
-- 请求头 `x-cookie` → `Cookie`（只放行 `ak-user-center`）；响应 `Set-Cookie: ak-user-center` → 同源可读的响应头 `x-ak-user-center`。
+- 按白名单把 `/api/hg/{上游别名}/{路径}` 转发到鹰角域名，只放行列出的路径，上游用的 HTTP 方法由白名单决定，其他请求一律拒绝。
+- 浏览器一律用 POST，所有参数（包括 token）放在 JSON 请求体里：`{ query, body, roleToken, akCookie }`，网址和请求头里不带 token（网址可能被平台记录）。网址里带参数的请求直接拒绝。
+- 请求体里的 `akCookie` → `Cookie`（只放行 `ak-user-center`）；响应 `Set-Cookie: ak-user-center` → 同源可读的响应头 `x-ak-user-center`。
 - 不存储、不记录请求体和 token；不打印请求内容。
 - 不解析业务数据，不访问 PRTS。
 

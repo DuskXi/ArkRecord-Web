@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef } from 'vue'
+import CloudSyncPanel from '@/components/cloud/CloudSyncPanel.vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { useLiveQuery } from '@/composables/useLiveQuery'
@@ -204,8 +205,10 @@ async function demo() {
         />
       </section>
 
+      <CloudSyncPanel index="02" />
+
       <section>
-        <SectionHeader index="02" eyebrow="IMPORT" title="导入" />
+        <SectionHeader index="03" eyebrow="IMPORT" title="导入" />
         <div class="grid gap-3 lg:grid-cols-2">
           <UFileUpload
             accept=".json,application/json"
@@ -256,7 +259,7 @@ async function demo() {
       </section>
 
       <section>
-        <SectionHeader index="03" eyebrow="EXPORT" title="导出" />
+        <SectionHeader index="04" eyebrow="EXPORT" title="导出" />
         <div class="flex flex-wrap gap-2">
           <UButton label="导出全部（JSON）" icon="i-lucide-download" :disabled="!app.accounts.length" @click="exportJson" />
           <UButton
@@ -272,7 +275,7 @@ async function demo() {
       </section>
 
       <section>
-        <SectionHeader index="04" eyebrow="SNAPSHOTS" title="快照" />
+        <SectionHeader index="05" eyebrow="SNAPSHOTS" title="快照" />
         <div v-if="snapshots.length" class="divide-y divide-default rounded-(--ui-radius) border border-default">
           <div v-for="s in snapshots" :key="s.id" class="flex items-center gap-3 px-4 py-2.5">
             <UIcon name="i-lucide-camera" class="size-4 text-dimmed" />
@@ -286,7 +289,7 @@ async function demo() {
       </section>
 
       <section>
-        <SectionHeader index="05" eyebrow="STORAGE" title="存储" />
+        <SectionHeader index="06" eyebrow="STORAGE" title="存储" />
         <div class="flex flex-wrap items-center gap-3 rounded-(--ui-radius) border border-default p-4">
           <UIcon :name="persisted ? 'i-lucide-shield-check' : 'i-lucide-shield-alert'" class="size-5" :class="persisted ? 'text-success' : 'text-warning'" />
           <div class="min-w-0 flex-1">

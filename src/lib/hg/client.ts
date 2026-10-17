@@ -3,6 +3,9 @@
  *
  * 浏览器不能直接请求鹰角接口（不允许 CORS，且依赖浏览器无法设置的 Cookie），所以经由同源的
  * /api/hg/* 转发。Worker 只做转发，所有解析都在这里、在用户浏览器里完成。
+ *
+ * 发给 Worker 的请求一律是 POST，查询参数、请求体、角色 token、Cookie 都放在请求体里：
+ * token 不出现在网址和请求头里（见 worker/proxy.ts 的 ProxyEnvelope）。
  */
 
 export type Upstream = 'as' | 'binding' | 'ak' | 'u8' | 'ef'
@@ -30,9 +33,10 @@ export class HgError extends Error {
 }
 
 export interface HgRequest {
-  method?: 'GET' | 'POST'
+  /** 上游的查询参数（上游用 GET 还是 POST 由 Worker 的白名单决定） */
   query?: Record<string, string | number | undefined>
-  body?: unknown
+  /** 上游的 JSON 请求体（只用于上游是 POST 的接口） */
+  body?: Record<string, unknown>
   roleToken?: string
   akCookie?: string
 }
@@ -66,27 +70,24 @@ interface Envelope {
 }
 
 export async function hg<T>(upstream: Upstream, path: string, request: HgRequest = {}): Promise<HgResponse<T>> {
-  const method = request.method ?? 'GET'
-  const query = new URLSearchParams()
+  const query: Record<string, string> = {}
   for (const [key, value] of Object.entries(request.query ?? {})) {
-    if (value !== undefined) query.set(key, String(value))
+    if (value !== undefined) query[key] = String(value)
   }
-  const url = `/api/hg/${upstream}${path}${query.size ? `?${query}` : ''}`
-  const headers: Record<string, string> = { 'x-arkrecord-client': '1', accept: 'application/json' }
-  if (request.body !== undefined) headers['content-type'] = 'application/json'
-  if (request.roleToken) headers['x-role-token'] = request.roleToken
-  if (request.akCookie) headers['x-ak-user-center'] = request.akCookie
+  const url = `/api/hg/${upstream}${path}`
+  const headers = { 'x-arkrecord-client': '1', accept: 'application/json', 'content-type': 'application/json' }
+  const body = JSON.stringify({
+    ...(Object.keys(query).length ? { query } : {}),
+    ...(request.body === undefined ? {} : { body: request.body }),
+    ...(request.roleToken ? { roleToken: request.roleToken } : {}),
+    ...(request.akCookie ? { akCookie: request.akCookie } : {}),
+  })
 
   for (let attempt = 0; ; attempt++) {
     await pace()
     let response: Response
     try {
-      response = await fetch(url, {
-        method,
-        headers,
-        body: request.body === undefined ? undefined : JSON.stringify(request.body),
-        credentials: 'same-origin',
-      })
+      response = await fetch(url, { method: 'POST', headers, body, credentials: 'same-origin' })
     } catch {
       throw new HgError('network', '网络连接失败，请检查网络后重试')
     }
@@ -134,6 +135,8 @@ function proxyMessage(code: string): string {
       return '请求太频繁，请稍后再试'
     case 'upstream_unreachable':
       return '暂时无法连接鹰角服务器，请稍后再试'
+    case 'client_outdated':
+      return '网站已更新，请刷新页面后重试'
     default:
       return `请求被拒绝（${code}）`
   }

@@ -12,7 +12,8 @@ import {
   fetchWeaponPage,
   fetchWeaponPools,
 } from '../hg/endfield'
-import type { Account, EfPull } from '../types'
+import { dedupeBy, pickEfPool, pickEfPull, planWrites } from '../merge'
+import type { Account, EfPoolInfo, EfPull } from '../types'
 import type { SyncProgress, SyncResult } from './arknights'
 
 /** 卡池信息缓存一天；进行中的卡池可能更新 UP 信息 */
@@ -44,7 +45,8 @@ export async function syncEndfield(
   options: { full?: boolean; onProgress?: (p: SyncProgress) => void } = {},
 ): Promise<SyncResult> {
   const collected: EfPull[] = []
-  const report = (stage: string, detail?: string) => options.onProgress?.({ stage, detail, added: collected.length })
+  let freshCount = 0
+  const report = (stage: string, detail?: string) => options.onProgress?.({ stage, detail, added: freshCount })
   let fetched = 0
 
   report('正在登录')
@@ -69,7 +71,9 @@ export async function syncEndfield(
       const records = result.list.map((raw) => toEfPull(account.id, type, poolType, raw))
       const fresh = records.filter((r) => !existing.has(r.key))
       for (const r of fresh) existing.add(r.key)
-      collected.push(...fresh)
+      freshCount += fresh.length
+      // 完整同步时已有的记录也交给合并规则
+      collected.push(...(options.full ? records : fresh))
       if (!options.full && fresh.length < records.length) break
       const last = result.list.at(-1)
       if (!result.hasMore || !last) break
@@ -86,12 +90,40 @@ export async function syncEndfield(
   }
 
   report('正在保存')
-  if (collected.length) await db.efPulls.bulkPut(collected)
+  const added = await mergeEfPulls(account.id, collected)
   await db.accounts.update(account.id, { lastSyncAt: Date.now() })
 
   report('正在更新卡池信息')
   await refreshPoolInfo([...new Set(collected.map((p) => p.poolId))])
-  return { added: collected.length, fetched }
+  return { added, fetched }
+}
+
+/** 写入终末地寻访记录，返回新增的条数；已有同键记录时按 merge.ts 的规则保留更好的版本 */
+export async function mergeEfPulls(accountId: string, pulls: EfPull[]): Promise<number> {
+  const incoming = dedupeBy(pulls, (p) => p.key, pickEfPull)
+  if (!incoming.length) return 0
+  let added = 0
+  await db.transaction('rw', db.efPulls, async () => {
+    const existing = await db.efPulls.bulkGet(incoming.map((p): [string, string] => [accountId, p.key]))
+    const plan = planWrites(incoming, existing, pickEfPull)
+    if (plan.writes.length) await db.efPulls.bulkPut(plan.writes)
+    added = plan.added
+  })
+  return added
+}
+
+/** 写入终末地卡池信息（按 poolId 共用），fetchedAt 更新的版本优先；返回写入的条数 */
+export async function mergeEfPools(pools: EfPoolInfo[]): Promise<number> {
+  const incoming = dedupeBy(pools, (p) => p.poolId, pickEfPool)
+  if (!incoming.length) return 0
+  let written = 0
+  await db.transaction('rw', db.efPools, async () => {
+    const existing = await db.efPools.bulkGet(incoming.map((p) => p.poolId))
+    const plan = planWrites(incoming, existing, pickEfPool)
+    if (plan.writes.length) await db.efPools.bulkPut(plan.writes)
+    written = plan.writes.length
+  })
+  return written
 }
 
 const GONE_KEY = 'efPoolGone'

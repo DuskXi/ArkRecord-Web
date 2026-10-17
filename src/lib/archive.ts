@@ -9,7 +9,9 @@ import { mergeLedger, toLedgerEntries } from './ledger'
 import type { LegacyAccount } from './legacy'
 import { legacyLedger, legacyToAkPulls } from './legacy'
 import type { AkMeta } from './meta'
+import { dedupeBy, pickAkPull, planWrites } from './merge'
 import { coveredByModern, groupBySecond, LEGACY_MATCH_SECONDS, mergeAkPulls } from './sync/arknights'
+import { mergeEfPulls } from './sync/endfield'
 import type { Account, AkLedgerEntry, AkPull, EfPull, Game } from './types'
 
 /** 导出文件的格式版本（与程序版本号无关；导入时据此识别新版导出文件） */
@@ -65,13 +67,16 @@ async function ensureAccount(game: Game, uid: string, nickName: string, extra: P
   return account
 }
 
-/** 写入旧版数据：同一秒内已有接口数据时跳过（接口数据更完整） */
-/** 写入旧版数据：已有接口数据的寻访（见 coveredByModern）和已存在的记录都跳过，只新增 */
+/**
+ * 写入旧版数据，返回新增的条数：已有接口数据的寻访（见 coveredByModern）跳过；
+ * 已有同键记录时按 merge.ts 的规则保留更好的版本，结果与写入顺序无关。
+ */
 export async function mergeLegacyPulls(accountId: string, pulls: AkPull[]): Promise<number> {
-  if (!pulls.length) return 0
+  const incoming = dedupeBy(pulls, (p) => p.key, pickAkPull)
+  if (!incoming.length) return 0
   let added = 0
   await db.transaction('rw', db.akPulls, async () => {
-    const batches = groupBySecond(pulls)
+    const batches = groupBySecond(incoming)
     const seconds = [...batches.keys()]
     const lo = Math.min(...seconds) - LEGACY_MATCH_SECONDS
     const hi = Math.max(...seconds) + LEGACY_MATCH_SECONDS
@@ -83,10 +88,10 @@ export async function mergeLegacyPulls(accountId: string, pulls: AkPull[]): Prom
         .toArray(),
     )
     const fresh = [...batches].flatMap(([second, batch]) => (coveredByModern(second, batch, modern) ? [] : batch))
-    const existing = new Set((await db.akPulls.bulkGet(fresh.map((p) => [accountId, p.key]))).filter(Boolean).map((p) => p!.key))
-    const toAdd = fresh.filter((p) => !existing.has(p.key))
-    await db.akPulls.bulkPut(toAdd)
-    added = toAdd.length
+    const existing = await db.akPulls.bulkGet(fresh.map((p): [string, string] => [accountId, p.key]))
+    const plan = planWrites(fresh, existing, pickAkPull)
+    if (plan.writes.length) await db.akPulls.bulkPut(plan.writes)
+    added = plan.added
   })
   return added
 }
@@ -225,10 +230,7 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
     const legacy = pulls.filter((p) => p.source === 'legacy')
     const modern = pulls.filter((p) => p.source !== 'legacy')
     summary.pulls += await mergeLegacyPulls(account.id, legacy)
-    if (modern.length) {
-      const existing = new Set((await db.akPulls.bulkGet(modern.map((p) => [account.id, p.key]))).filter(Boolean).map((p) => p!.key))
-      summary.pulls += await mergeAkPulls(account.id, modern.filter((p) => !existing.has(p.key)))
-    }
+    summary.pulls += await mergeAkPulls(account.id, modern)
     // 原始条目可能来自旧版，也可能来自新接口，ledger.ts 统一识别
     const ledger: AkLedgerEntry[] = []
     for (const l of entry.ledger ?? []) {
@@ -257,13 +259,11 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
         kind: String(r.kind ?? 'draw'),
         gachaTs: Number(r.gachaTs),
         seqId: String(r.seqId),
-        source: 'import',
+        // 新版导出文件保留了原来的来源
+        source: r.source === 'api' ? 'api' : 'import',
       }
     })
-    const existing = new Set((await db.efPulls.bulkGet(pulls.map((p) => [account.id, p.key]))).filter(Boolean).map((p) => p!.key))
-    const fresh = pulls.filter((p) => !existing.has(p.key))
-    await db.efPulls.bulkPut(fresh)
-    summary.pulls += fresh.length
+    summary.pulls += await mergeEfPulls(account.id, pulls)
   }
   return summary
 }
@@ -276,11 +276,13 @@ export async function createSnapshot(reason: string, version: string): Promise<v
   if (all.length > 10) await db.snapshots.bulkDelete(all.slice(0, all.length - 10))
 }
 
+/** 删除本地账号及其记录；云同步只删除这台设备上的状态和钥匙，不动云端（云端要在“云同步”里单独删除） */
 export async function deleteAccountData(accountId: string): Promise<void> {
-  await db.transaction('rw', [db.accounts, db.akPulls, db.efPulls, db.akLedger], async () => {
+  await db.transaction('rw', [db.accounts, db.akPulls, db.efPulls, db.akLedger, db.cloud], async () => {
     await db.akPulls.where('accountId').equals(accountId).delete()
     await db.efPulls.where('accountId').equals(accountId).delete()
     await db.akLedger.where('accountId').equals(accountId).delete()
+    await db.cloud.delete(accountId)
     await db.accounts.delete(accountId)
   })
 }

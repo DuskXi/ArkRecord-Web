@@ -2,6 +2,7 @@
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { formatNumber } from '@/lib/format'
+import { BUILD_COMMIT, HG_VERIFY_URL, SECURITY_URL } from '@/lib/cloud/links'
 import { LEGACY_APP_PATH } from '@/lib/legacy'
 import { APP_VERSION, useAppStore } from '@/stores/app'
 import { IMAGE_SOURCES } from '../../worker/images'
@@ -27,9 +28,9 @@ const sources = [
     <div class="space-y-10">
       <section class="grid gap-3 md:grid-cols-3">
         <div v-for="item in [
-          { icon: 'i-lucide-hard-drive', title: '数据只在你的浏览器里', desc: '寻访记录、统计结果、账号 token 都保存在本机的 IndexedDB 中，本站没有任何数据库或用户系统。' },
+          { icon: 'i-lucide-hard-drive', title: '数据只在你的浏览器里', desc: '寻访记录、统计结果、账号 token 都保存在本机的 IndexedDB 中，本站没有用户系统。开启云同步时，服务器只保存你在浏览器里加密好的密文。' },
           { icon: 'i-lucide-cpu', title: '计算全部在本地完成', desc: '保底、运气百分位、各种图表都由你的浏览器计算，不依赖任何人的数据。' },
-          { icon: 'i-lucide-route', title: '转发只为绕过浏览器限制', desc: '鹰角的接口不允许网页直接调用，本站的 Worker 只做原样转发：不解析、不记录、不存储，也不对其他网站开放。' },
+          { icon: 'i-lucide-route', title: '转发只为绕过浏览器限制', desc: '鹰角的接口不允许网页直接调用，本站的 Worker 只做转发：token 放在请求体里，不出现在网址中；不记录、不存储，也不对其他网站开放。' },
         ]" :key="item.title" class="rounded-(--ui-radius) border border-default p-5">
           <UIcon :name="item.icon" class="size-5 text-primary" />
           <p class="mt-3 font-semibold text-highlighted">{{ item.title }}</p>
@@ -118,6 +119,23 @@ const sources = [
             <li>
               <b class="text-highlighted">站内反馈</b>（与统计无关）：只在你在“反馈”页主动提交时发送，保存在本站的 Cloudflare 存储里，只有作者能看到；
               内容只有你填写的文字和联系方式，以及网站版本、当前游戏，不记录 IP、账号或 UID。见 <code class="font-mono text-xs">worker/feedback.ts</code>。
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <SectionHeader index="04" eyebrow="CLOUD SYNC & SECURITY" title="云同步与安全" />
+        <div class="space-y-2 rounded-(--ui-radius) border border-default p-4 text-sm leading-relaxed text-muted">
+          <p>云同步是可选的，在“数据”页按账号开通。完整说明见 <ULink :to="SECURITY_URL" target="_blank" class="text-primary">安全说明（SECURITY.md）</ULink>。</p>
+          <ul class="list-disc space-y-1 pl-5">
+            <li>记录在你的浏览器里用云同步密码派生的钥匙加密后才上传；服务器只保存密文和密码的加盐散列，解不开数据，也不保存密码。</li>
+            <li>只知道 UID 的人拿不到任何东西，连密文也拿不到；同一个账号连续输错 5 次后开始退避，与对方有多少 IP 无关。</li>
+            <li>密码无法找回：忘记密码只能用数据最全的浏览器覆盖云端。本地数据始终不受影响。</li>
+            <li>
+              检测云端状态、开通、覆盖和双重验证时，服务器会用鹰角 token 查询角色绑定列表，核实 UID 属于你，然后立即丢弃。只在你点击按钮、并在确认窗口里点“确认发送”之后才会发送；token 放在请求体里，不出现在网址和请求头里，服务器不写入存储、不写日志。全部代码在
+              <ULink :to="HG_VERIFY_URL" target="_blank" class="font-mono text-xs text-primary">worker/hg-verify.ts</ULink>，
+              链接指向线上正在运行的版本（{{ BUILD_COMMIT === 'dev' ? '开发版' : BUILD_COMMIT.slice(0, 7) }}）。
             </li>
           </ul>
         </div>

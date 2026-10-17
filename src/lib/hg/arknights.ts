@@ -30,7 +30,6 @@ export interface AkHistoryPage {
 
 export async function roleLogin(uid: string, u8Token: string): Promise<AkSession> {
   const { akCookie } = await hg('ak', '/user/api/role/login', {
-    method: 'POST',
     body: { token: u8Token, source_from: '', share_type: '', share_by: '' },
   })
   if (!akCookie) throw new HgError('auth', '角色登录没有返回会话 Cookie，请重新登录')
@@ -104,14 +103,13 @@ const AK_U8_APP_CODE = '9aa9768a549ddaa186b7'
  */
 export async function fetchRecentOrders(u8Token: string, officialAccountToken?: string): Promise<AkOrder[]> {
   try {
-    const { data } = await hg<AkOrder[] | null>('u8', '/u8/pay/v1/recent', { method: 'POST', body: { token: u8Token } })
+    const { data } = await hg<AkOrder[] | null>('u8', '/u8/pay/v1/recent', { body: { token: u8Token } })
     return data ?? []
   } catch (error) {
     const rejected = error instanceof HgError && (error.kind === 'auth' || error.kind === 'upstream')
     if (!rejected || !officialAccountToken) throw error
   }
   const { data } = await hg<AkOrder[] | null>('u8', '/u8/pay/v1/recent', {
-    method: 'POST',
     body: { appCode: AK_U8_APP_CODE, channelMasterId: 1, channelToken: { token: officialAccountToken } },
   })
   return data ?? []

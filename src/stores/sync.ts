@@ -5,6 +5,7 @@ import { syncArknights, type SyncProgress } from '@/lib/sync/arknights'
 import { syncEndfield } from '@/lib/sync/endfield'
 import type { Account } from '@/lib/types'
 import { useAppStore } from './app'
+import { useCloudStore } from './cloud'
 
 export const useSyncStore = defineStore('sync', () => {
   const running = ref(false)
@@ -31,6 +32,8 @@ export const useSyncStore = defineStore('sync', () => {
         color: 'success',
         icon: 'i-lucide-circle-check',
       })
+      // 开通了云同步的账号顺便云同步一次（这台设备上没有钥匙时什么都不做）
+      void useCloudStore().afterHgSync(account, token)
       if (result.warnings?.length) {
         toast.add({
           title: '部分记录没有同步成功',

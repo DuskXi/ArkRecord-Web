@@ -21,6 +21,7 @@ const FEATURES = [
   { icon: 'i-lucide-book-user', title: '图鉴', text: '抽到过哪些干员、各抽到几次' },
   { icon: 'i-lucide-gem', title: '源石与充值', text: '明日方舟的源石收支与充值记录' },
   { icon: 'i-lucide-database', title: '数据安全', text: '导入导出、自动快照，旧版数据自动导入' },
+  { icon: 'i-lucide-cloud', title: '加密云同步（可选）', text: '多台设备之间合并记录，用你的密码在浏览器里加密，服务器解不开' },
 ]
 
 const ADVANCED = [
@@ -65,7 +66,7 @@ async function demo() {
       <div class="space-y-5 text-sm">
         <p class="leading-relaxed text-muted">
           鹰角官方只能查询最近 90 天的寻访记录。ArkRecord 把每次同步到的记录保存在<b class="text-highlighted">你自己的浏览器</b>里，越攒越全；
-          所有分析计算也都在你的浏览器里完成，本站不保存你的任何记录。
+          所有分析计算也都在你的浏览器里完成。本站不保存你的记录；只有你开启云同步时，才会保存你在浏览器里加密好的密文。
         </p>
 
         <ul class="grid gap-3 sm:grid-cols-2">

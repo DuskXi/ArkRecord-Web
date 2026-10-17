@@ -95,6 +95,7 @@ async function confirm() {
         isOfficial: b.isOfficial,
         createdAt: existing?.createdAt ?? Date.now(),
         lastSyncAt: existing?.lastSyncAt,
+        metaAt: Date.now(),
         accountToken: remember.value ? token.value : undefined,
       })
     }
