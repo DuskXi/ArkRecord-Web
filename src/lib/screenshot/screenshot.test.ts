@@ -192,3 +192,52 @@ describe('认名字：OCR 和字形结合（identify.ts）', () => {
     expect(r[0]!.confidence).toBe('low')
   })
 })
+
+describe('OCR 认错的字：把认出的字画出来比字形（identify.ts）', () => {
+  /** 3×3 的方块图案，再加几块噪点 */
+  function pattern(bits: number[], noise: [number, number, number][] = []): RgbaImage {
+    const img = canvas(20, 20, [255, 255, 255])
+    for (const b of bits) img.fill((b % 3) * 6 + 1, Math.floor(b / 3) * 6 + 1, 5, 5, [0, 0, 0])
+    for (const [x, y, s] of noise) img.fill(x, y, s, s, [0, 0, 0])
+    return img
+  }
+  // “铜”和“锏”长得很像（多一块），其他名字都不像
+  const shapes: Record<string, number[]> = { 锏: [0, 2, 4, 6, 8], 铜: [0, 2, 4, 6, 8, 1], 黍: [1, 3, 5, 7], 令: [0, 1, 2, 4, 7], 陈: [3, 4, 5, 1, 7] }
+  const render = (name: string) => pattern(shapes[name] ?? [4])
+  const candidates = ['锏', '黍', '令', '陈'].map((name, i) => ({ id: String(i), name, rarity: 6 }))
+  // 截图里的字很模糊：只和“锏”有点像，单靠字形没有把握
+  const blurry = pattern([0, 2], [[1, 9, 3], [3, 14, 2], [12, 2, 2], [11, 11, 4]])
+
+  it('单靠字形没把握时，OCR 认成的“铜”画出来最像“锏”，两个信号一致 → 有把握', async () => {
+    const { identifyNames } = await import('./identify')
+    expect(identifyNames([blurry], [''], candidates, [null], render)[0]!.confidence).toBe('low')
+    expect(identifyNames([blurry], ['铜'], candidates, [null], render)[0]).toMatchObject({ candidate: { name: '锏' }, confidence: 'high', via: 'both' })
+  })
+
+  it('截图字形很清楚时，OCR 认成了别的名字也按字形', async () => {
+    const { identifyNames } = await import('./identify')
+    const r = identifyNames([render('锏')], ['黍'], candidates, [null], render)
+    expect(r[0]).toMatchObject({ candidate: { name: '锏' }, via: 'shape' })
+  })
+})
+
+describe('识别流程的图像处理（pipeline.ts）', () => {
+  it('trimInk 裁到文字范围；全白时返回 1×1', async () => {
+    const { trimInk } = await import('./pipeline')
+    const img = canvas(40, 20, [255, 255, 255])
+    img.fill(10, 5, 8, 6, [0, 0, 0])
+    const t = trimInk(img)
+    expect([t.width, t.height]).toEqual([8, 6])
+    expect([trimInk(canvas(5, 5, [255, 255, 255])).width, trimInk(canvas(5, 5, [250, 250, 250])).width]).toEqual([1, 1])
+  })
+
+  it('scaleForOcr 留白后放大到字高约 48 像素', async () => {
+    const { scaleForOcr } = await import('./pipeline')
+    const image = canvas(30, 12, [255, 255, 255])
+    image.fill(0, 0, 30, 12, [0, 0, 0])
+    const out = scaleForOcr({ image, box: { x: 0, y: 0, width: 30, height: 12 } })!
+    // (30 + 24) × 4, (12 + 24) × 4
+    expect([out.width, out.height]).toEqual([216, 144])
+    expect(scaleForOcr({ image, box: null })).toBeNull()
+  })
+})

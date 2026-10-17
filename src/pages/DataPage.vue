@@ -128,8 +128,24 @@ async function exportJson() {
   downloadFile(`ArkRecord_${dateStamp()}.json`, JSON.stringify(await buildExport(APP_VERSION), null, 2), 'application/json')
 }
 function exportCsv() {
-  const rows = records.events.map((e) => [formatDateTime(e.ts), e.poolName, e.name, e.star, e.isNew ? '是' : ''])
-  downloadFile(`ArkRecord_${app.activeAccount?.uid ?? ''}_${dateStamp()}.csv`, toCsv(['时间', '卡池', '干员', '星级', 'NEW'], rows), 'text/csv')
+  const file = `ArkRecord_${app.activeAccount?.uid ?? ''}_${dateStamp()}.csv`
+  if (records.game !== 'endfield') {
+    const rows = records.events.map((e) => [formatDateTime(e.ts), e.poolName, e.name, e.star, e.isNew ? '是' : ''])
+    downloadFile(file, toCsv(['时间', '卡池', '干员', '星级', 'NEW'], rows), 'text/csv')
+    return
+  }
+  // 终末地：赠送条目（信物赠礼等，含按规则推算的）也列出来，用“来源”区分
+  const rows = [
+    ...records.events.map((e) => ({ ts: e.ts, order: e.order, row: [formatDateTime(e.ts), e.poolName, e.name, e.star, e.isNew ? '是' : '', '寻访'] })),
+    ...records.gifts.map((g) => ({
+      ts: g.ts,
+      order: g.order,
+      row: [formatDateTime(g.ts), g.poolName, g.copy ? g.name : g.label, g.star || '', '', g.inferred ? `${g.label}（推算）` : g.label],
+    })),
+  ]
+    .toSorted((a, b) => a.ts - b.ts || a.order - b.order)
+    .map((r) => r.row)
+  downloadFile(file, toCsv(['时间', '卡池', '名称', '星级', 'NEW', '来源'], rows), 'text/csv')
 }
 
 // ── 快照 ──

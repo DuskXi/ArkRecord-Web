@@ -150,6 +150,8 @@ interface EfPull {
 - 导入、清空、恢复之前先自动做快照。
 - 账号表：`{game, uid, nickName, channel, isOfficial}`。
 - 账号 token 只存在本地，默认导出时不包含。
+- 终末地 `kind` 为 `gift_*` 的条目（信物赠礼、寻访情报书等）不是抽出来的：不进寻访事件和任何统计，由 `src/lib/stats/gifts.ts` 单独列出；缺少的信物赠礼按“每累计 240 次”推算并标为推算（见 research.md 2.3）。
+- 截图识别的已拥有干员（`roster` 表，`[accountId+itemId]`）：按截图时间保存截图那一刻的状态，截图之后的寻访记录在显示时叠加，重复导入不变（见 screenshot-recognition.md）。
 
 ## 4. 统计引擎（Web Worker，本地精确计算）
 

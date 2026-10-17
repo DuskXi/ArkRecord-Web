@@ -18,6 +18,10 @@
 /legacy/assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# 文字识别引擎和中文模型（截图识别用），路径里带版本号
+/ocr/*
+  Cache-Control: public, max-age=31536000, immutable
+
 # 头像每天可能更新，缓存一周
 /gamedata/avatars/*
   Cache-Control: public, max-age=604800
