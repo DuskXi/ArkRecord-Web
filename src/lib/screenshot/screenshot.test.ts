@@ -131,3 +131,64 @@ describe('名字分配', () => {
     expect(assignNames(['', '诀'], candidates)[0]).toBeNull()
   })
 })
+
+describe('名字区域整理（text.ts）', () => {
+  it('去掉贯穿整行的线条和装饰，裁到文字范围，输出白底黑字', async () => {
+    const { prepareText } = await import('./text')
+    // 深色底、浅色字，左边一条中灰的斜条，底部一条亮线
+    const img = canvas(120, 30, [20, 20, 20])
+    for (let y = 0; y < 30; y++) for (let x = 0; x < 20; x++) if (x + y < 30) img.set(x, y, [70, 70, 70])
+    img.fill(0, 28, 120, 2, [230, 230, 230])
+    img.fill(80, 6, 14, 16, [240, 240, 240])
+    img.fill(98, 6, 14, 16, [240, 240, 240])
+    const r = prepareText(img, { x: 0, y: 0, width: 120, height: 30 }, true, 2)
+    expect(r.box).toEqual({ x: 80, y: 6, width: 32, height: 16 })
+    expect(r.image.width).toBe(36)
+    // 左上角是留白（白），文字位置是黑
+    expect(Array.from(r.image.data.slice(0, 3))).toEqual([255, 255, 255])
+    const i = (2 * r.image.width + 2) * 4
+    expect(Array.from(r.image.data.slice(i, i + 3))).toEqual([0, 0, 0])
+  })
+})
+
+/** 每个名字一个确定的“字形”：按字符编码画几个方块 */
+function glyph(name: string): RgbaImage {
+  const chars = [...name]
+  const img = canvas(chars.length * 20, 20, [255, 255, 255])
+  chars.forEach((ch, k) => {
+    const code = ch.codePointAt(0)!
+    for (let b = 0; b < 9; b++) if ((code >> b) & 1) img.fill(k * 20 + (b % 3) * 6 + 1, Math.floor(b / 3) * 6 + 1, 5, 5, [0, 0, 0])
+  })
+  return img
+}
+
+describe('认名字：OCR 和字形结合（identify.ts）', () => {
+  const candidates = [
+    { id: 'a', name: '黍', rarity: 6 },
+    { id: 'b', name: '陈', rarity: 6 },
+    { id: 'c', name: '令', rarity: 6 },
+    { id: 'd', name: '焰狐龙梓兰', rarity: 6 },
+    { id: 'e', name: '温蒂', rarity: 6 },
+  ]
+
+  it('OCR 认不出的单字名按字形挑出来；OCR 完全一致的直接采用', async () => {
+    const { identifyNames } = await import('./identify')
+    const crops = ['黍', '令', '焰狐龙梓兰'].map(glyph)
+    const r = identifyNames(crops, ['了', '令', '焰狐龙梓兰'], candidates, [6, 6, 6], glyph)
+    expect(r.map((x) => x.candidate?.name)).toEqual(['黍', '令', '焰狐龙梓兰'])
+    expect(r.map((x) => x.confidence)).toEqual(['high', 'high', 'high'])
+    expect(r[0]!.via).toBe('shape')
+  })
+
+  it('星星数错了：OCR 完全一致的其他星级的名字仍然会被选上，但标为请确认', async () => {
+    const { identifyNames } = await import('./identify')
+    const r = identifyNames([glyph('焰狐龙梓兰')], ['焰狐龙梓兰'], candidates, [5], glyph)
+    expect(r[0]).toMatchObject({ candidate: { name: '焰狐龙梓兰' }, confidence: 'low' })
+  })
+
+  it('谁都不像（游戏数据里还没有的名字）：不硬套，交给用户确认', async () => {
+    const { identifyNames } = await import('./identify')
+    const r = identifyNames([glyph('锏')], ['铀'], candidates, [6], glyph)
+    expect(r[0]!.confidence).toBe('low')
+  })
+})
