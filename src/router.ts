@@ -13,6 +13,7 @@ export const router = createRouter({
     { path: '/codex', name: 'codex', component: () => import('./pages/CodexPage.vue') },
     { path: '/ledger', name: 'ledger', component: () => import('./pages/LedgerPage.vue') },
     { path: '/data', name: 'data', component: () => import('./pages/DataPage.vue') },
+    { path: '/announcements', name: 'announcements', component: () => import('./pages/AnnouncementsPage.vue') },
     { path: '/feedback', name: 'feedback', component: () => import('./pages/FeedbackPage.vue') },
     { path: '/about', name: 'about', component: () => import('./pages/AboutPage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },

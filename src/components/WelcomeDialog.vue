@@ -18,7 +18,7 @@ const FEATURES = [
   { icon: 'i-lucide-gauge', title: '保底追踪', text: '现在垫了多少抽、离保底还有多远，定向保底和累计奖励的进度' },
   { icon: 'i-lucide-scroll-text', title: '寻访记录', text: '按十连分组查看，按星级、卡池、干员筛选' },
   { icon: 'i-lucide-git-commit-vertical', title: '时间线与分享', text: '每个 6★ 的来历一目了然，一键生成分享图片' },
-  { icon: 'i-lucide-book-user', title: '图鉴', text: '抽到过哪些干员、各抽到几次' },
+  { icon: 'i-lucide-book-user', title: '图鉴', text: '抽到过哪些干员、各抽到几次；可以导入森空岛截图补全已拥有的干员' },
   { icon: 'i-lucide-gem', title: '源石与充值', text: '明日方舟的源石收支与充值记录' },
   { icon: 'i-lucide-database', title: '数据安全', text: '导入导出、自动快照，旧版数据自动导入' },
   { icon: 'i-lucide-cloud', title: '加密云同步（可选）', text: '多台设备之间合并记录，用你的密码在浏览器里加密，服务器解不开' },

@@ -173,7 +173,7 @@ function startMenu(a: Account): DropdownMenuItem[][] {
         检测云端状态、开通、双重验证都需要把鹰角 token 发给服务器，证明账号是你的：只在你点击按钮、并在确认窗口里点“确认发送”之后才会发送，服务器核实完立即丢弃。
       </p>
       <p class="mt-1.5">
-        也可以选<b class="text-highlighted">无密码模式</b>（不推荐）：不用记密码，每次云同步都用鹰角 token 验证；代价是本站运营者和拿到你有效鹰角 token 的人技术上能读取你的云端记录。开通时可以选择，之后随时可以切换。
+        也可以选<b class="text-highlighted">无密码模式</b>（不推荐）：不用记密码，每次云同步都用鹰角 token 验证。当前实现中，token 只在服务器核实请求时存在于内存里，不会出现在日志和硬盘里，代码接受审计；代价是本站运营者和拿到你有效鹰角 token 的人技术上能读取你的云端记录。开通时可以选择，之后随时可以切换。
       </p>
       <p class="mt-1.5">
         <ULink :to="SECURITY_URL" target="_blank" class="text-primary">安全说明</ULink>

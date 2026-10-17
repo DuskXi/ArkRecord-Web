@@ -133,7 +133,7 @@ const sources = [
             <li>只知道 UID 的人拿不到任何东西，连密文也拿不到；同一个账号连续输错 5 次后开始退避，与对方有多少 IP 无关。</li>
             <li>密码无法找回：忘记密码只能用数据最全的浏览器覆盖云端。本地数据始终不受影响。</li>
             <li>
-              也可以选无密码模式（不推荐）：不用记密码，每次云同步都用鹰角 token 核实账号；代价是解开数据的钥匙服务器也算得出来，本站运营者和拿到你有效鹰角 token 的人技术上能读取你的云端记录。随时可以切回密码模式。
+              也可以选无密码模式（不推荐）：不用记密码，每次云同步都用鹰角 token 核实账号。当前实现中，token 只在服务器核实请求时存在于内存里，不会出现在日志和硬盘里（见下一条的代码）；代价是解开数据的钥匙服务器也算得出来，本站运营者和拿到你有效鹰角 token 的人技术上能读取你的云端记录。随时可以切回密码模式。
             </li>
             <li>
               检测云端状态、开通、覆盖和双重验证时，服务器会用鹰角 token 查询角色绑定列表，核实 UID 属于你，然后立即丢弃。只在你点击按钮、并在确认窗口里点“确认发送”之后才会发送；token 放在请求体里，不出现在网址和请求头里，服务器不写入存储、不写日志。全部代码在
@@ -146,7 +146,7 @@ const sources = [
 
       <section class="text-xs leading-relaxed text-muted">
         <p>
-          ArkRecord {{ APP_VERSION }} · 开源于
+          ArkRecord {{ APP_VERSION }}（<ULink to="/announcements" class="text-primary">更新公告</ULink>）· 开源于
           <ULink to="https://github.com/DuskXi/ArkRecord-Web" target="_blank" class="text-primary">GitHub</ULink>
           。本站为玩家自制工具，与鹰角网络无关。游戏内的名称与图像版权归鹰角网络所有。
         </p>
