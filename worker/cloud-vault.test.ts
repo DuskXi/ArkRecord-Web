@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ENVELOPE_HEADER_BYTES, toBase64Url, unframe } from '../shared/cloud-protocol'
-import { initVaultSchema, PepperKeys, Vault, type VaultResult } from './cloud-vault'
+import { PepperKeys, Vault, type VaultResult } from './cloud-vault'
 import { memoryStorage } from './testing/fake-cloud'
 
 const PEPPER = 'test-pepper-0123456789abcdef0123456789abcdef'
@@ -29,16 +29,12 @@ function envelope(kind: 'delta' | 'snapshot', kid: number, id: number, size = 0)
 
 async function setup() {
   const storage = memoryStorage()
-  initVaultSchema(storage.sql)
   let now = Date.parse('2026-10-17T00:00:00Z')
   const keys = await PepperKeys.create(PEPPER)
   const vault = new Vault({
     sql: storage.sql,
     transaction: (fn) => storage.transactionSync(fn),
-    wipe: async () => {
-      await storage.deleteAll()
-      initVaultSchema(storage.sql)
-    },
+    wipe: () => storage.deleteAll(),
     keys,
     locator: LOCATOR,
     now: () => now,
@@ -123,11 +119,15 @@ describe('按账号退避', () => {
     expect(waits.at(-1)).toBe('3600')
   })
 
-  it('不存在的账号也会进入同样的退避（只在内存里，不写存储）', async () => {
+  it('不存在的账号也会进入同样的退避（只在内存里）；任何请求都不会在存储里留下东西', async () => {
     const { vault, storage } = await setup()
     for (let i = 0; i < 5; i++) await vault.pull({ authKey: BAD, afterSeq: 0 }, false)
     expect((await vault.pull({ authKey: BAD, afterSeq: 0 }, false)).status).toBe(429)
-    expect(storage.sql.exec('SELECT COUNT(*) AS n FROM meta').toArray()[0]!.n).toBe(0)
+    await vault.push({ authKey: GOOD }, envelope('delta', 5, 2), false)
+    await vault.rekey({ authKey: GOOD, newAuthKey: BAD, wrappedDek: WRAPPED }, false)
+    await vault.twoFactor({ authKey: GOOD, requireHg: true }, true)
+    await vault.remove({ authKey: GOOD }, false)
+    expect(storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").toArray()).toEqual([])
   })
 })
 
@@ -223,6 +223,7 @@ describe('改密码、覆盖、双重验证、删除', () => {
     const b = await setup()
     await b.claim()
     expect((await b.vault.remove({}, true)).status).toBe(204)
-    expect(b.storage.sql.exec('SELECT COUNT(*) AS n FROM batches').toArray()[0]!.n).toBe(0)
+    // 删除后连表都不剩
+    expect(b.storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").toArray()).toEqual([])
   })
 })

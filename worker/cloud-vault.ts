@@ -11,6 +11,8 @@
  * 退避期间不核对密码；失败次数每次都写入存储。开启双重验证的账号，没有核实过鹰角 token 的请求
  * 直接返回 401，不核对密码，也不计失败次数。
  *
+ * 表只在开通时才创建：对不存在的账号的请求（例如有人随便试 locator）不写入任何东西，不会留下空的存储。
+ *
  * 只能通过 Worker（worker/cloud.ts）访问：Worker 先做同源检查、限速、格式校验和鹰角核实，
  * 再把整理过的内部请求转过来。x-vault-* 内部请求头只由 Worker 生成。
  */
@@ -189,7 +191,13 @@ export class Vault {
     this.now = deps.now ?? Date.now
   }
 
+  /** 这个账号开通过吗：还没有建表就是没开通（只读 sqlite_master，不写入） */
+  private exists(): boolean {
+    return this.deps.sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").toArray().length > 0
+  }
+
   private meta(): Meta | null {
+    if (!this.exists()) return null
     const row = this.deps.sql.exec('SELECT * FROM meta WHERE id = 1').toArray()[0]
     if (!row) return null
     return { ...(row as unknown as Meta), sealed_dek: bytes(row.sealed_dek) }
@@ -324,6 +332,7 @@ export class Vault {
     const verifier = await this.deps.keys.verifier(authKey)
     const sealed = await this.deps.keys.seal(this.deps.locator, wrappedDek)
     const now = this.now()
+    initVaultSchema(this.deps.sql)
     this.deps.transaction(() => {
       this.deps.sql.exec('DELETE FROM batches')
       this.deps.sql.exec('DELETE FROM meta')
@@ -417,7 +426,6 @@ export class CloudVault {
   constructor(state: DurableObjectState, env: VaultEnv) {
     this.state = state
     this.env = env
-    initVaultSchema(state.storage.sql as unknown as VaultSql)
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -433,10 +441,8 @@ export class CloudVault {
       {
         sql: storage.sql as unknown as VaultSql,
         transaction: (fn) => storage.transactionSync(fn),
-        wipe: async () => {
-          await storage.deleteAll()
-          initVaultSchema(storage.sql as unknown as VaultSql)
-        },
+        // 删除后不再建表：不留下任何存储，Cloudflare 会自动清理这个对象
+        wipe: () => storage.deleteAll(),
         keys: await this.keys,
         locator,
       },
