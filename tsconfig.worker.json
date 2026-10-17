@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["worker/**/*.ts"]
+  "include": ["shared/**/*.ts", "worker/**/*.ts"]
 }
