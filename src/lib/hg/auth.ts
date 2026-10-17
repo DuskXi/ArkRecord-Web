@@ -32,7 +32,6 @@ interface RawBinding {
 
 export async function grantOAuthToken(accountToken: string): Promise<string> {
   const { data } = await hg<{ token: string }>('as', '/user/oauth2/v2/grant', {
-    method: 'POST',
     body: { token: accountToken, appCode: USER_CENTER_APP_CODE, type: 1 },
   })
   return data.token
@@ -61,7 +60,6 @@ export async function listBindings(oauthToken: string, game: Game): Promise<Bind
 
 export async function getU8Token(oauthToken: string, uid: string): Promise<string> {
   const { data } = await hg<{ token: string }>('binding', '/account/binding/v1/u8_token_by_uid', {
-    method: 'POST',
     body: { token: oauthToken, uid },
   })
   return data.token

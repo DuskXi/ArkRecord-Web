@@ -9,7 +9,7 @@ import { FEEDBACK_PREFIX, hashToken, newFeedbackId, newFeedbackToken, parseFeedb
 import { handleImage, IMAGE_PREFIX } from './images'
 import { checkSameOrigin, rateLimitClient } from './security'
 import { parsePing, STATS_PREFIX } from './stats'
-import { findRoute, type Limiter, type Upstream } from './upstreams'
+import { findRoute, type Limiter, type Route, type Upstream } from './upstreams'
 
 export interface Env extends CloudEnv {
   ASSETS?: Fetcher
@@ -23,18 +23,63 @@ export interface Env extends CloudEnv {
 }
 
 export const API_PREFIX = '/api/hg/'
-const MAX_BODY_BYTES = 4096
-const MAX_QUERY_LENGTH = 2048
+const MAX_BODY_BYTES = 8192
 const UPSTREAM_TIMEOUT_MS = 20_000
+const MAX_QUERY_PARAMS = 16
+const MAX_QUERY_VALUE = 2048
 
-/** 从浏览器请求中原样转发给上游的请求头，其余一律丢弃 */
-const FORWARDED_REQUEST_HEADERS = ['accept', 'accept-language', 'content-type', 'user-agent', 'x-role-token']
+/** 从浏览器请求中转发给上游的请求头（都不含 token），其余一律丢弃 */
+const FORWARDED_REQUEST_HEADERS = ['accept', 'accept-language', 'user-agent']
 
-/** 前端用这个请求头传递 ak-user-center 的值，Worker 把它转成 Cookie；响应中的 Set-Cookie 也以同名响应头返回 */
+/** 角色登录返回的 ak-user-center Cookie 以这个响应头返回给前端（浏览器 JS 读不到 Set-Cookie） */
 export const AK_COOKIE_HEADER = 'x-ak-user-center'
 const AK_COOKIE_NAME = 'ak-user-center'
 const COOKIE_VALUE_PATTERN = /^[\w%.~+/=-]{1,4096}$/
+/** 角色 token：可见 ASCII，不含空格 */
+const ROLE_TOKEN_PATTERN = /^[\x21-\x7e]{1,4096}$/
+const QUERY_KEY_PATTERN = /^[\w-]{1,64}$/
 
+/**
+ * 浏览器发给 /api/hg/* 的请求一律是 POST，所有参数都在请求体里：
+ *   { query?: 上游的查询参数, body?: 上游的 JSON 请求体, roleToken?: 角色 token, akCookie?: ak-user-center Cookie }
+ * 这样 token 不会出现在发给 Worker 的网址或请求头里（Cloudflare 的统计、安全事件可能记录网址，
+ * 实时日志会显示请求头，但都不包含请求体）。上游实际用的方法见 upstreams.ts 中每条路由的 method。
+ */
+export interface ProxyEnvelope {
+  query: Record<string, string>
+  body?: Record<string, unknown>
+  roleToken?: string
+  akCookie?: string
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** 校验请求体；不合法时返回 null */
+export function parseEnvelope(text: string, route: Route): ProxyEnvelope | null {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isPlainObject(value)) return null
+  if (Object.keys(value).some((key) => !['query', 'body', 'roleToken', 'akCookie'].includes(key))) return null
+  const { query = {}, body, roleToken, akCookie } = value
+  if (!isPlainObject(query)) return null
+  const entries = Object.entries(query)
+  if (entries.length > MAX_QUERY_PARAMS) return null
+  if (!entries.every(([k, v]) => QUERY_KEY_PATTERN.test(k) && typeof v === 'string' && v.length <= MAX_QUERY_VALUE)) return null
+  // GET 路由不能带请求体，POST 路由必须带 JSON 对象
+  if (route.method === 'GET' ? body !== undefined : !isPlainObject(body)) return null
+  if (roleToken !== undefined && (typeof roleToken !== 'string' || !ROLE_TOKEN_PATTERN.test(roleToken))) return null
+  if (akCookie !== undefined && (typeof akCookie !== 'string' || !COOKIE_VALUE_PATTERN.test(akCookie))) return null
+  return {
+    query: query as Record<string, string>,
+    ...(body === undefined ? {} : { body: body as Record<string, unknown> }),
+    ...(roleToken === undefined ? {} : { roleToken }),
+    ...(akCookie === undefined ? {} : { akCookie }),
+  }
+}
 
 /** Worker 的请求入口 */
 export async function handleRequest(request: Request, env: Env, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
@@ -63,35 +108,37 @@ export async function handleProxy(request: Request, env: Env, url: URL): Promise
   const rest = url.pathname.slice(API_PREFIX.length)
   const slash = rest.indexOf('/')
   if (slash <= 0) return proxyError(404, 'route_not_allowed')
-  const match = findRoute(rest.slice(0, slash), request.method, rest.slice(slash))
+  const match = findRoute(rest.slice(0, slash), rest.slice(slash))
   if (!match) return proxyError(404, 'route_not_allowed')
-  if (url.search.length > MAX_QUERY_LENGTH) return proxyError(414, 'query_too_long')
+  // 旧版页面用 GET 并把参数放在网址里；现在一律 POST，参数放在请求体里
+  if (request.method !== 'POST') return proxyError(405, 'client_outdated')
+  if (url.search) return proxyError(400, 'query_in_url')
 
   if (!(await withinRateLimit(env, match.route.limiter, request))) {
     return proxyError(429, 'rate_limited', { 'retry-after': '60' })
   }
 
-  let body: string | undefined
-  if (request.method === 'POST') {
-    if (!(request.headers.get('content-type') ?? '').startsWith('application/json')) {
-      return proxyError(415, 'json_required')
-    }
-    const text = await readBodyLimited(request)
-    if (text === null) return proxyError(413, 'body_too_large')
-    body = text
+  if (!(request.headers.get('content-type') ?? '').startsWith('application/json')) {
+    return proxyError(415, 'json_required')
   }
+  const text = await readBodyLimited(request)
+  if (text === null) return proxyError(413, 'body_too_large')
+  const envelope = parseEnvelope(text, match.route)
+  if (!envelope) return proxyError(400, 'bad_request')
 
+  const query = new URLSearchParams(envelope.query)
   let upstreamResponse: Response
   try {
-    upstreamResponse = await fetch(`https://${match.upstream.host}${match.route.path}${url.search}`, {
-      method: request.method,
-      headers: buildUpstreamHeaders(request, match.upstream),
-      body,
+    upstreamResponse = await fetch(`https://${match.upstream.host}${match.route.path}${query.size ? `?${query}` : ''}`, {
+      method: match.route.method,
+      headers: buildUpstreamHeaders(request, match.upstream, envelope, match.route.method === 'POST'),
+      body: envelope.body === undefined ? undefined : JSON.stringify(envelope.body),
       redirect: 'manual',
       cache: 'no-store',
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     })
   } catch {
+    // 不把错误信息带出去：其中可能有带 token 的上游地址
     return proxyError(502, 'upstream_unreachable')
   }
   return buildClientResponse(upstreamResponse, match.upstream)
@@ -203,17 +250,16 @@ async function readBodyLimited(request: Request, limit = MAX_BODY_BYTES): Promis
   return new TextEncoder().encode(text).byteLength > limit ? null : text
 }
 
-export function buildUpstreamHeaders(request: Request, upstream: Upstream): Headers {
+export function buildUpstreamHeaders(request: Request, upstream: Upstream, envelope: ProxyEnvelope, json: boolean): Headers {
   const headers = new Headers()
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name)
     if (value !== null) headers.set(name, value)
   }
+  if (json) headers.set('content-type', 'application/json')
+  if (envelope.roleToken !== undefined) headers.set('x-role-token', envelope.roleToken)
   for (const [name, value] of Object.entries(upstream.extraHeaders ?? {})) headers.set(name, value)
-  if (upstream.relayAkCookie) {
-    const value = request.headers.get(AK_COOKIE_HEADER)
-    if (value !== null && COOKIE_VALUE_PATTERN.test(value)) headers.set('cookie', `${AK_COOKIE_NAME}=${value}`)
-  }
+  if (upstream.relayAkCookie && envelope.akCookie !== undefined) headers.set('cookie', `${AK_COOKIE_NAME}=${envelope.akCookie}`)
   return headers
 }
 

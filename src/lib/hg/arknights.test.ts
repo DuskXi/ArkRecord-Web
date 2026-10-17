@@ -15,7 +15,9 @@ describe('充值记录', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/hg/u8/u8/pay/v1/recent')
-    expect(JSON.parse(String(init.body))).toEqual({ token: 'dTg=' })
+    expect(init.method).toBe('POST')
+    // 参数都在请求体里，token 不出现在网址里
+    expect(JSON.parse(String(init.body))).toEqual({ body: { token: 'dTg=' } })
   })
 
   it('u8 token 不被接受时，官服角色改用官网的方式（账号 token）查询', async () => {
@@ -25,7 +27,7 @@ describe('充值记录', () => {
       .mockResolvedValueOnce(json({ status: 0, data: null }))
     vi.stubGlobal('fetch', fetchMock)
     expect(await fetchRecentOrders('dTg=', 'account')).toEqual([])
-    const body = JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body))
+    const { body } = JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body))
     expect(body).toEqual({ appCode: '9aa9768a549ddaa186b7', channelMasterId: 1, channelToken: { token: 'account' } })
   })
 

@@ -34,6 +34,11 @@ describe('入口模块', () => {
   })
 })
 
+/** 按现在的方式调用转发：POST，参数都在 JSON 请求体里 */
+function hgCall(path: string, envelope: Record<string, unknown> = {}, headers: Record<string, string> = sameOriginHeaders(), env: Env = {}) {
+  return call(path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(envelope) }, env)
+}
+
 describe('只服务本站', () => {
   it('拒绝 CORS 预检，且不返回任何 CORS 头', async () => {
     const res = await call('/api/hg/ak/user/api/inquiry/gacha/cate', { method: 'OPTIONS' })
@@ -43,7 +48,7 @@ describe('只服务本站', () => {
 
   it('缺少客户端标记头时拒绝', async () => {
     const fetchMock = mockUpstream()
-    const res = await call('/api/hg/ak/user/api/inquiry/gacha/cate', { headers: { 'sec-fetch-site': 'same-origin' } })
+    const res = await hgCall('/api/hg/ak/user/api/inquiry/gacha/cate', {}, { 'sec-fetch-site': 'same-origin' })
     expect(res.status).toBe(403)
     expect(res.headers.get('x-arkrecord-proxy')).toBe('missing_client_header')
     expect(fetchMock).not.toHaveBeenCalled()
@@ -51,30 +56,23 @@ describe('只服务本站', () => {
 
   it('拒绝跨站请求', async () => {
     const fetchMock = mockUpstream()
-    const bySite = await call('/api/hg/ak/user/api/inquiry/gacha/cate', {
-      headers: sameOriginHeaders({ 'sec-fetch-site': 'cross-site' }),
-    })
-    const byOrigin = await call('/api/hg/ak/user/api/inquiry/gacha/cate', {
-      headers: { 'x-arkrecord-client': '1', origin: 'https://evil.example' },
-    })
-    const byReferer = await call('/api/hg/ak/user/api/inquiry/gacha/cate', {
-      headers: { 'x-arkrecord-client': '1', referer: 'https://evil.example/page' },
-    })
+    const path = '/api/hg/ak/user/api/inquiry/gacha/cate'
+    const bySite = await hgCall(path, {}, sameOriginHeaders({ 'sec-fetch-site': 'cross-site' }))
+    const byOrigin = await hgCall(path, {}, { 'x-arkrecord-client': '1', origin: 'https://evil.example' })
+    const byReferer = await hgCall(path, {}, { 'x-arkrecord-client': '1', referer: 'https://evil.example/page' })
     expect([bySite.status, byOrigin.status, byReferer.status]).toEqual([403, 403, 403])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('旧浏览器没有 Sec-Fetch-Site 时，同源 Referer 可以通过', async () => {
     mockUpstream()
-    const res = await call('/api/hg/ak/user/api/inquiry/gacha/cate', {
-      headers: { 'x-arkrecord-client': '1', referer: `${SELF}/overview` },
-    })
+    const res = await hgCall('/api/hg/ak/user/api/inquiry/gacha/cate', {}, { 'x-arkrecord-client': '1', referer: `${SELF}/overview` })
     expect(res.status).toBe(200)
   })
 
   it('成功响应也不带 CORS 头', async () => {
     mockUpstream()
-    const res = await call('/api/hg/ef/api/content?pool_id=standard', { headers: sameOriginHeaders() })
+    const res = await hgCall('/api/hg/ef/api/content', { query: { pool_id: 'standard' } })
     expect(res.status).toBe(200)
     expect([...res.headers.keys()].some((k) => k.startsWith('access-control-'))).toBe(false)
     expect(res.headers.get('cache-control')).toBe('no-store')
@@ -82,110 +80,110 @@ describe('只服务本站', () => {
 })
 
 describe('白名单', () => {
-  it('拒绝未列出的上游、路径和方法', async () => {
+  it('拒绝未列出的上游和路径', async () => {
     const fetchMock = mockUpstream()
     const cases = [
-      call('/api/hg/prts/w/干员一览', { headers: sameOriginHeaders() }),
-      call('/api/hg/ak/user/api/inquiry/recharge', { headers: sameOriginHeaders() }),
-      call('/api/hg/u8/u8/pay/v1/recent', { headers: sameOriginHeaders() }), // 应为 POST
-      call('/api/hg/u8/u8/user/info/v1/basic', {
-        method: 'POST',
-        headers: sameOriginHeaders({ 'content-type': 'application/json' }),
-        body: '{}',
-      }),
-      call('/api/hg/ak/user/api/inquiry/gacha/cate/../../role/info', { headers: sameOriginHeaders() }),
-      call('/api/hg/as/user/oauth2/v2/grant', { headers: sameOriginHeaders() }), // 应为 POST
-      call('/api/hg/__proto__/x', { headers: sameOriginHeaders() }),
-      call('/api/hg/', { headers: sameOriginHeaders() }),
+      hgCall('/api/hg/prts/w/干员一览'),
+      hgCall('/api/hg/ak/user/api/inquiry/recharge'),
+      hgCall('/api/hg/u8/u8/user/info/v1/basic', { body: {} }),
+      hgCall('/api/hg/ak/user/api/inquiry/gacha/cate/../../role/info'),
+      hgCall('/api/hg/__proto__/x'),
+      hgCall('/api/hg/'),
     ]
     const statuses = (await Promise.all(cases)).map((r) => r.status)
-    expect(statuses).toEqual([404, 404, 404, 404, 404, 404, 404, 404])
+    expect(statuses).toEqual([404, 404, 404, 404, 404, 404])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('按白名单转发到正确的上游地址，保留查询参数', async () => {
+  it('按白名单转发到正确的上游地址和方法，查询参数来自请求体', async () => {
     const fetchMock = mockUpstream()
-    await call('/api/hg/ef/api/record/char?token=t&server_id=1&pool_type=E_CharacterGachaPoolType_Standard', {
-      headers: sameOriginHeaders(),
-    })
+    await hgCall('/api/hg/ef/api/record/char', { query: { token: 't', server_id: '1', pool_type: 'E_CharacterGachaPoolType_Standard' } })
     expect(fetchMock).toHaveBeenCalledOnce()
     const [url, init] = fetchMock.mock.calls[0]!
-    expect(url).toBe(
-      'https://ef-webview.hypergryph.com/api/record/char?token=t&server_id=1&pool_type=E_CharacterGachaPoolType_Standard',
-    )
+    expect(url).toBe('https://ef-webview.hypergryph.com/api/record/char?token=t&server_id=1&pool_type=E_CharacterGachaPoolType_Standard')
     expect(init.method).toBe('GET')
+    expect(init.body).toBeUndefined()
     expect(init.redirect).toBe('manual')
   })
 
   it('源石记录与充值记录', async () => {
     const fetchMock = mockUpstream()
-    await call('/api/hg/ak/user/api/inquiry/diamond?uid=1&size=10', { headers: sameOriginHeaders({ 'x-role-token': 'role' }) })
-    await call('/api/hg/u8/u8/pay/v1/recent', {
-      method: 'POST',
-      headers: sameOriginHeaders({ 'content-type': 'application/json', 'x-ak-user-center': 'abc' }),
-      body: '{"token":"dTg="}',
-    })
-    const [diamondUrl] = fetchMock.mock.calls[0]!
+    await hgCall('/api/hg/ak/user/api/inquiry/diamond', { query: { uid: '1', size: '10' }, roleToken: 'role' })
+    await hgCall('/api/hg/u8/u8/pay/v1/recent', { body: { token: 'dTg=' }, akCookie: 'abc' })
+    const [diamondUrl, diamondInit] = fetchMock.mock.calls[0]!
     const [rechargeUrl, rechargeInit] = fetchMock.mock.calls[1]!
     expect(diamondUrl).toBe('https://ak.hypergryph.com/user/api/inquiry/diamond?uid=1&size=10')
+    expect(new Headers(diamondInit.headers).get('x-role-token')).toBe('role')
     expect(rechargeUrl).toBe('https://u8.hypergryph.com/u8/pay/v1/recent')
     expect(rechargeInit.method).toBe('POST')
     expect(rechargeInit.body).toBe('{"token":"dTg="}')
+    expect(new Headers(rechargeInit.headers).get('content-type')).toBe('application/json')
     // 充值接口不需要、也不会收到明日方舟用户中心的 Cookie
     expect(new Headers(rechargeInit.headers).get('cookie')).toBeNull()
   })
 
-  it('POST 只接受小体积 JSON', async () => {
+  it('token 不能放在网址里；旧版页面的 GET 请求提示刷新', async () => {
     const fetchMock = mockUpstream()
-    const notJson = await call('/api/hg/as/user/oauth2/v2/grant', {
-      method: 'POST',
-      headers: sameOriginHeaders({ 'content-type': 'text/plain' }),
-      body: 'x',
-    })
-    const tooLarge = await call('/api/hg/as/user/oauth2/v2/grant', {
-      method: 'POST',
-      headers: sameOriginHeaders({ 'content-type': 'application/json' }),
-      body: JSON.stringify({ token: 'x'.repeat(5000) }),
-    })
-    expect([notJson.status, tooLarge.status]).toEqual([415, 413])
+    const inUrl = await hgCall('/api/hg/binding/account/binding/v1/binding_list?token=t&appCode=arknights')
+    const legacy = await call('/api/hg/binding/account/binding/v1/binding_list?token=t&appCode=arknights', { headers: sameOriginHeaders() })
+    expect([inUrl.status, inUrl.headers.get('x-arkrecord-proxy')]).toEqual([400, 'query_in_url'])
+    expect([legacy.status, legacy.headers.get('x-arkrecord-proxy')]).toEqual([405, 'client_outdated'])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('请求体只接受规定的字段和格式', async () => {
+    const fetchMock = mockUpstream()
+    const cases = [
+      // 不是 JSON、体积太大
+      call('/api/hg/as/user/oauth2/v2/grant', { method: 'POST', headers: sameOriginHeaders({ 'content-type': 'text/plain' }), body: 'x' }),
+      hgCall('/api/hg/as/user/oauth2/v2/grant', { body: { token: 'x'.repeat(9000) } }),
+      call('/api/hg/as/user/oauth2/v2/grant', { method: 'POST', headers: sameOriginHeaders({ 'content-type': 'application/json' }), body: '{' }),
+      // 多余的字段、查询参数不是字符串、GET 接口带了请求体、POST 接口没有请求体
+      hgCall('/api/hg/ef/api/content', { query: { pool_id: 'x' }, url: 'https://evil.example' }),
+      hgCall('/api/hg/ef/api/content', { query: { pool_id: 1 } }),
+      hgCall('/api/hg/ef/api/content', { body: { a: 1 } }),
+      hgCall('/api/hg/as/user/oauth2/v2/grant', {}),
+      hgCall('/api/hg/as/user/oauth2/v2/grant', { body: [1] }),
+      // 带有注入字符的 Cookie 值和角色 token
+      hgCall('/api/hg/ak/user/api/inquiry/gacha/cate', { query: { uid: '1' }, akCookie: 'a; other=b' }),
+      hgCall('/api/hg/ak/user/api/inquiry/gacha/cate', { query: { uid: '1' }, roleToken: 'a\nb' }),
+    ]
+    expect((await Promise.all(cases)).map((r) => r.status)).toEqual([415, 413, 400, 400, 400, 400, 400, 400, 400, 400])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
 describe('请求头与 Cookie 转换', () => {
-  it('只转发白名单请求头，并把 x-ak-user-center 转成 Cookie', async () => {
+  it('只转发白名单请求头；角色 token 和 Cookie 来自请求体', async () => {
     const fetchMock = mockUpstream()
-    await call('/api/hg/ak/user/api/inquiry/gacha/history?uid=1&category=normal&size=50', {
-      headers: sameOriginHeaders({
-        'x-role-token': 'role',
-        'x-ak-user-center': 'abc%2Fdef',
+    await hgCall(
+      '/api/hg/ak/user/api/inquiry/gacha/history',
+      { query: { uid: '1', category: 'normal', size: '50' }, roleToken: 'role', akCookie: 'abc%2Fdef' },
+      sameOriginHeaders({
+        'x-role-token': 'header-leak',
+        'x-ak-user-center': 'header-leak',
         authorization: 'Bearer leak',
         cookie: 'session=leak',
         'cf-connecting-ip': '203.0.113.1',
+        'user-agent': 'Mozilla/5.0 Test',
       }),
-    })
+    )
     const init = fetchMock.mock.calls[0]![1]
     const headers = new Headers(init.headers)
     expect(headers.get('x-role-token')).toBe('role')
     expect(headers.get('cookie')).toBe('ak-user-center=abc%2Fdef')
     expect(headers.get('referer')).toBe('https://ak.hypergryph.com/user/headhunting')
+    expect(headers.get('user-agent')).toBe('Mozilla/5.0 Test')
     expect(headers.get('authorization')).toBeNull()
     expect(headers.get('cf-connecting-ip')).toBeNull()
     expect(headers.get('x-arkrecord-client')).toBeNull()
-  })
-
-  it('拒绝带有注入字符的 Cookie 值', async () => {
-    const fetchMock = mockUpstream()
-    await call('/api/hg/ak/user/api/inquiry/gacha/cate?uid=1', {
-      headers: sameOriginHeaders({ 'x-ak-user-center': 'a; other=b' }),
-    })
-    const headers = new Headers(fetchMock.mock.calls[0]![1].headers)
-    expect(headers.get('cookie')).toBeNull()
+    expect(headers.get('x-ak-user-center')).toBeNull()
+    expect(headers.get('content-type')).toBeNull()
   })
 
   it('其他上游不会收到 Cookie', async () => {
     const fetchMock = mockUpstream()
-    await call('/api/hg/ef/api/content?pool_id=standard', { headers: sameOriginHeaders({ 'x-ak-user-center': 'abc' }) })
+    await hgCall('/api/hg/ef/api/content', { query: { pool_id: 'standard' }, akCookie: 'abc' })
     const headers = new Headers(fetchMock.mock.calls[0]![1].headers)
     expect(headers.get('cookie')).toBeNull()
   })
@@ -195,11 +193,7 @@ describe('请求头与 Cookie 转换', () => {
     upstreamHeaders.append('set-cookie', 'ak-user-center=xyz%3D; Path=/; HttpOnly; Secure')
     upstreamHeaders.append('set-cookie', 'tracker=1; Path=/')
     mockUpstream(new Response('{"code":0}', { headers: upstreamHeaders }))
-    const res = await call('/api/hg/ak/user/api/role/login', {
-      method: 'POST',
-      headers: sameOriginHeaders({ 'content-type': 'application/json' }),
-      body: '{"token":"u8"}',
-    })
+    const res = await hgCall('/api/hg/ak/user/api/role/login', { body: { token: 'u8' } })
     expect(res.headers.get('x-ak-user-center')).toBe('xyz%3D')
     expect(res.headers.get('set-cookie')).toBeNull()
   })
@@ -211,16 +205,9 @@ describe('限速与容错', () => {
     const auth = { limit: vi.fn(async () => ({ success: true })) }
     const data = { limit: vi.fn(async () => ({ success: false })) }
     const env = { RL_AUTH: auth, RL_DATA: data } as unknown as Env
-    const ok = await call(
-      '/api/hg/binding/account/binding/v1/binding_list?token=t&appCode=arknights',
-      { headers: sameOriginHeaders({ 'cf-connecting-ip': '198.51.100.7' }) },
-      env,
-    )
-    const limited = await call(
-      '/api/hg/ef/api/content?pool_id=standard',
-      { headers: sameOriginHeaders({ 'cf-connecting-ip': '198.51.100.7' }) },
-      env,
-    )
+    const ip = sameOriginHeaders({ 'cf-connecting-ip': '198.51.100.7' })
+    const ok = await hgCall('/api/hg/binding/account/binding/v1/binding_list', { query: { token: 't', appCode: 'arknights' } }, ip, env)
+    const limited = await hgCall('/api/hg/ef/api/content', { query: { pool_id: 'standard' } }, ip, env)
     expect(ok.status).toBe(200)
     expect(auth.limit).toHaveBeenCalledWith({ key: 'auth:198.51.100.7' })
     expect(limited.status).toBe(429)
@@ -241,29 +228,38 @@ describe('限速与容错', () => {
     const data = { limit: vi.fn(async (_options: RateLimitOptions) => ({ success: true })) }
     const env = { RL_DATA: data } as unknown as Env
     for (const ip of ['2001:db8:1:2::a', '2001:db8:1:2:ffff::b']) {
-      await call('/api/hg/ef/api/content?pool_id=standard', { headers: sameOriginHeaders({ 'cf-connecting-ip': ip }) }, env)
+      await hgCall('/api/hg/ef/api/content', { query: { pool_id: 'standard' } }, sameOriginHeaders({ 'cf-connecting-ip': ip }), env)
     }
-    expect(data.limit.mock.calls.map(([arg]) => arg)).toEqual([
-      { key: 'data:2001:db8:1:2::/64' },
-      { key: 'data:2001:db8:1:2::/64' },
-    ])
+    expect(data.limit.mock.calls.map(([arg]) => arg)).toEqual([{ key: 'data:2001:db8:1:2::/64' }, { key: 'data:2001:db8:1:2::/64' }])
   })
 
-  it('上游不可达时返回 502', async () => {
+  it('上游不可达时返回 502，不带出错误细节', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => {
-        throw new TypeError('network')
+      vi.fn(async (url: string) => {
+        throw new TypeError(`Fetch API cannot load: ${url}`)
       }),
     )
-    const res = await call('/api/hg/ef/api/content?pool_id=standard', { headers: sameOriginHeaders() })
+    const res = await hgCall('/api/hg/ef/api/record/char', { query: { token: 'secret-token-value' } })
     expect(res.status).toBe(502)
     expect(res.headers.get('x-arkrecord-proxy')).toBe('upstream_unreachable')
+    expect(await res.text()).not.toContain('secret-token-value')
+  })
+
+  it('未预料的异常变成不带细节的 500，异常信息不交给平台', async () => {
+    const env = {
+      get RL_AUTH(): never {
+        throw new Error('boom secret-token-value')
+      },
+    } as unknown as Env
+    const res = await hgCall('/api/hg/binding/account/binding/v1/binding_list', { query: { token: 'secret-token-value' } }, sameOriginHeaders(), env)
+    expect(res.status).toBe(500)
+    expect(await res.text()).toBe('{"error":"internal_error"}')
   })
 
   it('原样返回上游的错误状态码，供前端判断 token 失效', async () => {
     mockUpstream(new Response('{"reason":"UN_LOGIN"}', { status: 401, headers: { 'content-type': 'application/json' } }))
-    const res = await call('/api/hg/ak/user/api/inquiry/gacha/cate?uid=1', { headers: sameOriginHeaders() })
+    const res = await hgCall('/api/hg/ak/user/api/inquiry/gacha/cate', { query: { uid: '1' } })
     expect(res.status).toBe(401)
     expect(res.headers.get('x-arkrecord-proxy')).toBeNull()
     expect(await res.json()).toEqual({ reason: 'UN_LOGIN' })

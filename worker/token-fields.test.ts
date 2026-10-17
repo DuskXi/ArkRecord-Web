@@ -1,6 +1,8 @@
 /**
- * CI 检查（docs/rewrite/cloud-sync.md 4.3）：worker 和 shared 目录里，除了 worker/hg-verify.ts（及其测试），
- * 任何文件都不允许出现鹰角 token 的字段名。这样以后改代码时，不会在别处悄悄读取或转存 token。
+ * CI 检查（docs/rewrite/cloud-sync.md 4.3）：
+ *   - worker 和 shared 目录里，除了 worker/hg-verify.ts（及其测试），任何文件都不允许出现鹰角 token 的字段名。
+ *     这样以后改代码时，不会在别处悄悄读取或转存 token；
+ *   - Worker 代码里不允许有 console 输出：日志可能被平台记录（实时日志、Workers Logs），token 绝不能出现在那里。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -28,6 +30,20 @@ describe('鹰角 token 只在 worker/hg-verify.ts 里出现', () => {
         .split('\n')
         .forEach((line, i) => {
           if (FORBIDDEN.test(line)) offenders.push(`${rel}:${i + 1}: ${line.trim()}`)
+        })
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('worker、shared 目录的代码里没有 console 输出', () => {
+    const offenders: string[] = []
+    for (const file of [...walk('worker'), ...walk('shared')]) {
+      const rel = relative('.', file).replaceAll('\\', '/')
+      if (rel === 'worker/worker-configuration.d.ts') continue
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (/\bconsole\s*[.[]/.test(line)) offenders.push(`${rel}:${i + 1}: ${line.trim()}`)
         })
     }
     expect(offenders).toEqual([])
