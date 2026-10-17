@@ -23,7 +23,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs, promisify } from 'node:util'
-import { attestationArgs, childEnv, compareModules, ENVIRONMENTS, provenanceOf, sha256Hex, validateManifest } from './lib.mjs'
+import { attestationArgs, childEnv, commonProvenance, compareModules, ENVIRONMENTS, provenancesOf, sha256Hex, validateManifest } from './lib.mjs'
 
 const run = promisify(execFile)
 const API = 'https://api.cloudflare.com/client/v4'
@@ -101,7 +101,7 @@ async function attest(name, data, dir) {
     let result
     try {
       const { stdout } = await run('gh', attestationArgs(file, config.workflow), { env: childEnv(), maxBuffer: 16 * 1024 * 1024 })
-      result = { attested: true, ...provenanceOf(JSON.parse(stdout)) }
+      result = { attested: true, provenances: provenancesOf(JSON.parse(stdout)) }
     } catch (error) {
       const text = String(error?.stderr || error?.message || error)
       result = { attested: false, reason: /no attestations|not found|404/i.test(text) ? '没有构建证明' : `验证失败：${text.trim().split('\n').at(-1)?.slice(0, 160)}` }
@@ -111,8 +111,8 @@ async function attest(name, data, dir) {
   return { sha256: digest, size: data.length, ...attestationCache.get(digest) }
 }
 
-/** 下载一个版本的模块（代码和 _headers），逐个验证构建证明 */
-async function inspect(id, dir) {
+/** 下载一个版本的模块（代码和 _headers），逐个验证构建证明，并找出它们共同的构建来源 */
+async function inspect(id, dir, preferred) {
   const version = await cf('version', id)
   const modules = {}
   for (const m of version?.modules ?? []) {
@@ -120,14 +120,16 @@ async function inspect(id, dir) {
     modules[m.name.slice(0, 200)] = await attest(m.name, Buffer.from(m.content_base64, 'base64'), dir)
   }
   const list = Object.values(modules)
-  const commits = [...new Set(list.map((m) => m.commit).filter(Boolean))]
+  const each = list.length > 0 && list.every((m) => m.attested)
+  const common = each ? commonProvenance(list, preferred) : null
   return {
     number: Number.isInteger(version?.number) ? version.number : null,
-    attested: list.length > 0 && list.every((m) => m.attested),
-    commit: commits.length === 1 ? commits[0] : null,
-    mixedCommits: commits.length > 1,
-    ref: list.find((m) => m.ref)?.ref ?? null,
-    run: list.find((m) => m.run)?.run ?? null,
+    attested: each && common !== null,
+    commit: common?.commit ?? null,
+    // 每个模块都有证明，但找不到一个共同的 commit：模块被拼凑过
+    mixedCommits: each && common === null,
+    ref: common?.ref ?? null,
+    run: common?.run ?? null,
     modules: Object.fromEntries(Object.entries(modules).map(([n, m]) => [n, { sha256: m.sha256, size: m.size, attested: m.attested, ...(m.reason ? { reason: m.reason } : {}) }])),
   }
 }
@@ -150,7 +152,7 @@ async function main() {
     }
     if (recent.length > MAX_VERSIONS) problem(`最近 ${hours} 小时上传了 ${recent.length} 个版本，数量异常`)
     for (const v of recent.slice(0, MAX_VERSIONS)) {
-      const inspected = await inspect(v.id, dir)
+      const inspected = await inspect(v.id, dir, manifest?.commit ?? null)
       const number = Number.isInteger(v.number) ? v.number : inspected.number
       const audited = number === null || number >= config.auditFromVersion
       const entry = {
@@ -164,8 +166,8 @@ async function main() {
         status: inspected.attested ? 'attested' : audited ? 'unattested' : 'before-audit',
       }
       report.versions.push(entry)
-      if (entry.status === 'unattested') problem(`版本 ${number ?? v.id}（${entry.createdOn}，来源 ${entry.source}）的代码没有本仓库部署流程签发的构建证明`)
-      if (entry.mixedCommits) problem(`版本 ${number ?? v.id} 的各个模块来自不同的 commit`)
+      if (entry.status === 'unattested' && !entry.mixedCommits) problem(`版本 ${number ?? v.id}（${entry.createdOn}，来源 ${entry.source}）的代码没有本仓库部署流程签发的构建证明`)
+      if (entry.mixedCommits) problem(`版本 ${number ?? v.id} 的各个模块都有构建证明，但不是同一次构建产生的（找不到共同的 commit）`)
     }
     if (!recent.length) report.notes.push(`最近 ${hours} 小时没有上传新版本。`)
 
@@ -181,7 +183,7 @@ async function main() {
         problem('正在运行的版本号格式不对')
         continue
       }
-      const v = report.versions.find((x) => x.id === a.id) ?? { id: a.id, ...(await inspect(a.id, dir)) }
+      const v = report.versions.find((x) => x.id === a.id) ?? { id: a.id, ...(await inspect(a.id, dir, manifest?.commit ?? null)) }
       const beforeAudit = v.number !== null && v.number < config.auditFromVersion
       if (!v.attested && beforeAudit) report.notes.push(`正在运行的版本 ${v.number} 早于开始签发构建证明（第 ${config.auditFromVersion} 版起）。`)
       else if (!v.attested) problem(`正在运行的版本 ${v.number ?? a.id} 没有本仓库部署流程签发的构建证明`)

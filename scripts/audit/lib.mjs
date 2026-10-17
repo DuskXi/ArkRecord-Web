@@ -210,13 +210,32 @@ export function attestationArgs(file, workflow) {
   return ['attestation', 'verify', file, '--repo', REPOSITORY, '--signer-workflow', `${REPOSITORY}/${workflow}`, '--format', 'json']
 }
 
-/** 从 gh 的 JSON 输出里取出构建来源（commit、分支、运行地址）；取不到的字段为 null */
-export function provenanceOf(ghJson) {
-  const first = Array.isArray(ghJson) ? ghJson[0] : null
-  const cert = first?.verificationResult?.signature?.certificate ?? {}
-  return {
-    commit: typeof cert.sourceRepositoryDigest === 'string' ? cert.sourceRepositoryDigest : null,
-    ref: typeof cert.sourceRepositoryRef === 'string' ? cert.sourceRepositoryRef : null,
-    run: typeof cert.runInvocationURI === 'string' ? cert.runInvocationURI : null,
-  }
+/**
+ * 从 gh 的 JSON 输出里取出每一份构建证明的来源（commit、分支、运行地址）。
+ * 同样内容的文件可能被多次构建签发过（例如 _headers 很少改动），所以是一个列表。
+ */
+export function provenancesOf(ghJson) {
+  if (!Array.isArray(ghJson)) return []
+  return ghJson.map((item) => {
+    const cert = item?.verificationResult?.signature?.certificate ?? {}
+    return {
+      commit: typeof cert.sourceRepositoryDigest === 'string' ? cert.sourceRepositoryDigest : null,
+      ref: typeof cert.sourceRepositoryRef === 'string' ? cert.sourceRepositoryRef : null,
+      run: typeof cert.runInvocationURI === 'string' ? cert.runInvocationURI : null,
+    }
+  })
+}
+
+/**
+ * 一个 Worker 版本的各个模块是否来自同一次构建：找出每个模块都有证明的 commit。
+ * 有多个时优先取 preferred（网站上构建清单的 commit）。没有共同的 commit 说明模块被拼凑过。
+ */
+export function commonProvenance(modules, preferred = null) {
+  const lists = modules.map((m) => m.provenances ?? [])
+  if (!lists.length || lists.some((l) => !l.length)) return null
+  const common = [...new Set(lists[0].map((p) => p.commit).filter(Boolean))].filter((c) => lists.every((l) => l.some((p) => p.commit === c)))
+  if (!common.length) return null
+  const commit = preferred && common.includes(preferred) ? preferred : common[0]
+  const p = lists[0].find((x) => x.commit === commit)
+  return { commit, ref: p?.ref ?? null, run: p?.run ?? null }
 }

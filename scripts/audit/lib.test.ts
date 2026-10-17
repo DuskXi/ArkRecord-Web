@@ -11,13 +11,19 @@ import {
   isCodeFile,
   isSafePath,
   parseHeadersFile,
-  provenanceOf,
+  commonProvenance,
+  provenancesOf,
   servedPath,
   sha256Hex,
   validateManifest,
 } from './lib.mjs'
 
 const COMMIT = 'c6561a5b663cc036778a8089a5c21f4b9b4520d9'
+const OTHER = '9517e9d2fb7fd0527768ad8d13bb25938f48cba6'
+const cert = (commit: string, run: number) => ({
+  verificationResult: { signature: { certificate: { sourceRepositoryDigest: commit, sourceRepositoryRef: 'refs/heads/master', runInvocationURI: `https://github.com/DuskXi/ArkRecord-Web/actions/runs/${run}/attempts/1` } } },
+})
+const prov = (commit: string) => ({ commit, ref: 'refs/heads/master', run: `run-${commit.slice(0, 3)}` })
 let dirs: string[] = []
 afterEach(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true })
@@ -144,10 +150,23 @@ describe('构建证明', () => {
     ])
   })
 
-  it('从 gh 的输出里取出 commit、分支和运行地址', () => {
-    const out = [{ verificationResult: { signature: { certificate: { sourceRepositoryDigest: COMMIT, sourceRepositoryRef: 'refs/heads/master', runInvocationURI: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/1/attempts/1' } } } }]
-    expect(provenanceOf(out)).toEqual({ commit: COMMIT, ref: 'refs/heads/master', run: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/1/attempts/1' })
-    expect(provenanceOf(null)).toEqual({ commit: null, ref: null, run: null })
+  it('从 gh 的输出里取出每份证明的 commit、分支和运行地址', () => {
+    expect(provenancesOf([cert(COMMIT, 1), cert(OTHER, 2)])).toEqual([
+      { commit: COMMIT, ref: 'refs/heads/master', run: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/1/attempts/1' },
+      { commit: OTHER, ref: 'refs/heads/master', run: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/2/attempts/1' },
+    ])
+    expect(provenancesOf(null)).toEqual([])
+  })
+
+  it('一个版本的模块必须有共同的构建来源：很少改动的 _headers 被多次签发也不算拼凑', () => {
+    // index.js 只来自 COMMIT；_headers 内容没变，被 COMMIT 和 OTHER 两次构建都签发过
+    expect(commonProvenance([{ provenances: [prov(COMMIT)] }, { provenances: [prov(OTHER), prov(COMMIT)] }])).toEqual(prov(COMMIT))
+    // 两个模块都被两次构建签发过（代码没变）：优先取网站上构建清单的 commit
+    expect(commonProvenance([{ provenances: [prov(COMMIT), prov(OTHER)] }, { provenances: [prov(OTHER), prov(COMMIT)] }], OTHER)?.commit).toBe(OTHER)
+    // 没有共同的 commit：模块被拼凑过
+    expect(commonProvenance([{ provenances: [prov(COMMIT)] }, { provenances: [prov(OTHER)] }])).toBeNull()
+    // 有模块没有证明
+    expect(commonProvenance([{ provenances: [prov(COMMIT)] }, { provenances: [] }])).toBeNull()
   })
 
   it('调用 gh 时不传 Cloudflare 令牌等无关的环境变量', () => {

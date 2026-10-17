@@ -18,7 +18,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs, promisify } from 'node:util'
-import { attestationArgs, childEnv, ENVIRONMENTS, isCodeFile, MANIFEST_PATH, provenanceOf, servedPath, sha256Hex, validateManifest } from './lib.mjs'
+import { attestationArgs, childEnv, ENVIRONMENTS, isCodeFile, MANIFEST_PATH, provenancesOf, servedPath, sha256Hex, validateManifest } from './lib.mjs'
 
 const run = promisify(execFile)
 
@@ -88,10 +88,11 @@ async function main() {
       const file = join(dir, MANIFEST_PATH)
       writeFileSync(file, manifestBytes)
       const { stdout } = await run('gh', attestationArgs(file, manifest.workflow), { env: childEnv(), maxBuffer: 16 * 1024 * 1024 })
-      const provenance = provenanceOf(JSON.parse(stdout))
-      report.attestation = { verified: true, workflow: manifest.workflow, ...provenance }
-      console.log(`✓ 构建证明有效：${manifest.workflow}，${provenance.ref ?? ''} ${provenance.run ?? ''}`)
-      if (provenance.commit !== manifest.commit) problem(`构建证明里的 commit（${provenance.commit}）和清单的（${manifest.commit}）不同`)
+      const provenances = provenancesOf(JSON.parse(stdout))
+      const provenance = provenances.find((p) => p.commit === manifest.commit)
+      report.attestation = { verified: Boolean(provenance), workflow: manifest.workflow, ...(provenance ?? provenances[0]) }
+      if (provenance) console.log(`✓ 构建证明有效：${manifest.workflow}，${provenance.ref ?? ''} ${provenance.run ?? ''}`)
+      else problem(`构建清单的构建证明里没有 commit ${manifest.commit}（有：${provenances.map((p) => p.commit).join('，')}）`)
     } catch (error) {
       report.attestation = { verified: false }
       problem(`构建清单的构建证明验证失败：${String(error?.stderr || error?.message || error).trim().split('\n').slice(-3).join(' ')}`)
