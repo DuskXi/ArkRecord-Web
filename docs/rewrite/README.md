@@ -7,6 +7,7 @@
 | [research.md](research.md) | 明日方舟与终末地的新抽卡接口、保底规则 |
 | [data-sources.md](data-sources.md) | 干员 / 卡池元数据和头像图片的来源（含 PRTS 现状） |
 | [design.md](design.md) | 架构、技术栈、数据模型、UI 与功能设计 |
+| [cloud-sync.md](cloud-sync.md) | 云同步（跨设备加密同步）设计草案，尚未实现 |
 
 ## 已确定的决策
 
