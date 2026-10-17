@@ -52,7 +52,7 @@ import { type CloudDataset, CodecError, decodeDatasetBytes, encodeDatasetBytes, 
 import { generateDek, hgKekKey, newBatchId, openEnvelope, passwordKeys, randomKid, sealEnvelope, unwrapDek, wrapDek } from './crypto'
 import { applyDataset, readLocalDataset, recordCount, recordHashes, subset } from './dataset'
 import { checkPassword } from './password'
-import { type CloudState, dropKeys, keysOf, loadState, removeState, saveState } from './state'
+import { type CloudState, dropKeys, isReady, keysOf, loadState, removeState, saveState } from './state'
 
 export type CloudSyncErrorCode =
   /** 这台设备上没有保存钥匙，需要输入密码 */
@@ -247,23 +247,66 @@ export async function unlockHgCloud(target: { game: CloudGame; uid: string }, op
   return runSync(state, { dek }, hg, pulled)
 }
 
+export interface SwitchResult {
+  state: CloudState
+  /** 覆盖之前是否先把云端的记录合并进了本地 */
+  merged: boolean
+  /** 云端原来还没有开通：直接按新模式开通 */
+  created: boolean
+}
+
 /**
- * 切换模式（cloud-sync.md 8.4）：先云同步一次，把云端的记录合并进本地（覆盖时不会丢掉别的设备上传的），
+ * 切换模式（cloud-sync.md 8.4）：先把云端的记录合并进本地（覆盖时不会丢掉别的设备上传的），
  * 再用新的方式、新的 DEK 覆盖云端。从无密码模式切回密码模式时必须换新 DEK，因为旧的服务器能算出来。
+ *
+ * 先合并云端数据的办法：
+ *   - 这台设备上已经能云同步这个账号：云同步一次；
+ *   - 云端是无密码模式：用鹰角 token 连接一次；
+ *   - 云端是密码模式、这台设备上没有钥匙：用 currentPassword（现在的云同步密码）解锁一次；
+ *     不知道密码时，只有明确选择 overwriteWithoutMerge 才直接覆盖（云端独有的记录会丢失）。
  */
 export async function switchCloudMode(
   account: Account,
-  options: { to: CloudMode; password?: string; oauthToken: string; requireHg?: boolean; remember?: boolean; onProgress?: (fraction: number) => void },
-): Promise<CloudState> {
-  const state = await loadState(account.id)
-  if (!state) throw new CloudSyncError('not_enabled', '这个账号还没有开通云同步。')
-  if (state.mode === options.to) throw new CloudSyncError('wrong_mode', options.to === 'hg' ? '这个账号已经是无密码模式。' : '这个账号已经是密码模式。')
+  options: {
+    to: CloudMode
+    password?: string
+    currentPassword?: string
+    overwriteWithoutMerge?: boolean
+    oauthToken: string
+    requireHg?: boolean
+    remember?: boolean
+    onProgress?: (fraction: number) => void
+  },
+): Promise<SwitchResult> {
   if (options.to === 'password') {
     const check = checkPassword(options.password ?? '', { uid: account.uid, nickName: account.nickName })
     if (!check.ok) throw new CloudSyncError('weak_password', '密码不符合规则。')
   }
-  await syncCloud(account.id, { oauthToken: options.oauthToken })
-  return enableCloud(account, { ...options, mode: options.to, overwrite: true })
+  const status = await cloudStatus(account, options.oauthToken)
+  const enable = (overwrite: boolean) => enableCloud(account, { ...options, mode: options.to, overwrite })
+  if (!status.exists) return { state: await enable(false), merged: false, created: true }
+  if (status.mode === options.to) throw new CloudSyncError('wrong_mode', options.to === 'hg' ? '这个账号已经是无密码模式。' : '这个账号已经是密码模式。')
+  // ── 1. 先合并云端的数据 ──
+  const state = await loadState(account.id)
+  let merged = true
+  if (state && state.mode === status.mode && isReady(state)) {
+    await syncCloud(account.id, { oauthToken: options.oauthToken })
+  } else if (status.mode === 'hg') {
+    await unlockHgCloud(account, { oauthToken: options.oauthToken })
+  } else if (options.currentPassword) {
+    await unlockCloud(account, {
+      password: options.currentPassword,
+      remember: true,
+      oauthToken: status.requireHg ? options.oauthToken : undefined,
+      onProgress: options.onProgress,
+    })
+  } else if (options.overwriteWithoutMerge) {
+    merged = false
+  } else {
+    throw new CloudSyncError('need_password', '切换前要先合并云端的数据：请输入现在的云同步密码；不知道密码时，可以选择不合并、直接覆盖。')
+  }
+  // ── 2. 用新的方式覆盖云端 ──
+  return { state: await enable(true), merged, created: false }
 }
 
 /** 输入密码，下载并合并云端数据（新设备上会按云端的账号信息新建账号），再上传本地多出来的 */

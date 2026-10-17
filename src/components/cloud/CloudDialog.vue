@@ -15,7 +15,7 @@ import { db } from '@/lib/db'
 import { type Game, GAME_LABEL } from '@/lib/types'
 import type { CloudMode } from '../../../shared/cloud-protocol'
 import { useAppStore } from '@/stores/app'
-import { describeError, useCloudStore } from '@/stores/cloud'
+import { describeError, MODE_LABEL, switchWarning, useCloudStore } from '@/stores/cloud'
 
 /** 云同步的对话框：开通、覆盖、解锁、恢复、改密码、双重验证、删除、同步配置、切换模式 */
 const app = useAppStore()
@@ -57,6 +57,12 @@ const cloudMode = ref<CloudMode>('password')
 const hgMode = ref(false)
 /** 已阅读并确认无密码模式的保护范围 */
 const hgAck = ref(false)
+/** 切换模式、这台设备上没有钥匙时：现在的云同步密码（用来先合并云端数据） */
+const currentPassword = ref('')
+/** 切换模式时不知道现在的密码：不合并，直接覆盖 */
+const overwriteWithoutMerge = ref(false)
+/** 同步配置：保存后把模式不一样的已开通账号也切换过去 */
+const applyToEnabled = ref(true)
 const working = ref(false)
 /** 需要发送鹰角 token 时，提交前先显示声明，再点一次才发送 */
 const confirming = ref(false)
@@ -89,9 +95,16 @@ watch(
     restoreUid.value = ''
     const knownMode = entry.value?.state.mode ?? (detected.value?.exists ? detected.value.mode : undefined)
     cloudMode.value =
-      d.mode === 'switch' ? (knownMode === 'hg' ? 'password' : 'hg') : d.mode === 'overwrite' ? (knownMode ?? 'password') : (cloud.profile?.mode ?? 'password')
+      d.mode === 'switch'
+        ? (d.to ?? (knownMode === 'hg' ? 'password' : 'hg'))
+        : d.mode === 'overwrite'
+          ? (knownMode ?? 'password')
+          : (cloud.profile?.mode ?? 'password')
     hgMode.value = (d.mode === 'unlock' || d.mode === 'restore') && (d.hg ?? (d.mode === 'unlock' && knownMode === 'hg'))
     hgAck.value = false
+    currentPassword.value = ''
+    overwriteWithoutMerge.value = false
+    applyToEnabled.value = true
     working.value = false
     confirming.value = false
     mismatch.value = ''
@@ -122,8 +135,32 @@ const usesHg = computed(() => {
 })
 /** 选了无密码模式，但服务器没有配置 */
 const hgBlocked = computed(() => usesHg.value && cloud.hgAvailable === false)
-/** 切换前要先合并云端数据：密码模式的账号需要这台设备上有钥匙 */
-const switchReady = computed(() => Boolean(entry.value?.hasKeys))
+/** 云端现在的模式（这台设备上的状态，或者检测结果） */
+const knownMode = computed(() => entry.value?.state.mode ?? (detected.value?.exists ? detected.value.mode : undefined))
+/** 切换前要先合并云端数据：云端是密码模式、这台设备上又没有它的钥匙时，需要输入现在的密码（或者选择直接覆盖） */
+const switchNeedsPassword = computed(
+  () => mode.value === 'switch' && knownMode.value !== 'hg' && !(entry.value && entry.value.state.mode === knownMode.value && entry.value.hasKeys),
+)
+/** 同步配置的模式和这个账号在云端的模式不一样 */
+const profileDiffers = computed(() => Boolean(cloud.profile && knownMode.value && cloud.profile.mode !== knownMode.value))
+/** 同步配置：这台设备上已开通、模式和新配置不一样的账号 */
+const profileMismatched = computed(() =>
+  mode.value === 'profile' ? app.accounts.filter((a) => {
+    const e = cloud.byAccount.get(a.id)
+    return e && e.state.mode !== cloudMode.value
+  }) : [],
+)
+/** 覆盖、切换都会替换云端的全部数据：醒目地写出来 */
+const overwriteWarning = computed(() => {
+  if (mode.value === 'switch') return switchWarning(cloudMode.value, !(switchNeedsPassword.value && overwriteWithoutMerge.value))
+  if (mode.value === 'overwrite') {
+    return {
+      title: '会用这个浏览器里的数据替换云端的全部数据',
+      description: '云端会换一把新钥匙，原来的数据无法再解开；云端有、这个浏览器里没有的记录会丢失。其他设备需要重新启用，它们还没上传的记录在重新启用后会补传。',
+    }
+  }
+  return null
+})
 
 /** 需要鹰角 token 的场景 */
 const needsToken = computed(() => {
@@ -176,7 +213,13 @@ const tokenSteps = computed(() => {
     case 'switch':
       return [
         '用鹰角 token 向服务器证明账号是你的',
-        '先云同步一次，把云端的记录合并到这个浏览器',
+        !switchNeedsPassword.value
+          ? knownMode.value === 'hg'
+            ? '服务器核实后给出现在的钥匙：下载云端的记录，合并到这个浏览器'
+            : '先云同步一次，把云端的记录合并到这个浏览器'
+          : overwriteWithoutMerge.value
+            ? '不合并云端的记录（你选择了直接覆盖）'
+            : '用现在的云同步密码解锁云端，把云端的记录合并到这个浏览器',
         cloudMode.value === 'hg' ? '用无密码模式的新钥匙覆盖云端（其他设备需要重新连接）' : '用新密码、新钥匙覆盖云端（其他设备需要输入新密码）',
       ]
     case 'unlock':
@@ -217,7 +260,7 @@ const canSubmit = computed(() => {
     case 'restore':
       return (hgMode.value || password.value.length > 0) && /^[\w-]{1,32}$/.test(restoreUid.value.trim())
     case 'switch':
-      return switchReady.value && (usesHg.value ? hgAck.value : passwordValid.value)
+      return (usesHg.value ? hgAck.value : passwordValid.value) && (!switchNeedsPassword.value || currentPassword.value.length > 0 || overwriteWithoutMerge.value)
     case 'password':
       return oldPassword.value.length > 0 && passwordValid.value
     case 'twofactor':
@@ -340,9 +383,11 @@ async function submit() {
         break
       }
       case 'switch': {
-        await switchCloudMode(a!, {
+        const result = await switchCloudMode(a!, {
           to: cloudMode.value,
           password: password.value,
+          currentPassword: switchNeedsPassword.value ? currentPassword.value || undefined : undefined,
+          overwriteWithoutMerge: switchNeedsPassword.value && !currentPassword.value && overwriteWithoutMerge.value,
           oauthToken: (await oauth())!,
           requireHg: requireHg.value,
           remember: remember.value,
@@ -350,10 +395,11 @@ async function submit() {
         })
         profileHg = usesHg.value || requireHg.value
         toast.add({
-          title: usesHg.value ? '已切换为无密码模式' : '已切换为密码模式',
-          description: usesHg.value ? '其他设备需要用鹰角登录重新连接。' : '其他设备需要输入新的云同步密码。',
+          title: `已切换为${MODE_LABEL[cloudMode.value]}`,
+          description: `${result.merged ? '已先合并云端的记录，再覆盖云端。' : result.created ? '云端原来没有开通，已直接开通。' : '没有合并云端的记录，直接覆盖了云端。'}其他设备需要重新启用（${usesHg.value ? '用鹰角登录连接' : '输入新的云同步密码'}）。`,
           color: 'success',
           icon: 'i-lucide-cloud-check',
+          duration: 10_000,
         })
         break
       }
@@ -410,6 +456,7 @@ async function submit() {
         }
         if (!usesHg.value) await saveProfile({ mode: 'password', password: password.value, requireHg: requireHg.value, remember: remember.value })
         await cloud.refreshProfile()
+        const toSwitch = applyToEnabled.value ? profileMismatched.value : []
         const next = app.accounts.find((x) => x.id === cloud.dialog?.continueWith)
         if (next) {
           // 接着一键启用（需要发送鹰角 token 时会先弹出确认）
@@ -417,6 +464,14 @@ async function submit() {
           working.value = false
           cloud.dialog = null
           void cloud.quickStart(next)
+          return
+        }
+        if (toSwitch.length) {
+          // 把模式不一样的已开通账号切换过去（会再弹出确认，醒目地写出会覆盖云端）
+          cloud.touchKeys()
+          working.value = false
+          cloud.dialog = null
+          void cloud.switchAccounts(toSwitch)
           return
         }
         toast.add({ title: '已保存同步配置', description: '其他账号现在可以一键开通或启用云同步。', color: 'success', icon: 'i-lucide-settings-2' })
@@ -468,7 +523,18 @@ async function submit() {
         <UAlert v-if="cloud.dialog?.note && !confirming && !quickProfile" color="warning" variant="subtle" icon="i-lucide-info" :description="cloud.dialog.note" />
 
         <!-- 发送鹰角 token 前的确认 -->
-        <TokenDisclosure v-if="confirming" :steps="tokenSteps" />
+        <template v-if="confirming">
+          <UAlert
+            v-if="overwriteWarning"
+            color="error"
+            variant="soft"
+            icon="i-lucide-triangle-alert"
+            :title="overwriteWarning.title"
+            :description="overwriteWarning.description"
+            :ui="{ title: 'font-semibold' }"
+          />
+          <TokenDisclosure :steps="tokenSteps" :hg="usesHg || knownMode === 'hg'" />
+        </template>
 
         <!-- 开通 / 覆盖 -->
         <template v-else-if="mode === 'enable' || mode === 'overwrite'">
@@ -509,18 +575,33 @@ async function submit() {
 
         <!-- 切换模式 -->
         <template v-else-if="mode === 'switch'">
-          <p class="leading-relaxed text-muted">
-            {{ cloudMode === 'hg' ? '从密码模式切换为无密码模式' : '从无密码模式切换回密码模式' }}：先云同步一次，把云端的记录合并到这个浏览器，再换一把新钥匙覆盖云端。其他设备需要重新启用（{{
-              cloudMode === 'hg' ? '用鹰角登录连接' : '输入新密码'
-            }}），它们多出来的记录之后会自动补传回来。
-          </p>
           <UAlert
-            v-if="!switchReady"
-            color="warning"
-            variant="subtle"
-            icon="i-lucide-key-round"
-            description="切换前要先合并云端的数据：请先输入云同步密码解锁这个账号。"
+            v-if="overwriteWarning"
+            color="error"
+            variant="soft"
+            icon="i-lucide-triangle-alert"
+            :title="overwriteWarning.title"
+            :description="overwriteWarning.description"
+            :ui="{ title: 'font-semibold' }"
           />
+          <p class="leading-relaxed text-muted">
+            {{ knownMode ? `这个账号在云端现在是${MODE_LABEL[knownMode]}，` : '' }}切换为<b class="text-highlighted">{{ MODE_LABEL[cloudMode] }}</b>。
+          </p>
+          <div v-if="switchNeedsPassword" class="space-y-2 rounded-(--ui-radius) border border-default p-3">
+            <p class="text-xs leading-relaxed text-muted">
+              这台设备上没有这个账号的钥匙。先输入<b class="text-highlighted">现在的云同步密码</b>，把云端的记录合并到这个浏览器，再覆盖云端：别的设备上传过的记录不会丢。
+            </p>
+            <UFormField label="现在的云同步密码">
+              <UInput v-model="currentPassword" type="password" autocomplete="current-password" class="w-full font-mono" :disabled="overwriteWithoutMerge" />
+            </UFormField>
+            <UCheckbox
+              v-model="overwriteWithoutMerge"
+              :disabled="currentPassword.length > 0"
+              color="error"
+              label="不知道现在的密码：不合并，直接用这个浏览器的数据覆盖"
+              description="云端有、这个浏览器里没有的记录会丢失（只存在于其他设备上、还没上传的记录不受影响，那些设备重新启用后会补传）。"
+            />
+          </div>
           <template v-if="cloudMode === 'hg'">
             <HgModeNotice v-model="hgAck" />
           </template>
@@ -569,14 +650,35 @@ async function submit() {
               <UInput v-model="restoreUid" inputmode="numeric" placeholder="游戏里的 UID" class="w-full font-mono" />
             </UFormField>
           </div>
+          <div
+            v-if="mode === 'unlock' && account && profileDiffers"
+            class="space-y-2 rounded-(--ui-radius) border border-error/40 bg-error/5 p-3 text-xs leading-relaxed"
+          >
+            <p class="text-sm font-medium text-highlighted">
+              同步配置是{{ MODE_LABEL[cloud.profile!.mode] }}，这个账号在云端是{{ MODE_LABEL[knownMode!] }}
+            </p>
+            <p class="text-muted">
+              可以按同步配置切换：先合并云端的记录，再换新钥匙<b class="text-error">覆盖云端</b>；其他设备需要重新启用。也可以不切换，在下面{{
+                knownMode === 'hg' ? '直接连接' : '输入它现在的密码'
+              }}。
+            </p>
+            <UButton
+              :label="`切换为${MODE_LABEL[cloud.profile!.mode]}（覆盖云端）`"
+              icon="i-lucide-repeat"
+              size="xs"
+              color="error"
+              variant="soft"
+              @click="cloud.dialog = { mode: 'switch', accountId: account.id, to: cloud.profile!.mode }"
+            />
+          </div>
+          <p v-if="mode === 'unlock' && knownMode" class="text-xs text-muted">
+            云端模式：<b class="text-highlighted">{{ MODE_LABEL[knownMode] }}</b>{{ knownMode === 'hg' ? '（不需要密码）' : '' }}
+          </p>
           <USwitch
+            v-else
             v-model="hgMode"
             label="这个账号用的是无密码模式"
-            :description="
-              detected?.exists
-                ? `检测结果：${detected.mode === 'hg' ? '无密码模式，不需要密码' : '密码模式'}`
-                : '无密码模式不需要密码：用鹰角 token 证明账号是你的，服务器核实后给出解开数据的钥匙。'
-            "
+            description="无密码模式不需要密码：用鹰角 token 证明账号是你的，服务器核实后给出解开数据的钥匙。"
           />
           <template v-if="!hgMode">
             <UFormField label="云同步密码" required>
@@ -651,7 +753,6 @@ async function submit() {
           <UAlert v-if="cloud.profile" color="neutral" variant="subtle" icon="i-lucide-info" description="保存后会替换现有的同步配置。" />
           <URadioGroup v-model="cloudMode" variant="card" :items="modeItems" size="sm" />
           <template v-if="usesHg">
-            <p class="text-xs leading-relaxed text-muted">新开通的账号用无密码模式；已经用密码模式开通的账号仍然需要输入密码。</p>
             <HgModeNotice v-model="hgAck" />
           </template>
           <template v-else>
@@ -661,6 +762,16 @@ async function submit() {
             <USwitch v-model="remember" label="在这台设备上记住（推荐）" :description="PROFILE_HINT" />
           </template>
           <UAlert v-if="mismatch" color="warning" variant="subtle" icon="i-lucide-triangle-alert" :description="mismatch" />
+          <div v-if="profileMismatched.length" class="space-y-2 rounded-(--ui-radius) border border-error/40 bg-error/5 p-3 text-xs leading-relaxed">
+            <p class="flex items-center gap-1.5 text-sm font-medium text-highlighted">
+              <UIcon name="i-lucide-triangle-alert" class="size-4 text-error" />
+              这台设备上已开通的 {{ profileMismatched.length }} 个账号是{{ cloudMode === 'hg' ? '密码模式' : '无密码模式' }}
+            </p>
+            <p class="text-muted">
+              {{ profileMismatched.map((a) => a.nickName).join('、') }}。切换为{{ MODE_LABEL[cloudMode] }}要<b class="text-error">覆盖云端</b>：先下载云端的记录合并到这个浏览器，再换一把新钥匙替换云端的全部数据；其他设备需要重新启用。
+            </p>
+            <USwitch v-model="applyToEnabled" color="error" size="sm" :label="`保存后把这些账号切换为${MODE_LABEL[cloudMode]}（覆盖云端，会再请你确认一次）`" />
+          </div>
         </template>
 
         <HgTokenField v-if="needsToken && !confirming" v-model="tokenText" v-model:ready="tokenReady" :account="account" :reason="tokenReason" />
@@ -693,7 +804,7 @@ async function submit() {
           <UButton
             :label="confirming ? `确认发送并${submitLabel}` : submitLabel"
             :icon="confirming ? 'i-lucide-send' : undefined"
-            :color="mode === 'delete' || mode === 'overwrite' ? 'error' : 'primary'"
+            :color="mode === 'delete' || mode === 'overwrite' || (confirming && overwriteWarning) ? 'error' : 'primary'"
             :loading="working"
             :disabled="!canSubmit"
             @click="submit"

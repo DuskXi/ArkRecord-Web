@@ -2,39 +2,71 @@
 import { computed } from 'vue'
 import { formatDate } from '@/lib/format'
 import type { SixStarHit } from '@/lib/stats/analyze'
+import { type GiftEvent, giftNote } from '@/lib/stats/gifts'
 import CharAvatar from './CharAvatar.vue'
 
-const props = withDefaults(defineProps<{ hits: SixStarHit[]; hardPity: number; game: 'arknights' | 'endfield'; limit?: number }>(), {
+/**
+ * 最近的 6★：抽出来的显示垫了多少抽；累计寻访赠送的（信物赠礼、限定干员赠送）单独标成“赠送”，不显示抽数。
+ */
+const props = withDefaults(defineProps<{ hits: SixStarHit[]; hardPity: number; game: 'arknights' | 'endfield'; limit?: number; gifts?: GiftEvent[] }>(), {
   limit: 24,
+  gifts: () => [],
 })
-const shown = computed(() => props.hits.toReversed().slice(0, props.limit))
+
+type Tile = { type: 'hit'; key: string; ts: number; order: number; hit: SixStarHit } | { type: 'gift'; key: string; ts: number; order: number; gift: GiftEvent }
+
+const shown = computed<Tile[]>(() =>
+  [
+    ...props.hits.map((hit): Tile => ({ type: 'hit', key: hit.event.key, ts: hit.event.ts, order: hit.event.order, hit })),
+    ...props.gifts.filter((g) => g.copy && g.star === 6).map((gift): Tile => ({ type: 'gift', key: gift.key, ts: gift.ts, order: gift.order, gift })),
+  ]
+    .toSorted((a, b) => b.ts - a.ts || b.order - a.order)
+    .slice(0, props.limit),
+)
 </script>
 
 <template>
   <div v-if="shown.length" class="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-3">
-    <div v-for="h in shown" :key="h.event.key" class="group">
-      <div class="relative">
-        <CharAvatar :char-id="h.event.itemId" :name="h.event.name" :star="6" :size="88" :game="game" class="!size-full aspect-square" />
-        <span
-          class="absolute top-1 right-1 rounded-sm px-1 font-display text-[11px] font-semibold text-white"
-          :class="h.pity / hardPity >= 0.75 ? 'bg-error/90' : h.pity / hardPity <= 0.25 ? 'bg-success/90' : 'bg-black/60'"
-        >
-          {{ h.pity }}
-        </span>
-        <span
-          v-if="h.event.isUp !== null"
-          class="absolute bottom-1.5 left-1 rounded-sm px-1 text-[10px] font-medium text-white"
-          :class="h.event.isUp ? 'bg-primary' : 'bg-zinc-600'"
-        >
-          {{ h.event.isUp ? 'UP' : '歪' }}
-        </span>
+    <template v-for="t in shown" :key="t.key">
+      <div v-if="t.type === 'hit'" class="group">
+        <div class="relative">
+          <CharAvatar :char-id="t.hit.event.itemId" :name="t.hit.event.name" :star="6" :size="88" :game="game" class="!size-full aspect-square" />
+          <span
+            class="absolute top-1 right-1 rounded-sm px-1 font-display text-[11px] font-semibold text-white"
+            :class="t.hit.pity / hardPity >= 0.75 ? 'bg-error/90' : t.hit.pity / hardPity <= 0.25 ? 'bg-success/90' : 'bg-black/60'"
+          >
+            {{ t.hit.pity }}
+          </span>
+          <span
+            v-if="t.hit.event.isUp !== null"
+            class="absolute bottom-1.5 left-1 rounded-sm px-1 text-[10px] font-medium text-white"
+            :class="t.hit.event.isUp ? 'bg-primary' : 'bg-zinc-600'"
+          >
+            {{ t.hit.event.isUp ? 'UP' : '歪' }}
+          </span>
+        </div>
+        <div class="mt-1 h-1 overflow-hidden rounded-full bg-elevated">
+          <div class="h-full rounded-full" :style="{ width: `${Math.min(100, (t.hit.pity / hardPity) * 100)}%`, background: 'var(--color-rarity-6)' }" />
+        </div>
+        <p class="mt-1 truncate text-xs font-medium text-highlighted">{{ t.hit.event.name }}</p>
+        <p class="truncate text-[10px] text-dimmed">{{ formatDate(t.hit.event.ts) }}</p>
       </div>
-      <div class="mt-1 h-1 overflow-hidden rounded-full bg-elevated">
-        <div class="h-full rounded-full" :style="{ width: `${Math.min(100, (h.pity / hardPity) * 100)}%`, background: 'var(--color-rarity-6)' }" />
+      <div v-else class="group" :title="`${t.gift.name} · ${giftNote(t.gift)}：累计寻访赠送，不是抽出来的，不计入统计`">
+        <div class="relative rounded-(--ui-radius) outline-2 outline-offset-2 outline-dashed outline-amber-400">
+          <CharAvatar :char-id="t.gift.itemId" :name="t.gift.name" :star="6" :size="88" :game="game" class="!size-full aspect-square" />
+          <span class="absolute top-1 right-1 flex items-center gap-0.5 rounded-sm bg-amber-500 px-1 text-[11px] font-semibold text-white">
+            <UIcon name="i-lucide-gift" class="size-3" />赠
+          </span>
+          <span class="absolute bottom-1.5 left-1 rounded-sm bg-amber-500/90 px-1 text-[10px] font-medium text-white">
+            {{ t.gift.inferred ? '推算赠送' : '赠送' }}
+          </span>
+        </div>
+        <div class="mt-1 h-1 rounded-full border-t-2 border-dashed border-amber-400/70" />
+        <p class="mt-1 truncate text-xs font-medium text-highlighted">{{ t.gift.name }}</p>
+        <p class="truncate text-[10px] text-amber-600 dark:text-amber-400">{{ giftNote(t.gift) }}</p>
+        <p class="truncate text-[10px] text-dimmed">{{ formatDate(t.gift.ts) }}</p>
       </div>
-      <p class="mt-1 truncate text-xs font-medium text-highlighted">{{ h.event.name }}</p>
-      <p class="truncate text-[10px] text-dimmed">{{ formatDate(h.event.ts) }}</p>
-    </div>
+    </template>
   </div>
   <p v-else class="py-8 text-center text-sm text-muted">还没有 6★ 记录</p>
 </template>

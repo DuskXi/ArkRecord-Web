@@ -10,7 +10,7 @@ import { DEMO_ACCOUNT_ID } from '@/lib/demo'
 import { formatDateTime } from '@/lib/format'
 import { type Account, GAME_LABEL } from '@/lib/types'
 import { useAppStore } from '@/stores/app'
-import { useCloudStore } from '@/stores/cloud'
+import { MODE_LABEL, useCloudStore } from '@/stores/cloud'
 
 /** 数据页的“云同步”部分：每个账号的云同步状态和操作、检测云端状态、同步配置 */
 const props = defineProps<{ index: string }>()
@@ -19,6 +19,14 @@ const cloud = useCloudStore()
 const toast = useToast()
 
 const accounts = computed(() => app.accounts.filter((a) => a.id !== DEMO_ACCOUNT_ID))
+/** 这台设备上已开通、模式和同步配置不一样的账号 */
+const mismatched = computed(() =>
+  cloud.profile ? accounts.value.filter((a) => {
+    const e = cloud.byAccount.get(a.id)
+    return e && e.state.mode !== cloud.profile!.mode
+  }) : [],
+)
+
 /** 这台设备上还没开通、保存了登录的账号：可以一起检测 */
 const detectable = computed(() => accounts.value.filter((a) => !cloud.byAccount.has(a.id) && a.accountToken))
 
@@ -77,7 +85,7 @@ function menu(a: Account): DropdownMenuItem[][] {
   const items: DropdownMenuItem[] = []
   const hg = entry.state.mode === 'hg'
   if (hg) {
-    items.push({ label: '切换为密码模式（推荐）', icon: 'i-lucide-lock-keyhole', onSelect: () => cloud.open('switch', a.id) })
+    items.push({ label: '切换为密码模式（覆盖云端，推荐）', icon: 'i-lucide-lock-keyhole', onSelect: () => cloud.open('switch', a.id) })
   } else if (entry.hasKeys) {
     items.push(
       { label: '修改密码', icon: 'i-lucide-key-round', onSelect: () => cloud.open('password', a.id) },
@@ -87,7 +95,9 @@ function menu(a: Account): DropdownMenuItem[][] {
         onSelect: () => cloud.open('twofactor', a.id),
       },
     )
-    if (cloud.hgAvailable !== false) items.push({ label: '切换为无密码模式（不推荐）', icon: 'i-lucide-key-square', onSelect: () => cloud.open('switch', a.id) })
+  }
+  if (!hg && cloud.hgAvailable !== false) {
+    items.push({ label: '切换为无密码模式（覆盖云端，不推荐）', icon: 'i-lucide-key-square', onSelect: () => cloud.open('switch', a.id) })
   }
   if (!entry.hasKeys && cloud.profile) items.push({ label: '手动输入密码', icon: 'i-lucide-key-round', onSelect: () => cloud.open('unlock', a.id) })
   return [
@@ -103,7 +113,17 @@ function menu(a: Account): DropdownMenuItem[][] {
 /** 还没开通的账号：一键启用以外的操作 */
 function startMenu(a: Account): DropdownMenuItem[][] {
   const d = cloud.detected.get(a.id)
+  const existing = d?.status.exists ? d.status : null
   return [
+    existing
+      ? [
+          {
+            label: `切换为${existing.mode === 'hg' ? '密码模式' : '无密码模式'}（覆盖云端）`,
+            icon: 'i-lucide-repeat',
+            onSelect: () => cloud.open('switch', a.id),
+          },
+        ]
+      : [],
     d ? [] : [{ label: '只检测云端状态', icon: 'i-lucide-search-check', onSelect: () => void cloud.detect([a]) }],
     [
       { label: '手动开通', icon: 'i-lucide-cloud-upload', onSelect: () => cloud.open('enable', a.id) },
@@ -182,6 +202,28 @@ function startMenu(a: Account): DropdownMenuItem[][] {
         <UButton :label="cloud.profile ? '修改' : '设置'" size="sm" color="neutral" variant="outline" @click="cloud.open('profile')" />
         <UButton v-if="cloud.profile" label="删除" size="sm" color="error" variant="ghost" @click="removeProfile" />
       </div>
+      <div v-if="cloud.profile && mismatched.length" class="w-full space-y-2 rounded-(--ui-radius) border border-error/40 bg-error/5 p-3 text-xs leading-relaxed">
+        <p class="flex items-center gap-1.5 text-sm font-medium text-highlighted">
+          <UIcon name="i-lucide-triangle-alert" class="size-4 text-error" />
+          {{ mismatched.length }} 个已开通的账号和同步配置的模式不一样
+        </p>
+        <p class="text-muted">
+          {{ mismatched.map((a) => a.nickName).join('、') }} 现在是{{ MODE_LABEL[cloud.profile.mode === 'hg' ? 'password' : 'hg'] }}。切换为{{
+            MODE_LABEL[cloud.profile.mode]
+          }}要<b class="text-error">覆盖云端</b>：先下载云端的记录合并到这个浏览器，再换一把新钥匙替换云端的全部数据；其他设备需要重新启用（{{
+            cloud.profile.mode === 'hg' ? '用鹰角登录连接' : '输入新的云同步密码'
+          }}）。
+        </p>
+        <UButton
+          :label="`全部切换为${MODE_LABEL[cloud.profile.mode]}（覆盖云端）`"
+          icon="i-lucide-repeat"
+          size="sm"
+          color="error"
+          variant="soft"
+          :disabled="Boolean(cloud.busy)"
+          @click="cloud.switchAccounts(mismatched)"
+        />
+      </div>
     </div>
 
     <div v-if="accounts.length" class="divide-y divide-default rounded-(--ui-radius) border border-default">
@@ -193,6 +235,13 @@ function startMenu(a: Account): DropdownMenuItem[][] {
               <span class="truncate font-medium text-highlighted">{{ a.nickName }}</span>
               <UBadge :label="GAME_LABEL[a.game]" :color="a.game === 'arknights' ? 'primary' : 'warning'" variant="subtle" size="sm" />
               <UBadge v-if="modeBadge(a)" :label="modeBadge(a)!.label" :color="modeBadge(a)!.color" variant="subtle" size="sm" />
+              <UBadge
+                v-if="cloud.profile && cloud.byAccount.get(a.id) && cloud.byAccount.get(a.id)!.state.mode !== cloud.profile.mode"
+                label="与同步配置的模式不同"
+                color="error"
+                variant="outline"
+                size="sm"
+              />
               <UBadge
                 v-if="cloud.byAccount.get(a.id) && cloud.byAccount.get(a.id)!.state.mode === 'password' && !cloud.byAccount.get(a.id)!.state.remember"
                 label="不在本机保存钥匙"

@@ -48,6 +48,15 @@ function confirm() {
   >
     <template #body>
       <div v-if="request" class="space-y-4 text-sm">
+        <UAlert
+          v-if="request.warning"
+          color="error"
+          variant="soft"
+          icon="i-lucide-triangle-alert"
+          :title="request.warning.title"
+          :description="request.warning.description"
+          :ui="{ title: 'font-semibold' }"
+        />
         <div>
           <p class="mb-1.5 text-xs text-muted">涉及的账号</p>
           <ul class="space-y-1">
@@ -61,7 +70,7 @@ function confirm() {
             {{ missing.map((a) => a.nickName).join('、') }} 没有保存登录，这次不检测；可以在它们那一行单独检测（需要粘贴 token）。
           </p>
         </div>
-        <TokenDisclosure :steps="request.steps" />
+        <TokenDisclosure :steps="request.steps" :hg="request.hg" />
         <HgTokenField
           v-if="needsPaste"
           v-model="pasted"
@@ -76,7 +85,13 @@ function confirm() {
     <template #footer>
       <div class="flex w-full justify-end gap-2">
         <UButton label="取消" color="neutral" variant="ghost" @click="cancel" />
-        <UButton label="确认发送" icon="i-lucide-send" :disabled="(needsPaste && !ready) || !covered.length" @click="confirm" />
+        <UButton
+          :label="request?.warning ? '确认覆盖并发送' : '确认发送'"
+          icon="i-lucide-send"
+          :color="request?.warning ? 'error' : 'primary'"
+          :disabled="(needsPaste && !ready) || !covered.length"
+          @click="confirm"
+        />
       </div>
     </template>
   </UModal>

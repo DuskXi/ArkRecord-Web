@@ -31,10 +31,12 @@ const luckColor = computed(
       luck.value.tone
     ],
 )
+/** 累计寻访赠送的 6★（不是抽出来的，不计入统计） */
+const giftedSix = computed(() => records.gifts.filter((g) => g.copy && g.star === 6))
 const currency = computed(() =>
   records.game === 'arknights'
     ? `约 ${formatNumber(a.value.total * 600)} 合成玉`
-    : '含免费十连与赠送条目',
+    : '含免费十连，不含赠送',
 )
 </script>
 
@@ -69,7 +71,7 @@ const currency = computed(() =>
         <StatTile
           :label="records.weaponScope ? '6★ WEAPONS' : '6★ OPERATORS'"
           :value="a.stars[6]"
-          :hint="a.total ? `出货率 ${formatPercent(a.stars[6] / a.total, 2)}` : ''"
+          :hint="a.total ? `出货率 ${formatPercent(a.stars[6] / a.total, 2)}${giftedSix.length ? ` · 另有赠送 ${giftedSix.length}` : ''}` : ''"
           icon="i-lucide-star"
           accent="var(--color-rarity-6)"
         />
@@ -122,7 +124,11 @@ const currency = computed(() =>
         <SectionHeader index="03" eyebrow="RECENT 6★" title="最近的 6★">
           <UButton to="/timeline" label="时间线" variant="link" trailing-icon="i-lucide-arrow-right" />
         </SectionHeader>
-        <SixStarWall :hits="a.hits" :hard-pity="records.model.hardPity" :game="records.game" :limit="12" />
+        <SixStarWall :hits="a.hits" :gifts="giftedSix" :hard-pity="records.model.hardPity" :game="records.game" :limit="12" />
+        <p v-if="giftedSix.length" class="mt-2 flex items-center gap-1.5 text-xs text-muted">
+          <UIcon name="i-lucide-gift" class="size-3.5 text-amber-500" />
+          虚线框、标着“赠”的是累计寻访赠送的（{{ records.game === 'endfield' ? '信物赠礼，潜能 +1' : '限定池累计 300 抽赠送' }}），不是抽出来的，不计入出货统计。
+        </p>
       </section>
 
       <section>

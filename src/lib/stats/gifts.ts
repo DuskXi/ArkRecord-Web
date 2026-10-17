@@ -282,6 +282,19 @@ export function arknightsGifts(pulls: readonly AkPull[], meta: AkMeta): GiftEven
   return out.toSorted(byTime)
 }
 
+/** 显示用的一句说明：信物赠礼（潜能 +1）/ 武器赠礼 / 累计 300 抽赠送；推算的加上“推算” */
+export function giftNote(g: GiftEvent): string {
+  const base =
+    g.kind === 'gift_operator_token'
+      ? '信物赠礼 · 潜能 +1'
+      : g.kind === 'gift_limited'
+        ? `累计 ${g.at ?? ''} 抽赠送`
+        : g.kind === 'gift_weapon'
+          ? '武器赠礼'
+          : g.label
+  return g.inferred ? `${base} · 推算` : base
+}
+
 export interface GiftSummary {
   /** 全部赠送条目 */
   total: number

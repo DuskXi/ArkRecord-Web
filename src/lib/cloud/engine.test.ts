@@ -406,4 +406,52 @@ describe('云同步端到端', () => {
     expect((await a.engine.syncCloud(a.accountId)).uploaded).toBe(0)
     expect(await a.print()).toBe(await b.print())
   })
+
+  it('切换模式：这台设备上没有钥匙时，要先输入现在的密码合并；不知道密码只能明确选择直接覆盖；云端没开通就直接开通', async () => {
+    hgSecret = HG_SECRET
+    cloud = makeCloud(PEPPER, HG_SECRET)
+    // A 用密码模式开通，并且有一些 C 没有的记录
+    const a = await device()
+    const account = await a.createAccount()
+    await a.addPulls(0, 5)
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+
+    // C：同一个账号，本地有自己的记录，但这台设备上没有云同步的钥匙
+    const c = await device()
+    const cAccount = await c.createAccount()
+    await c.addPulls(5, 7)
+    await expect(c.engine.switchCloudMode(cAccount, { to: 'hg', oauthToken: VALID_OAUTH })).rejects.toMatchObject({ code: 'need_password' })
+    await expect(c.engine.switchCloudMode(cAccount, { to: 'hg', currentPassword: `${PASSWORD}x`, oauthToken: VALID_OAUTH })).rejects.toMatchObject({
+      code: 'wrong_password',
+    })
+    // 输入现在的密码：先合并云端（A 的 50 条），再覆盖为无密码模式
+    const result = await c.engine.switchCloudMode(cAccount, { to: 'hg', currentPassword: PASSWORD, oauthToken: VALID_OAUTH })
+    expect(result).toMatchObject({ merged: true, created: false })
+    expect(await c.count()).toBe(70)
+    expect(await c.engine.cloudStatus(target, VALID_OAUTH)).toMatchObject({ exists: true, mode: 'hg' })
+    // A 的密码钥匙失效；用鹰角 token 连接后数据一致
+    await expect(a.engine.syncCloud(a.accountId)).rejects.toMatchObject({ code: 'auth_changed' })
+    await a.engine.unlockHgCloud(target, { oauthToken: VALID_OAUTH })
+    expect(await a.print()).toBe(await c.print())
+
+    // D：不知道密码（这里云端是无密码模式，切回密码模式时用鹰角 token 合并，不需要密码）
+    const d = await device()
+    const dAccount = await d.createAccount()
+    expect(await d.engine.switchCloudMode(dAccount, { to: 'password', password: PASSWORD, oauthToken: VALID_OAUTH })).toMatchObject({ merged: true })
+    expect(await d.count()).toBe(70)
+    // E：云端是密码模式、没有钥匙、选择不合并直接覆盖：云端只剩 E 的数据
+    const e = await device()
+    const eAccount = await e.createAccount()
+    await e.addPulls(9, 10)
+    expect(await e.engine.switchCloudMode(eAccount, { to: 'hg', overwriteWithoutMerge: true, oauthToken: VALID_OAUTH })).toMatchObject({ merged: false })
+    const f = await device()
+    expect((await f.engine.unlockHgCloud(target, { oauthToken: VALID_OAUTH })).downloaded).toBe(10)
+
+    // 云端还没开通：直接按新模式开通
+    cloud = makeCloud(PEPPER, HG_SECRET)
+    const g = await device()
+    const gAccount = await g.createAccount()
+    await g.addPulls(0, 1)
+    expect(await g.engine.switchCloudMode(gAccount, { to: 'hg', oauthToken: VALID_OAUTH })).toMatchObject({ created: true })
+  })
 })
