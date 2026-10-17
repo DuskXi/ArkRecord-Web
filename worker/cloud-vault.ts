@@ -251,6 +251,8 @@ export class Vault {
       requireHg: Boolean(auth.require_hg),
       wrappedDek: toBase64Url(wrappedDek),
       headSeq: this.headSeq(),
+      /** 云端现有的批次数，浏览器据此决定是否改为上传快照 */
+      count: Number(this.deps.sql.exec('SELECT COUNT(*) AS n FROM batches').toArray()[0]!.n),
       batches: rows.map((r) => ({ seq: Number(r.seq), kind: String(r.kind) })),
     }
     return {

@@ -276,11 +276,13 @@ export async function createSnapshot(reason: string, version: string): Promise<v
   if (all.length > 10) await db.snapshots.bulkDelete(all.slice(0, all.length - 10))
 }
 
+/** 删除本地账号及其记录；云同步只删除这台设备上的状态和钥匙，不动云端（云端要在“云同步”里单独删除） */
 export async function deleteAccountData(accountId: string): Promise<void> {
-  await db.transaction('rw', [db.accounts, db.akPulls, db.efPulls, db.akLedger], async () => {
+  await db.transaction('rw', [db.accounts, db.akPulls, db.efPulls, db.akLedger, db.cloud], async () => {
     await db.akPulls.where('accountId').equals(accountId).delete()
     await db.efPulls.where('accountId').equals(accountId).delete()
     await db.akLedger.where('accountId').equals(accountId).delete()
+    await db.cloud.delete(accountId)
     await db.accounts.delete(accountId)
   })
 }
