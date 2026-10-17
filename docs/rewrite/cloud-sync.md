@@ -1,6 +1,6 @@
 # 云同步（跨设备加密同步）设计草案
 
-> 状态：**草案第二版，尚未实现**。已定的决定和仍待确认的事项见第 17 节，实现前要先完成第 16 节的实测。
+> 状态：**第一阶段（密码模式 + 可选的鹰角 token 双重验证）已实现**，代码位置见第 20 节；第二阶段（无密码模式）尚未实现。第 16 节的实测还有几项需要在真实设备上完成。
 >
 > 命名：网站里的“同步”已经指“从鹰角拉取记录”，所以这个功能叫 **云同步**，避免混淆。
 
@@ -474,7 +474,7 @@ KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ l
   - **记录按全序排列**，排序键的最后一项都是唯一键，所以不会出现并列：
     - 明日方舟寻访：`(gachaTs, pos, key)`；
     - 终末地寻访：`(gachaTs, key)`；
-    - 源石/充值：`(kind, ts, key)`；
+    - 源石/充值：`(ts, kind, key)`（时间在前，时间差都不为负）；
     - 卡池：`poolId`。
   - **字典项**按在排序后的记录里第一次出现的顺序排列，不允许重复项，也不允许没被用到的项。
   - **整数**用最短形式（无前导零、无 `-0`、无指数），只允许安全整数。时间差相对于上一条计算，第一条相对于 0。
@@ -501,7 +501,9 @@ KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ l
 - **无损**：`decode(encode(S))` 严格等于 S，区分缺省和 `null`。
 - **规范**：
   - 打乱 S 里记录的顺序，编码结果不变；
-  - 对合法编码做各种篡改，全部被拒绝：翻转一位、调换字典顺序、加一个没用到的字典项、数字加前导零、加空白、重复键。
+  - 对合法编码做各种不规范的改写，全部被拒绝：调换字典顺序、加一个没用到的字典项、数字加前导零或写成指数、加空白、重复键、调换记录顺序、多余的例外项；
+  - 随机截断或删掉一个字符：要么被拒绝，要么恰好是另一份合法的规范编码（重新编码后与输入相同）；
+  - 逐位篡改由信封的 AES-GCM 检测（加密层的测试逐个字节翻转，全部被发现）。
 - **覆盖**：
   - 真实样本（`docs/rewrite/fixtures`）；
   - 覆盖边界值的随机记录：`null`、缺省、空字符串、生僻字和 emoji、最大安全整数、旧版键、不符合标准格式的键。
@@ -692,7 +694,7 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 
 仍待确认：
 
-1. 无密码模式放到第二阶段：第一阶段先做密码模式和可选的双重验证。
+（无。分阶段已确认：第一阶段密码模式和可选的双重验证，第二阶段无密码模式。）
 
 ## 18. 部署需要新增的配置（实现时再加）
 
@@ -716,3 +718,30 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
    - `SECURITY.md` 和 CI 检查。
 2. **第二阶段：无密码模式。**模式切换开关、“不推荐”标记、审计链接、保护范围说明，以及两种模式之间的切换。
 3. 以后：已认证设备不受退避限制、定期自动云同步。
+
+## 20. 实现位置（第一阶段）
+
+| 设计 | 代码 | 测试 |
+|---|---|---|
+| 账号标识、盐、二进制分帧、信封头、附加认证数据（6、9.4、9.5） | `shared/cloud-protocol.ts` | 各处 |
+| 合并规则（10.1），以及统一现有代码中与顺序有关的三处 | `src/lib/merge.ts`、`src/lib/jcs.ts`、`src/lib/ledger.ts`、`src/lib/sync/*.ts`、`src/lib/archive.ts` | `src/lib/merge.test.ts` |
+| 编码规范（9.2、9.3） | `src/lib/cloud/codec.ts` | `src/lib/cloud/codec.test.ts` |
+| Argon2id 两套实现与自检（7.7） | `src/lib/cloud/argon2.ts`、`kdf.worker.ts` | `src/lib/cloud/crypto.test.ts` |
+| 密钥派生、DEK 包裹、信封（7.1、9.4） | `src/lib/cloud/crypto.ts` | `src/lib/cloud/crypto.test.ts` |
+| 密码规则（7.6） | `src/lib/cloud/password.ts` | `src/lib/cloud/password.test.ts` |
+| 同步流程（7.9、7.10、7.11、10） | `src/lib/cloud/engine.ts`、`dataset.ts`、`state.ts`、`api.ts` | `src/lib/cloud/engine.test.ts`（浏览器端代码直连真实 Worker 代码，多设备） |
+| 核实鹰角 token（4.3、8.2） | `worker/hg-verify.ts` | `worker/hg-verify.test.ts` |
+| 接口校验（4.1、11） | `worker/cloud.ts` | `worker/cloud.test.ts` |
+| 存储、退避、双重验证（7.3–7.5、9.6） | `worker/cloud-vault.ts`（`CloudVault`） | `worker/cloud-vault.test.ts` |
+| token 字段检查（4.3） | — | `worker/token-fields.test.ts` |
+| 界面 | `src/components/cloud/*`、`src/stores/cloud.ts`、数据页、关于页 | 本地浏览器实测 |
+
+实现中补充的细节：
+
+- 下载响应里带上云端现有的批次数（`count`），浏览器据此决定是否改为上传快照。
+- 浏览器为每个记录标识记下“云端已有版本的哈希”，只上传云端没有的版本；同键不同版本按 10.1 合并后不会来回上传。
+- 上传后只有在中间没有别的设备上传时，才跳过下载自己刚上传的批次（`lastSeq`），否则下次连同别人的批次一起下载。
+- 密码先做 Unicode NFC 规范化，避免不同设备的输入法产生不同的字节。
+- 压缩用 fflate 的 raw deflate（纯 JS），不依赖浏览器是否支持 `CompressionStream('deflate-raw')`。
+- `/api/cloud/v1/info` 同时返回服务器是否已配置云同步（`available`）。
+

@@ -66,6 +66,16 @@
 - 可以删掉模板里用不到的权限：Workers KV Storage、Workers R2 Storage、Workers Tail
 - 保留：Account Settings Read、Workers Scripts Edit、Workers Routes Edit（创建自定义域名 `ark-next.kaltsit.dev`、`ark.kaltsit.dev` 需要）、User Details Read、Memberships Read
 
+### 云同步的 Worker Secret
+
+云同步（[cloud-sync.md](cloud-sync.md)）需要一个服务器端密钥 `SYNC_PEPPER`，**直接在 Cloudflare 后台设置，不进仓库，也不放进 GitHub Secrets**：
+
+1. Cloudflare 后台 → Workers & Pages → 选择 Worker（测试环境 `arkrecord-next`，正式环境 `arkrecord`）→ Settings → Variables and Secrets → Add；
+2. Type 选 **Secret**，Name 填 `SYNC_PEPPER`，Value 填一个 32 个字符以上的随机字符串（例如用密码管理器生成，或 `openssl rand -base64 32`）；
+3. 两个环境用**不同**的值；正式环境的值**另外离线备份**（例如密码管理器）。丢了它，所有密码模式的云端数据都再也解不开（本地数据不受影响，用户可以用“覆盖”重建）。
+
+Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它。没有设置时，网站的云同步部分会提示“暂时不可用”，其他功能不受影响。第二阶段（无密码模式）还需要另一个 `SYNC_HG_SECRET`，到时再加。
+
 ## 正式环境
 
 | | 测试环境 | 正式环境 |
