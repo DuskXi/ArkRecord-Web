@@ -12,6 +12,8 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AccountMenu: typeof import('./src/components/shell/AccountMenu.vue')['default']
+    AnnouncementBody: typeof import('./src/components/announcements/AnnouncementBody.vue')['default']
+    AnnouncementDialog: typeof import('./src/components/announcements/AnnouncementDialog.vue')['default']
     BrandMark: typeof import('./src/components/shell/BrandMark.vue')['default']
     CalendarHeatmap: typeof import('./src/components/charts/CalendarHeatmap.vue')['default']
     CharAvatar: typeof import('./src/components/ui/CharAvatar.vue')['default']
@@ -24,6 +26,7 @@ declare module 'vue' {
     GameSwitcher: typeof import('./src/components/shell/GameSwitcher.vue')['default']
     HgModeNotice: typeof import('./src/components/cloud/HgModeNotice.vue')['default']
     HgTokenField: typeof import('./src/components/cloud/HgTokenField.vue')['default']
+    InlineText: typeof import('./src/components/announcements/InlineText.vue')['default']
     LegacyMigration: typeof import('./src/components/LegacyMigration.vue')['default']
     LoginModal: typeof import('./src/components/LoginModal.vue')['default']
     MobileNav: typeof import('./src/components/shell/MobileNav.vue')['default']

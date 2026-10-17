@@ -96,6 +96,16 @@ Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它�
 
 首次切换：`ark.kaltsit.dev` 原来是 Cloudflare Pages 项目 `arkrecord-web` 的自定义域名，需要先在 Pages 项目里移除这个域名，并删除 DNS 里指向 `arkrecord-web.pages.dev` 的 CNAME 记录，Worker 才能接管这个域名。
 
+## 发布新版本：必须写更新公告
+
+每次发布（合并进 master）前：
+
+1. `package.json` 的版本号 +1（`npm version x.y.z --no-git-tag-version`），README 里的“当前版本”一起改。
+2. 在 `src/lib/announcements/content.ts` 的**最前面**加一篇公告，`id` 为 `v` + 版本号。写给玩家看：改了什么、对自己有什么影响；正文支持 `**加粗**` 和 `[文字](/页面)`。
+3. 测试会检查：当前版本有公告、公告按日期倒序、id 不重复、链接有效。
+
+老用户更新后第一次打开网站时会弹出最新一篇（以及其他没看过的标题）；全新访问不弹。小修复可以设 `popup: false`，只在“更新公告”页标为未读。规则见 `src/lib/announcements/index.ts`。
+
 ## 分阶段计划
 
 0. **脚手架**：Vue 3.5 + Vite 8 + TS 6 + Nuxt UI v4 工程；Worker 转发骨架（白名单）；CI（lint / 类型检查 / 测试 / 构建）；元数据与头像的构建脚本；部署到预览地址，不影响线上。

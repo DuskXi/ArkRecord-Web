@@ -146,7 +146,7 @@ const sources = [
 
       <section class="text-xs leading-relaxed text-muted">
         <p>
-          ArkRecord {{ APP_VERSION }} · 开源于
+          ArkRecord {{ APP_VERSION }}（<ULink to="/announcements" class="text-primary">更新公告</ULink>）· 开源于
           <ULink to="https://github.com/DuskXi/ArkRecord-Web" target="_blank" class="text-primary">GitHub</ULink>
           。本站为玩家自制工具，与鹰角网络无关。游戏内的名称与图像版权归鹰角网络所有。
         </p>
