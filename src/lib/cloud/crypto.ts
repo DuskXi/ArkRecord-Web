@@ -121,6 +121,12 @@ export async function wrapDek(dek: CryptoKey, kek: CryptoKey, locator: string, k
   return out
 }
 
+/** 无密码模式：服务器给的 KEK_hg（32 字节）→ 用来包裹、解开 DEK 的钥匙（不可导出） */
+export async function hgKekKey(raw: Uint8Array): Promise<CryptoKey> {
+  if (raw.length !== 32) throw new CloudCryptoError('服务器给的钥匙格式不对')
+  return crypto.subtle.importKey('raw', raw as Uint8Array<ArrayBuffer>, { name: 'AES-GCM', length: 256 }, false, ['wrapKey', 'unwrapKey'])
+}
+
 /** 解开 DEK；默认不可导出（存进 IndexedDB 后，页面脚本也读不出它的原始字节） */
 export async function unwrapDek(wrapped: Uint8Array, kek: CryptoKey, locator: string, kid: number, extractable = false): Promise<CryptoKey> {
   if (wrapped.length !== WRAPPED_DEK_BYTES) throw new CloudCryptoError('云端的钥匙格式不对')

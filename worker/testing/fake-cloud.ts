@@ -47,7 +47,7 @@ export interface FakeCloud {
   requests: { url: string; headers: Headers; body: Uint8Array }[]
 }
 
-export function fakeCloud(pepper: string): FakeCloud {
+export function fakeCloud(pepper: string, hgSecret?: string): FakeCloud {
   const objects = new Map<string, CloudVault>()
   const storages = new Map<string, ReturnType<typeof memoryStorage>>()
   const requests: FakeCloud['requests'] = []
@@ -58,7 +58,7 @@ export function fakeCloud(pepper: string): FakeCloud {
       if (!vault) {
         const storage = memoryStorage()
         storages.set(id, storage)
-        vault = new CloudVault({ storage } as never, { SYNC_PEPPER: pepper })
+        vault = new CloudVault({ storage } as never, { SYNC_PEPPER: pepper, ...(hgSecret ? { SYNC_HG_SECRET: hgSecret } : {}) })
         objects.set(id, vault)
       }
       const target = vault

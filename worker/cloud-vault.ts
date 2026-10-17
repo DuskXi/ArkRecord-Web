@@ -1,11 +1,15 @@
 /**
- * 云同步的存储（docs/rewrite/cloud-sync.md 7.3–7.5、7.9–7.11、9.6）：每个账号（locator）一个 Durable Object，SQLite 存储。
+ * 云同步的存储（docs/rewrite/cloud-sync.md 7.3–7.5、7.9–7.11、8、9.6）：每个账号（locator）一个 Durable Object，SQLite 存储。
  *
  * 只保存：
- *   - verifier = HMAC-SHA256(SYNC_PEPPER, authKey)，用来核对密码派生的 authKey；
- *   - 被用户的 kek 包裹的 DEK，外面再用 SYNC_PEPPER 派生的钥匙加密一层；
+ *   - 密码模式：verifier = HMAC-SHA256(SYNC_PEPPER, authKey)，用来核对密码派生的 authKey；
+ *   - 被包裹的 DEK（密码模式用用户的 kek，无密码模式用 KEK_hg），外面再用 SYNC_PEPPER 派生的钥匙加密一层；
  *   - 密文批次（Worker 解不开，只读信封头里的批次号、类型、kid）。
  * 不保存密码、authKey、kek、DEK 明文，也不保存 UID（只有 locator）、IP 或任何鹰角 token。
+ *
+ * 无密码模式（mode = 'hg'，不推荐）：没有密码，每个请求都必须由 Worker 核实过鹰角 token；
+ * KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ locator)，只在核实通过后交给浏览器。
+ * 服务器随时能算出 KEK_hg，所以技术上能解密（保护范围见 cloud-sync.md 8.1）。
  *
  * 核对通过之前什么都不给：账号不存在和密码错误返回同样的 401；连续失败 5 次后按账号指数退避，
  * 退避期间不核对密码；失败次数每次都写入存储。开启双重验证的账号，没有核实过鹰角 token 的请求
@@ -18,6 +22,7 @@
  */
 import {
   CLOUD_OPS,
+  type CloudMode,
   type CloudOp,
   frame,
   fromBase64Url,
@@ -71,7 +76,7 @@ export function initVaultSchema(sql: VaultSql): void {
 }
 
 interface Meta {
-  mode: string
+  mode: CloudMode
   verifier: string
   sealed_dek: Uint8Array
   kid: number
@@ -164,6 +169,23 @@ export class PepperKeys {
   }
 }
 
+/**
+ * 无密码模式的钥匙：KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ locator)。
+ * 只有 Worker 核实过鹰角 token 的请求才拿得到。
+ */
+export class HgKeys {
+  private constructor(private readonly hmac: CryptoKey) {}
+
+  static async create(secret: string): Promise<HgKeys> {
+    if (secret.length < 32) throw new Error('SYNC_HG_SECRET 太短')
+    return new HgKeys(await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']))
+  }
+
+  async kek(locator: string): Promise<Uint8Array> {
+    return new Uint8Array(await crypto.subtle.sign('HMAC', this.hmac, encoder.encode(`arkrecord/cloud-sync/v1/hg\u0000${locator}`)))
+  }
+}
+
 export interface VaultDeps {
   sql: VaultSql
   /** 原子执行多条语句（DO 里是 storage.transactionSync） */
@@ -171,6 +193,8 @@ export interface VaultDeps {
   /** 删除这个账号的全部存储（DO 里是 storage.deleteAll） */
   wipe(): Promise<void>
   keys: PepperKeys
+  /** 没有配置 SYNC_HG_SECRET 时为空：无密码模式不可用 */
+  hgKeys?: HgKeys
   locator: string
   now?: () => number
 }
@@ -231,8 +255,12 @@ export class Vault {
       if (authKey) await this.deps.keys.verifier(authKey)
       return AUTH_FAILED()
     }
-    // 双重验证：没有核实过鹰角 token 的请求不核对密码，也不计失败次数
+    // 双重验证、无密码模式：没有核实过鹰角 token 的请求不核对密码，也不计失败次数
     if (meta.require_hg && !hgVerified) return AUTH_FAILED()
+    // 无密码模式：核实过鹰角 token 就是证明，没有密码可核对
+    if (meta.mode === 'hg') return this.touched(meta)
+    // 密码模式却没有带 authKey（只带了鹰角 token）：不是在猜密码，不计失败次数
+    if (!authKey) return AUTH_FAILED()
     if (meta.locked_until > this.now()) return this.locked(meta.locked_until)
     const ok = authKey !== null && equal(await this.deps.keys.verifier(authKey), meta.verifier)
     if (!ok) {
@@ -240,6 +268,11 @@ export class Vault {
       this.deps.sql.exec('UPDATE meta SET fail_count = ?, locked_until = ? WHERE id = 1', failCount, this.lockFor(failCount))
       return AUTH_FAILED()
     }
+    return this.touched(meta)
+  }
+
+  /** 认证通过：清零失败次数，每天最多记一次访问日期 */
+  private touched(meta: Meta): Meta {
     const day = DAY.format(this.now())
     if (meta.fail_count || meta.locked_until || meta.last_access_day !== day) {
       this.deps.sql.exec('UPDATE meta SET fail_count = 0, locked_until = 0, last_access_day = ? WHERE id = 1', day)
@@ -247,14 +280,26 @@ export class Vault {
     return meta
   }
 
+  /** 无密码模式的 KEK_hg（base64url）；没有配置 SYNC_HG_SECRET 时返回 null */
+  private async hgKek(): Promise<string | null> {
+    return this.deps.hgKeys ? toBase64Url(await this.deps.hgKeys.kek(this.deps.locator)) : null
+  }
+
   /**
    * 查询这个账号有没有开通、用的是哪种方式：只有 Worker 核实过鹰角 token（证明账号是自己的）才回答。
    * 只读，不核对密码，不计失败次数，不写入任何东西。
    */
-  status(hgVerified: boolean): VaultResult {
+  async status(header: Record<string, unknown>, hgVerified: boolean): Promise<VaultResult> {
     if (!hgVerified) return fail(403, 'hg_required')
     const meta = this.meta()
-    return json(200, meta ? { exists: true, mode: meta.mode, requireHg: Boolean(meta.require_hg) } : { exists: false })
+    const result: Record<string, unknown> = meta ? { exists: true, mode: meta.mode, requireHg: Boolean(meta.require_hg) } : { exists: false }
+    // 准备开通无密码模式时，浏览器需要先拿到 KEK_hg 来包裹新的 DEK（只给核实过鹰角 token 的请求）
+    if (header.kek === true) {
+      const kek = await this.hgKek()
+      if (!kek) return fail(503, 'hg_mode_unavailable')
+      result.hgKek = kek
+    }
+    return json(200, result)
   }
 
   /** 下载：返回被包裹的 DEK、kid、双重验证状态，以及 afterSeq 之后的全部批次 */
@@ -264,10 +309,17 @@ export class Vault {
     const afterSeq = Number(header.afterSeq)
     const rows = this.deps.sql.exec('SELECT seq, kind, blob FROM batches WHERE seq > ? ORDER BY seq', afterSeq).toArray()
     const wrappedDek = await this.deps.keys.unseal(this.deps.locator, auth.sealed_dek)
+    let hgKek: string | null = null
+    if (auth.mode === 'hg') {
+      hgKek = await this.hgKek()
+      if (!hgKek) return fail(503, 'hg_mode_unavailable')
+    }
     const meta = {
+      mode: auth.mode,
       kid: auth.kid,
       requireHg: Boolean(auth.require_hg),
       wrappedDek: toBase64Url(wrappedDek),
+      ...(hgKek ? { hgKek } : {}),
       headSeq: this.headSeq(),
       /** 云端现有的批次数，浏览器据此决定是否改为上传快照 */
       count: Number(this.deps.sql.exec('SELECT COUNT(*) AS n FROM batches').toArray()[0]!.n),
@@ -329,17 +381,23 @@ export class Vault {
     return json(200, { seq, headSeq: Math.max(seq, this.headSeq()) })
   }
 
-  /** 开通 / 覆盖：只有 Worker 核实过鹰角 token 才能执行。删除旧的全部批次，换上新的钥匙，写入完整快照 */
+  /**
+   * 开通 / 覆盖：只有 Worker 核实过鹰角 token 才能执行。删除旧的全部批次，换上新的钥匙，写入完整快照。
+   * 密码模式带 authKey；无密码模式不带（verifier 留空），DEK 由浏览器用 KEK_hg 包裹。切换模式也是这个操作（8.4）。
+   */
   async claim(header: Record<string, unknown>, envelope: Uint8Array, hgVerified: boolean): Promise<VaultResult> {
     if (!hgVerified) return fail(403, 'hg_required')
-    const authKey = fromBase64Url(header.authKey, 32)
+    const mode: CloudMode = header.mode === 'hg' ? 'hg' : 'password'
+    if (mode === 'hg' && !this.deps.hgKeys) return fail(503, 'hg_mode_unavailable')
+    const authKey = mode === 'password' ? fromBase64Url(header.authKey, 32) : null
     const wrappedDek = fromBase64Url(header.wrappedDek, WRAPPED_DEK_BYTES)
     const kid = header.kid
-    if (!authKey || !wrappedDek || typeof kid !== 'number' || typeof header.requireHg !== 'boolean') return fail(400, 'bad_request')
+    if ((mode === 'password' && !authKey) || !wrappedDek || typeof kid !== 'number') return fail(400, 'bad_request')
+    if (mode === 'password' && typeof header.requireHg !== 'boolean') return fail(400, 'bad_request')
     const head = parseEnvelopeHeader(envelope)
     if (!head || head.kind !== 'snapshot' || head.kid !== kid) return fail(400, 'bad_envelope')
     if (envelope.length > MAX_ACCOUNT_BYTES) return fail(413, 'quota_exceeded')
-    const verifier = await this.deps.keys.verifier(authKey)
+    const verifier = authKey ? await this.deps.keys.verifier(authKey) : ''
     const sealed = await this.deps.keys.seal(this.deps.locator, wrappedDek)
     const now = this.now()
     initVaultSchema(this.deps.sql)
@@ -348,11 +406,13 @@ export class Vault {
       this.deps.sql.exec('DELETE FROM meta')
       this.deps.sql.exec(
         `INSERT INTO meta (id, mode, verifier, sealed_dek, kid, require_hg, created_at, last_access_day, fail_count, locked_until)
-         VALUES (1, 'password', ?, ?, ?, ?, ?, ?, 0, 0)`,
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+        mode,
         verifier,
         buffer(sealed),
         kid,
-        header.requireHg ? 1 : 0,
+        // 无密码模式的每个请求都要核实鹰角 token
+        mode === 'hg' || header.requireHg ? 1 : 0,
         now,
         DAY.format(now),
       )
@@ -374,6 +434,7 @@ export class Vault {
   async rekey(header: Record<string, unknown>, hgVerified: boolean): Promise<VaultResult> {
     const auth = await this.authenticate(header.authKey, hgVerified)
     if (!('verifier' in auth)) return auth
+    if (auth.mode !== 'password') return fail(409, 'wrong_mode')
     const newAuthKey = fromBase64Url(header.newAuthKey, 32)
     const wrappedDek = fromBase64Url(header.wrappedDek, WRAPPED_DEK_BYTES)
     if (!newAuthKey || !wrappedDek) return fail(400, 'bad_request')
@@ -389,6 +450,8 @@ export class Vault {
     if (typeof header.requireHg !== 'boolean') return fail(400, 'bad_request')
     const auth = await this.authenticate(header.authKey, hgVerified)
     if (!('verifier' in auth)) return auth
+    // 无密码模式本来就是每个请求都要鹰角 token，不能关
+    if (auth.mode !== 'password') return fail(409, 'wrong_mode')
     this.deps.sql.exec('UPDATE meta SET require_hg = ? WHERE id = 1', header.requireHg ? 1 : 0)
     return json(200, { requireHg: header.requireHg })
   }
@@ -408,7 +471,7 @@ export class Vault {
   async handle(op: CloudOp, header: Record<string, unknown>, payload: Uint8Array, hgVerified: boolean): Promise<VaultResult> {
     switch (op) {
       case 'status':
-        return this.status(hgVerified)
+        return this.status(header, hgVerified)
       case 'pull':
         return this.pull(header, hgVerified)
       case 'push':
@@ -427,12 +490,14 @@ export class Vault {
 
 interface VaultEnv {
   SYNC_PEPPER?: string
+  SYNC_HG_SECRET?: string
 }
 
 export class CloudVault {
   private readonly state: DurableObjectState
   private readonly env: VaultEnv
   private keys: Promise<PepperKeys> | null = null
+  private hgKeys: Promise<HgKeys> | null = null
   private readonly ghost: Ghost = { failCount: 0, lockedUntil: 0 }
 
   constructor(state: DurableObjectState, env: VaultEnv) {
@@ -448,6 +513,7 @@ export class CloudVault {
       return new Response(null, { status: 400 })
     }
     this.keys ??= PepperKeys.create(this.env.SYNC_PEPPER)
+    if (this.env.SYNC_HG_SECRET) this.hgKeys ??= HgKeys.create(this.env.SYNC_HG_SECRET)
     const storage = this.state.storage
     const vault = new Vault(
       {
@@ -456,6 +522,7 @@ export class CloudVault {
         // 删除后不再建表：不留下任何存储，Cloudflare 会自动清理这个对象
         wipe: () => storage.deleteAll(),
         keys: await this.keys,
+        hgKeys: this.hgKeys ? await this.hgKeys : undefined,
         locator,
       },
       this.ghost,

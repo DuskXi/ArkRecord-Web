@@ -193,14 +193,15 @@ describe('认名字：OCR 和字形结合（identify.ts）', () => {
   })
 })
 
+/** 3×3 的方块图案，再加几块噪点 */
+function pattern(bits: number[], noise: [number, number, number][] = []): RgbaImage {
+  const img = canvas(20, 20, [255, 255, 255])
+  for (const b of bits) img.fill((b % 3) * 6 + 1, Math.floor(b / 3) * 6 + 1, 5, 5, [0, 0, 0])
+  for (const [x, y, s] of noise) img.fill(x, y, s, s, [0, 0, 0])
+  return img
+}
+
 describe('OCR 认错的字：把认出的字画出来比字形（identify.ts）', () => {
-  /** 3×3 的方块图案，再加几块噪点 */
-  function pattern(bits: number[], noise: [number, number, number][] = []): RgbaImage {
-    const img = canvas(20, 20, [255, 255, 255])
-    for (const b of bits) img.fill((b % 3) * 6 + 1, Math.floor(b / 3) * 6 + 1, 5, 5, [0, 0, 0])
-    for (const [x, y, s] of noise) img.fill(x, y, s, s, [0, 0, 0])
-    return img
-  }
   // “铜”和“锏”长得很像（多一块），其他名字都不像
   const shapes: Record<string, number[]> = { 锏: [0, 2, 4, 6, 8], 铜: [0, 2, 4, 6, 8, 1], 黍: [1, 3, 5, 7], 令: [0, 1, 2, 4, 7], 陈: [3, 4, 5, 1, 7] }
   const render = (name: string) => pattern(shapes[name] ?? [4])

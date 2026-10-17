@@ -10,6 +10,7 @@ import { fakeCloud } from './testing/fake-cloud'
 
 const SELF = 'https://ark-next.kaltsit.dev'
 const PEPPER = 'test-pepper-0123456789abcdef0123456789abcdef'
+const HG_SECRET = 'test-hg-secret-0123456789abcdef0123456789'
 const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as never
 const AUTH = toBase64Url(new Uint8Array(32).fill(1))
 const WRAPPED = toBase64Url(new Uint8Array(60).fill(7))
@@ -32,15 +33,17 @@ function post(op: string, body: Uint8Array | string, env: Env, headers: Record<s
   ) as Promise<Response>
 }
 
-function makeEnv(cloud = fakeCloud(PEPPER)): Env & { cloud: ReturnType<typeof fakeCloud> } {
-  return { CLOUD: cloud.namespace, SYNC_PEPPER: PEPPER, cloud } as never
+function makeEnv(cloud = fakeCloud(PEPPER, HG_SECRET)): Env & { cloud: ReturnType<typeof fakeCloud> } {
+  return { CLOUD: cloud.namespace, SYNC_PEPPER: PEPPER, SYNC_HG_SECRET: HG_SECRET, cloud } as never
 }
 
 describe('云同步接口：请求格式与来源', () => {
   it('info：返回协议版本和线上部署的 commit', async () => {
     const res = (await worker.fetch(new Request(`${SELF}/api/cloud/v1/info`) as never, makeEnv(), ctx)) as Response
     // 本地是 dev，CI 里是 GITHUB_SHA
-    expect(await res.json()).toEqual({ protocol: 1, commit: expect.stringMatching(/^(dev|[0-9a-f]{40})$/), available: true })
+    expect(await res.json()).toEqual({ protocol: 1, commit: expect.stringMatching(/^(dev|[0-9a-f]{40})$/), available: true, hgAvailable: true })
+    const withoutHg = { ...makeEnv(), SYNC_HG_SECRET: undefined }
+    expect(await ((await worker.fetch(new Request(`${SELF}/api/cloud/v1/info`) as never, withoutHg, ctx)) as Response).json()).toMatchObject({ available: true, hgAvailable: false })
   })
 
   it('只接受本站页面的 POST 二进制请求', async () => {
@@ -119,7 +122,9 @@ describe('云同步接口：鹰角核实与 locator', () => {
       )
     const base = { authKey: AUTH, wrappedDek: WRAPPED, kid: 5, requireHg: false, game: 'arknights', uid: '12345678' }
     expect((await call({ ...base, locator: 'X'.repeat(43) })).status).toBe(400)
-    const res = await call({ ...base, injected: 'evil', mode: 'admin' })
+    // 不认识的模式直接拒绝
+    expect((await call({ ...base, mode: 'admin' })).status).toBe(400)
+    const res = await call({ ...base, injected: 'evil' })
     expect(res.status).toBe(200)
     const expected = await computeLocator('arknights', '12345678')
     const internal = e.cloud.requests.at(-1)!
@@ -191,5 +196,76 @@ describe('云同步接口：鹰角核实与 locator', () => {
     const stranger = await call('pull', { locator, authKey: toBase64Url(new Uint8Array(32)), afterSeq: 0 })
     expect(stranger.status).toBe(401)
     expect(await stranger.json()).toEqual({ error: 'auth_failed' })
+  })
+})
+
+async function client(proof: HgProof) {
+  const { handleCloud } = await import('./cloud')
+  const e = makeEnv()
+  const call = (op: string, header: Record<string, unknown>, payload?: Uint8Array, p: HgProof = proof) =>
+    handleCloud(
+      new Request(`${SELF}/api/cloud/v1/${op}`, {
+        method: 'POST',
+        headers: { 'x-arkrecord-client': '1', 'sec-fetch-site': 'same-origin', 'content-type': 'application/octet-stream' },
+        body: frame(header, payload),
+      }),
+      e,
+      new URL(`${SELF}/api/cloud/v1/${op}`),
+      { verify: async () => p },
+    )
+  return { e, call }
+}
+
+describe('云同步接口：无密码模式', () => {
+  const who = { game: 'arknights', uid: '12345678' }
+
+  it('开通：不带 authKey、不带 requireHg；内部请求只有白名单字段', async () => {
+    const { e, call } = await client(verified())
+    expect((await call('claim', { ...who, mode: 'hg', authKey: AUTH, wrappedDek: WRAPPED, kid: 9 }, envelope('snapshot', 9, 1))).status).toBe(400)
+    expect((await call('claim', { ...who, mode: 'hg', wrappedDek: WRAPPED, kid: 9, requireHg: false }, envelope('snapshot', 9, 1))).status).toBe(400)
+    expect((await call('claim', { ...who, mode: 'hg', wrappedDek: WRAPPED, kid: 9 }, envelope('snapshot', 9, 1), { status: 'absent' })).status).toBe(403)
+    const res = await call('claim', { ...who, mode: 'hg', wrappedDek: WRAPPED, kid: 9, extra: 1 }, envelope('snapshot', 9, 1))
+    expect(res.status).toBe(200)
+    expect(unframe(e.cloud.requests.at(-1)!.body)!.header).toEqual({ mode: 'hg', wrappedDek: WRAPPED, kid: 9 })
+  })
+
+  it('每个请求都要核实过鹰角 token：只知道 locator 拿不到任何东西；核实过的请求不带 authKey 也能下载、上传', async () => {
+    const { call } = await client(verified())
+    await call('claim', { ...who, mode: 'hg', wrappedDek: WRAPPED, kid: 9 }, envelope('snapshot', 9, 1))
+    const locator = await computeLocator('arknights', '12345678')
+    // 没有鹰角 token：pull 本身就不合法（既没有 authKey 也没有核实）
+    expect((await call('pull', { locator, afterSeq: 0 }, undefined, { status: 'absent' })).status).toBe(400)
+    // 带一个随便的 authKey：和密码错误一样的 401
+    expect((await call('pull', { locator, authKey: AUTH, afterSeq: 0 }, undefined, { status: 'absent' })).status).toBe(401)
+    const pulled = await call('pull', { ...who, afterSeq: 0 })
+    expect(pulled.status).toBe(200)
+    const meta = unframe(new Uint8Array(await pulled.arrayBuffer()))!.header
+    expect(meta).toMatchObject({ mode: 'hg', kid: 9, wrappedDek: WRAPPED })
+    expect(typeof meta.hgKek).toBe('string')
+    expect((await call('push', who, envelope('delta', 9, 2))).status).toBe(200)
+    // 状态里能拿到同一个 KEK_hg
+    const status = (await (await call('status', { ...who, kek: true })).json()) as Record<string, unknown>
+    expect(status).toMatchObject({ exists: true, mode: 'hg', requireHg: true, hgKek: meta.hgKek })
+    expect((await call('status', { ...who, kek: 'yes' })).status).toBe(400)
+  })
+
+  it('没有配置 SYNC_HG_SECRET：开通无密码模式返回 503，密码模式不受影响', async () => {
+    const { handleCloud } = await import('./cloud')
+    const e = { ...makeEnv(fakeCloud(PEPPER)), SYNC_HG_SECRET: undefined }
+    const call = (header: Record<string, unknown>) =>
+      handleCloud(
+        new Request(`${SELF}/api/cloud/v1/claim`, {
+          method: 'POST',
+          headers: { 'x-arkrecord-client': '1', 'sec-fetch-site': 'same-origin', 'content-type': 'application/octet-stream' },
+          body: frame(header, envelope('snapshot', 9, 1)),
+        }),
+        e,
+        new URL(`${SELF}/api/cloud/v1/claim`),
+        { verify: async () => verified() },
+      )
+    const res = await call({ ...who, mode: 'hg', wrappedDek: WRAPPED, kid: 9 })
+    expect(res.status).toBe(503)
+    expect(res.headers.get('x-arkrecord-cloud')).toBe('hg_mode_unavailable')
+    expect((await call({ ...who, authKey: AUTH, wrappedDek: WRAPPED, kid: 9, requireHg: false })).status).toBe(200)
   })
 })

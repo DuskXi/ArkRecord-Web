@@ -10,6 +10,13 @@ export const CLOUD_PREFIX = '/api/cloud/v1/'
 export const CLOUD_OPS = ['status', 'claim', 'pull', 'push', 'rekey', 'twofactor', 'delete'] as const
 export type CloudOp = (typeof CLOUD_OPS)[number]
 
+/**
+ * password：密码模式（推荐），数据只有密码能解开；
+ * hg：无密码模式（不推荐），每个请求都要核实鹰角 token，钥匙由服务器派生，服务器技术上能解密（cloud-sync.md 8）
+ */
+export const CLOUD_MODES = ['password', 'hg'] as const
+export type CloudMode = (typeof CLOUD_MODES)[number]
+
 export const GAMES = ['arknights', 'endfield'] as const
 export type CloudGame = (typeof GAMES)[number]
 
@@ -184,3 +191,5 @@ export function dekAad(locator: string, kid: number): Uint8Array<ArrayBuffer> {
 export const WRAPPED_DEK_BYTES = 60
 /** authKey 32 B */
 export const AUTH_KEY_BYTES = 32
+/** 无密码模式由服务器派生、用来包裹 DEK 的钥匙 KEK_hg：32 B */
+export const HG_KEK_BYTES = 32
