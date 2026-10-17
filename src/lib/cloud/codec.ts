@@ -151,6 +151,20 @@ function checkField(kind: FieldKind, value: unknown): boolean {
   return false
 }
 
+/** 错误信息里显示的值：类型和截断的内容 */
+function preview(value: unknown): string {
+  if (value === undefined) return '缺失'
+  if (value === null) return 'null'
+  let text: string
+  try {
+    text = JSON.stringify(value) ?? String(value)
+  } catch {
+    text = String(value)
+  }
+  if (typeof value === 'number' && !Number.isFinite(value)) text = String(value)
+  return `${typeof value} ${text.length > 40 ? `${text.slice(0, 40)}…` : text}`
+}
+
 /** 按字段表校验一条记录：缺字段、多字段、类型不对都报错（值为 undefined 的键等同于缺省） */
 function validate(record: unknown, fields: Record<string, FieldKind>, what: string): void {
   if (typeof record !== 'object' || record === null || Array.isArray(record)) throw new CodecError(`${what} 不是对象`)
@@ -158,7 +172,8 @@ function validate(record: unknown, fields: Record<string, FieldKind>, what: stri
     if (value !== undefined && !(key in fields)) throw new CodecError(`${what} 有字段表以外的字段 ${key}`)
   }
   for (const [key, kind] of Object.entries(fields)) {
-    if (!checkField(kind, (record as Record<string, unknown>)[key])) throw new CodecError(`${what} 的字段 ${key} 不合法`)
+    const value = (record as Record<string, unknown>)[key]
+    if (!checkField(kind, value)) throw new CodecError(`${what} 的字段 ${key} 不合法（${preview(value)}）`)
   }
 }
 

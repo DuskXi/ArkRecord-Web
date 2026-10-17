@@ -8,10 +8,10 @@ import { db } from './db'
 import { mergeLedger, toLedgerEntries } from './ledger'
 import type { LegacyAccount } from './legacy'
 import { legacyLedger, legacyToAkPulls } from './legacy'
-import type { AkMeta } from './meta'
+import { type AkMeta, loadEfMeta } from './meta'
 import { dedupeBy, pickAkPull, planWrites } from './merge'
 import { coveredByModern, groupBySecond, LEGACY_MATCH_SECONDS, mergeAkPulls } from './sync/arknights'
-import { mergeEfPulls } from './sync/endfield'
+import { efRarity, mergeEfPulls } from './sync/endfield'
 import type { Account, AkLedgerEntry, AkPull, EfPull, Game } from './types'
 
 /** 导出文件的格式版本（与程序版本号无关；导入时据此识别新版导出文件） */
@@ -238,6 +238,7 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
     }
     summary.ledger += await mergeLedger(ledger)
   }
+  const efMeta = file.endfield.length ? await loadEfMeta() : undefined
   for (const entry of file.endfield) {
     const account = await ensureAccount('endfield', entry.uid, entry.nickName, { channelName: entry.channelName })
     summary.accounts++
@@ -253,7 +254,7 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
         poolType: String(r.poolType ?? ''),
         itemId: String((type === 'char' ? r.charId : r.weaponId) ?? ''),
         itemName: String((type === 'char' ? r.charName : r.weaponName) ?? ''),
-        rarity: Number(r.rarity),
+        rarity: efRarity(r.rarity, String((type === 'char' ? r.charId : r.weaponId) ?? ''), efMeta),
         isNew: Boolean(r.isNew),
         isFree: Boolean(r.isFree),
         kind: String(r.kind ?? 'draw'),

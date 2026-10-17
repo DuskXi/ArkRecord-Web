@@ -9,7 +9,7 @@ import { db } from '../db'
 import { compareUtf8, jcs } from '../jcs'
 import { mergeLedger } from '../ledger'
 import { mergeAkPulls } from '../sync/arknights'
-import { mergeEfPools, mergeEfPulls } from '../sync/endfield'
+import { mergeEfPools, mergeEfPulls, repairEfRarity } from '../sync/endfield'
 import { mergeLegacyPulls, makeAccountId } from '../archive'
 import type { Account, AkLedgerEntry, AkPull, EfPull } from '../types'
 import type { CloudAccountInfo, CloudDataset } from './codec'
@@ -39,6 +39,8 @@ export async function readLocalDataset(account: Account): Promise<CloudDataset> 
     const shaped = pulls.map((p) => ({ ...strip(p), poolId: p.poolId ?? null, charId: p.charId ?? null }))
     return { game: 'arknights', uid: account.uid, account: info, pulls: shaped, ledger: ledger.map(strip) }
   }
+  // 之前的版本可能原样保存了接口给的非整数星级，先修正本地数据
+  await repairEfRarity(account.id)
   const pulls = await db.efPulls.where('accountId').equals(account.id).toArray()
   const poolIds = [...new Set(pulls.map((p) => p.poolId))]
   const pools = (await db.efPools.bulkGet(poolIds)).filter((p) => p !== undefined)
