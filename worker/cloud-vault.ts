@@ -247,6 +247,16 @@ export class Vault {
     return meta
   }
 
+  /**
+   * 查询这个账号有没有开通、用的是哪种方式：只有 Worker 核实过鹰角 token（证明账号是自己的）才回答。
+   * 只读，不核对密码，不计失败次数，不写入任何东西。
+   */
+  status(hgVerified: boolean): VaultResult {
+    if (!hgVerified) return fail(403, 'hg_required')
+    const meta = this.meta()
+    return json(200, meta ? { exists: true, mode: meta.mode, requireHg: Boolean(meta.require_hg) } : { exists: false })
+  }
+
   /** 下载：返回被包裹的 DEK、kid、双重验证状态，以及 afterSeq 之后的全部批次 */
   async pull(header: Record<string, unknown>, hgVerified: boolean): Promise<VaultResult> {
     const auth = await this.authenticate(header.authKey, hgVerified)
@@ -397,6 +407,8 @@ export class Vault {
 
   async handle(op: CloudOp, header: Record<string, unknown>, payload: Uint8Array, hgVerified: boolean): Promise<VaultResult> {
     switch (op) {
+      case 'status':
+        return this.status(hgVerified)
       case 'pull':
         return this.pull(header, hgVerified)
       case 'push':

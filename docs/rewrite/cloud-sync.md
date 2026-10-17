@@ -74,6 +74,7 @@ Worker 把收到的一切都当作不可信的输入。能不能读数据、能�
   - 无密码模式的每一个请求；
   - 密码模式开启双重验证（7.11）后的每一个请求。
 - 传的是 OAuth token：由账号 token 经 grant 换来，是只给“鹰角用户中心”这一个应用的授权，用途比账号 token 窄。
+- 只在用户点击按钮、并在确认窗口里点了“确认发送”之后才发送（4.4）；token 在 Worker 里只存在于处理请求时的内存里（4.5）。
 - 但无论传账号 token 还是 OAuth token，Worker 都能看到一个有效的鹰角凭证。所以这部分代码必须放在仓库里显眼的位置，接受公开审计（4.3）。
 
 ### 4.3 审计：放在显眼的位置
@@ -84,7 +85,7 @@ Worker 把收到的一切都当作不可信的输入。能不能读数据、能�
   - 请求失败、超时、`code` 不为 0、`appCode` 不匹配、响应格式不对，一律按验证失败处理（fail closed）。
   - token 不写入存储，不写日志，不放进返回值，也不放进错误信息。
 - **仓库根目录新增 `SECURITY.md`**（GitHub 会在仓库首页和 Security 页显示）。它列出 Worker 里所有会接触鹰角 token 的地方，并链接到代码：
-  1. 透明转发（`worker/proxy.ts`、`worker/upstreams.ts`）：拉取记录时，账号 token 经过这里原样转发，不解析；
+  1. 转发（`worker/proxy.ts`、`worker/upstreams.ts`）：拉取记录时，token 放在浏览器请求的请求体里，Worker 按白名单拼成上游请求，不记录、不存储；
   2. 所有权核实（`worker/hg-verify.ts`）：云同步时，OAuth token 经过这里，用来查询绑定列表，然后丢弃。
 - README 的安全说明和网站的“关于”页都链接到 `SECURITY.md`。
 - **CI 加一条检查**：worker 目录下除了 `hg-verify.ts`，任何文件都不允许出现 token 字段名（`oauthToken` 等）。这样以后改代码时，不会在别处悄悄用到 token。
@@ -92,6 +93,24 @@ Worker 把收到的一切都当作不可信的输入。能不能读数据、能�
   - 生产环境只通过公开仓库的 GitHub Actions 部署，运行日志公开；
   - `/api/cloud/v1/info` 返回线上部署的 commit hash，任何人都可以和仓库对照。
 - 局限：审计能证明仓库里的代码做了什么，但不能从密码学上保证线上运行的就是这份代码，因为持有 Cloudflare 账号的人可以绕过 Actions 部署。
+
+### 4.4 发送鹰角 token 之前必须取得同意
+
+- 规则：**不是用户主动点击、并在确认窗口里点了“确认发送”，鹰角 token 绝不发给云同步接口。**
+- 确认窗口写明：这次要做的事（按步骤）、涉及哪些账号、发送什么（OAuth token 和 UID）、发给谁、做什么用、服务器怎么处理，并链接到 `worker/hg-verify.ts`。
+- 需要确认的操作：检测云端状态、开通 / 覆盖、一键启用、开关双重验证、没有钥匙时删除，以及开启双重验证的账号的每一次云同步。
+- 从鹰角同步记录之后自动进行的云同步，只处理不需要 token 的账号；开启双重验证的账号只弹出提示，等用户点击。
+- 代码：`src/lib/cloud/consent.ts`。“同意”只由两个确认按钮创建（`TokenConsentDialog.vue`、`CloudDialog.vue` 的确认步骤），列出涵盖的账号，5 分钟后失效，流程结束即作废；云同步要用的 OAuth token 只能凭有效的“同意”换取，换到的 token 只缓存在这次同意里。CI 检查（`src/lib/cloud/consent.test.ts`）保证云同步的其他代码不能直接换取 token。
+
+### 4.5 token 在 Worker 里只存在于内存
+
+- 浏览器发给 Worker 的请求，token 一律放在请求体里，不放在网址和请求头里：Cloudflare 的统计、安全事件可能记录网址，实时日志会显示网址和请求头，但都不包含请求体。
+  - 转发（`/api/hg/*`）：浏览器一律用 POST，请求体为 `{ query, body, roleToken, akCookie }`，Worker 按白名单拼成上游请求；网址里带参数的请求直接拒绝。
+  - 云同步（`/api/cloud/v1/*`）：token 在二进制请求体的头部 JSON 里（9.5）。
+- Workers Logs 关闭；Worker 代码里没有 `console` 输出（CI 检查）。
+- 未预料的异常在入口统一变成不带细节的 500，异常信息不交给平台。
+- Durable Object 只收到按白名单重新组装的字段；测试经过完整的 Worker，检查存储收到的请求、存储内容和响应里都没有 token。
+- 唯一离开内存的是 Worker 发给鹰角的请求：鹰角接口要求 token 放在查询参数里。
 
 ## 5. 总体结构：信封加密
 
@@ -292,6 +311,12 @@ OPRF（RFC 9497）可以让服务器参与密码派生、又看不到密码。�
 - 这些值相当于这个账号云端数据的钥匙：只存在本机，不导出，不进快照，不同步。“退出云同步”时删除。
 - 可以选“不在这台设备保存”，每次云同步时再输入密码。
 - 清除浏览器数据之后，需要重新输入密码。
+- **同步配置（可选）**：开通、输入密码时可以顺便保存为同步配置（也可以单独设置），之后其他账号（同一个鹰角账号下的另一个游戏、另一个服务器的角色）点一下就开通或启用。
+  - 内容：云同步密码、新开通的账号是否开启双重验证、是否记住钥匙。
+  - 记住时，密码用一把不可导出的 AES-GCM 钥匙加密后存在 IndexedDB；不记住时只在内存里。不导出、不进备份、不上传。
+  - 一键启用：先检测云端状态（需要 token，先确认），没开通就按配置开通，开通了就用配置里的密码解锁并合并；密码不对时转为手动输入。
+  - 单独设置时，会用一个已开通账号的钥匙在本地核对一次密码（不联网），不一致时提示。
+  - 代码：`src/lib/cloud/profile.ts`。
 
 ### 7.9 改密码（知道旧密码）
 
@@ -607,6 +632,7 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 
 | 接口 | 证明 | 用途 |
 |---|---|---|
+| `/api/cloud/v1/status` | 鹰角 token | 检测云端状态：有没有开通、哪种模式、是否开启双重验证（只读，不返回数据）。开通（不是覆盖）之前浏览器先查一次，已开通时不会误覆盖 |
 | `/api/cloud/v1/claim` | 鹰角 token | 开通 / 覆盖：设定模式和新密码，上传完整快照（7.10、8.4） |
 | `/api/cloud/v1/pull` | `authKey` 或鹰角 token | 下载 `afterSeq` 之后的批次 |
 | `/api/cloud/v1/push` | `authKey` 或鹰角 token | 上传 delta；或者上传 snapshot，并注明覆盖到哪个 seq |
@@ -733,7 +759,11 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 | 核实鹰角 token（4.3、8.2） | `worker/hg-verify.ts` | `worker/hg-verify.test.ts` |
 | 接口校验（4.1、11） | `worker/cloud.ts` | `worker/cloud.test.ts` |
 | 存储、退避、双重验证（7.3–7.5、9.6） | `worker/cloud-vault.ts`（`CloudVault`） | `worker/cloud-vault.test.ts` |
-| token 字段检查（4.3） | — | `worker/token-fields.test.ts` |
+| token 字段检查、Worker 无 console 输出（4.3、4.5） | — | `worker/token-fields.test.ts` |
+| token 只在请求体里、异常不带细节（4.5） | `worker/proxy.ts`、`worker/index.ts`、`src/lib/hg/client.ts` | `worker/index.test.ts`、`worker/hg-verify.test.ts` |
+| 发送 token 前的确认（4.4） | `src/lib/cloud/consent.ts`、`src/components/cloud/TokenConsentDialog.vue`、`TokenDisclosure.vue` | `src/lib/cloud/consent.test.ts` |
+| 检测云端状态（11） | `worker/cloud.ts`、`worker/cloud-vault.ts`、`src/lib/cloud/engine.ts` 的 `cloudStatus` | `worker/cloud.test.ts`、`worker/cloud-vault.test.ts`、`src/lib/cloud/engine.test.ts` |
+| 同步配置（7.8） | `src/lib/cloud/profile.ts`、`src/stores/cloud.ts` 的 `quickStart` | `src/lib/cloud/profile.test.ts` |
 | 界面 | `src/components/cloud/*`、`src/stores/cloud.ts`、数据页、关于页 | 本地浏览器实测 |
 
 实现中补充的细节：

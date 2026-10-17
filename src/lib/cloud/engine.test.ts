@@ -126,14 +126,21 @@ describe('云同步端到端', () => {
     await a.addPulls(0, 20)
     await a.addLedger(1)
     // 开通需要有效的鹰角 token
-    await expect(a.engine.enableCloud(account, { password: PASSWORD, oauthToken: 'wrong', requireHg: false, remember: true })).rejects.toMatchObject({
+    await expect(a.engine.enableCloud(account, { password: PASSWORD, oauthToken: 'wrong', requireHg: false, remember: true, overwrite: false })).rejects.toMatchObject({
       code: 'hg_verify_failed',
     })
     // 弱密码直接拒绝
-    await expect(a.engine.enableCloud(account, { password: 'Password2024', oauthToken: VALID_OAUTH, requireHg: false, remember: true })).rejects.toMatchObject({
+    await expect(a.engine.enableCloud(account, { password: 'Password2024', oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })).rejects.toMatchObject({
       code: 'weak_password',
     })
-    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true })
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+    // 查询状态需要有效的鹰角 token；已经开通的账号不能再“开通”（只能明确选择覆盖）
+    await expect(a.engine.cloudStatus(target, 'wrong')).rejects.toMatchObject({ code: 'hg_verify_failed' })
+    expect(await a.engine.cloudStatus(target, VALID_OAUTH)).toEqual({ exists: true, mode: 'password', requireHg: false })
+    expect(await a.engine.cloudStatus({ game: 'endfield', uid: UID }, VALID_OAUTH)).toEqual({ exists: false })
+    await expect(
+      a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false }),
+    ).rejects.toMatchObject({ code: 'already_enabled' })
 
     // 新设备：只靠 UID + 密码恢复，不需要鹰角 token
     const b = await device()
@@ -178,7 +185,7 @@ describe('云同步端到端', () => {
     const a = await device()
     const account = await a.createAccount()
     await a.addPulls(0, 10)
-    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true })
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
     const b = await device()
     await b.engine.unlockCloud(target, { password: PASSWORD, remember: true })
 
@@ -194,7 +201,7 @@ describe('云同步端到端', () => {
     // B 有一些 A 没有的记录（还没上传），然后 A 忘记了密码，从 A 覆盖云端
     await b.addPulls(10, 12)
     const NEWER = 'Pw9xLm3kQz7rTb5n'
-    await a.engine.enableCloud(account, { password: NEWER, oauthToken: VALID_OAUTH, requireHg: false, remember: true })
+    await a.engine.enableCloud(account, { password: NEWER, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: true })
     // B 的钥匙失效，用新密码重新解锁后，把自己多出来的记录补传上去
     await expect(b.engine.syncCloud(b.accountId)).rejects.toMatchObject({ code: 'auth_changed' })
     const back = await b.engine.unlockCloud(target, { password: NEWER, remember: true })
@@ -209,7 +216,7 @@ describe('云同步端到端', () => {
     const a = await device()
     const account = await a.createAccount()
     await a.addPulls(0, 3)
-    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true })
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
     await expect(a.engine.setTwoFactor(a.accountId, true, 'wrong')).rejects.toMatchObject({ code: 'hg_verify_failed' })
     await a.engine.setTwoFactor(a.accountId, true, VALID_OAUTH)
     await expect(a.engine.syncCloud(a.accountId)).rejects.toMatchObject({ code: 'need_hg' })
@@ -227,7 +234,7 @@ describe('云同步端到端', () => {
     const a = await device()
     const account = await a.createAccount()
     await a.addPulls(0, 1)
-    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true })
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
     let compacted = 0
     for (let i = 1; i < 40; i++) {
       await a.addPulls(i, i + 1)
@@ -247,7 +254,7 @@ describe('云同步端到端', () => {
     const a = await device()
     const account = await a.createAccount()
     await a.addPulls(0, 2)
-    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: false })
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: false, overwrite: false })
     await a.engine.syncCloud(a.accountId)
     expect((await a.db.cloud.get(a.accountId))!.authKey).toBeUndefined()
     // 同一个数据库、重新加载模块（相当于刷新网页）
@@ -290,7 +297,7 @@ describe('云同步端到端', () => {
     )
     await mergeEfPools([{ poolId: 'special_1', poolName: '特许寻访', poolType: 'x', gachaType: 'char', up6Name: '艾尔黛拉', items: [{ id: 'chr_0025_ardelia', name: '艾尔黛拉', rarity: 6 }], fetchedAt: 5 }])
     const account = (await a.db.accounts.get(id))!
-    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true })
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
     const b = await device()
     await b.engine.unlockCloud({ game: 'endfield', uid: UID }, { password: PASSWORD, remember: true })
     expect(await b.db.efPulls.count()).toBe(30)

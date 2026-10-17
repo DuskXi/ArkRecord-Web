@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ENVELOPE_HEADER_BYTES, frame, toBase64Url } from '../shared/cloud-protocol'
 import { verifyHgProof } from './hg-verify'
+import worker from './index'
+import { fakeCloud } from './testing/fake-cloud'
+
+afterEach(() => vi.unstubAllGlobals())
 
 const OK = { status: 0, msg: 'OK', data: { list: [{ appCode: 'arknights', bindingList: [{ uid: '12345678' }, { uid: 87654321 }] }] } }
 
@@ -55,5 +60,53 @@ describe('核实鹰角 token（worker/hg-verify.ts）', () => {
     expect(await verifyHgProof(header(), { fetcher: broken })).toEqual({ status: 'invalid' })
     const notJson = vi.fn<typeof fetch>(async () => new Response('<html>', { status: 200 }))
     expect(await verifyHgProof(header(), { fetcher: notJson })).toEqual({ status: 'invalid' })
+  })
+})
+
+describe('鹰角 token 只在处理请求时的内存里', () => {
+  it('经过完整的 Worker：存储收到的内部请求、返回给浏览器的响应里都没有 token', async () => {
+    const TOKEN = 'oauth-token-must-not-leak-0123456789'
+    const upstream = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(OK), { status: 200 }))
+    vi.stubGlobal('fetch', upstream)
+    const cloud = fakeCloud('test-pepper-0123456789abcdef0123456789abcdef')
+    const env = { CLOUD: cloud.namespace, SYNC_PEPPER: 'test-pepper-0123456789abcdef0123456789abcdef' } as never
+    const send = (op: string, fields: Record<string, unknown>, payload?: Uint8Array) =>
+      worker.fetch(
+        new Request(`https://ark-next.kaltsit.dev/api/cloud/v1/${op}`, {
+          method: 'POST',
+          headers: { 'x-arkrecord-client': '1', 'sec-fetch-site': 'same-origin', 'content-type': 'application/octet-stream' },
+          body: frame(fields, payload),
+        }) as never,
+        env,
+        { waitUntil: () => {}, passThroughOnException: () => {} } as never,
+      ) as Promise<Response>
+    const snapshot = new Uint8Array(ENVELOPE_HEADER_BYTES + 16)
+    snapshot.set([1, 5, 2, 1])
+    const who = { hgToken: TOKEN, game: 'arknights', uid: '12345678' }
+    const responses = [
+      await send('status', who),
+      await send('claim', { ...who, authKey: toBase64Url(new Uint8Array(32).fill(1)), wrappedDek: toBase64Url(new Uint8Array(60)), kid: 5, requireHg: true }, snapshot),
+      await send('status', who),
+    ]
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 200])
+    // token 只用来请求写死的绑定列表地址
+    expect(upstream).toHaveBeenCalledTimes(3)
+    for (const [url] of upstream.mock.calls) expect(String(url)).toMatch(/^https:\/\/binding-api-account-prod\.hypergryph\.com\/account\/binding\/v1\/binding_list\?/)
+    const leaks = (text: string) => text.includes(TOKEN)
+    for (const r of responses) {
+      expect(leaks(await r.clone().text())).toBe(false)
+      expect(leaks(JSON.stringify([...r.headers]))).toBe(false)
+    }
+    expect(cloud.requests).toHaveLength(3)
+    for (const req of cloud.requests) {
+      expect(leaks(new TextDecoder().decode(req.body))).toBe(false)
+      expect(leaks(JSON.stringify([...req.headers]))).toBe(false)
+      expect(leaks(req.url)).toBe(false)
+    }
+    // 存储里也没有
+    for (const storage of cloud.storages.values()) {
+      const tables = storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table'").toArray()
+      for (const { name } of tables) expect(leaks(JSON.stringify(storage.sql.exec(`SELECT * FROM "${String(name)}"`).toArray(), (_k, v) => (v instanceof Uint8Array || v instanceof ArrayBuffer ? toBase64Url(new Uint8Array(v)) : v)))).toBe(false)
+    }
   })
 })

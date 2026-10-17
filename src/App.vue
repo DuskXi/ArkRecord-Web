@@ -8,6 +8,7 @@ import ConsentBanner from '@/components/ConsentBanner.vue'
 import WelcomeDialog from '@/components/WelcomeDialog.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import CloudDialog from '@/components/cloud/CloudDialog.vue'
+import TokenConsentDialog from '@/components/cloud/TokenConsentDialog.vue'
 import LegacyMigration from '@/components/LegacyMigration.vue'
 import { computed } from 'vue'
 import { navItemsFor } from '@/navigation'
@@ -57,6 +58,7 @@ const navItems = computed(() => navItemsFor(app.game))
     <MobileNav />
     <LoginModal />
     <CloudDialog />
+    <TokenConsentDialog />
     <LegacyMigration />
     <WelcomeDialog />
     <ConsentBanner />

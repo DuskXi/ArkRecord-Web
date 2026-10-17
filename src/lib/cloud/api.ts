@@ -75,6 +75,16 @@ function proofHeader(proof: Proof): Record<string, unknown> {
   }
 }
 
+export type CloudStatus = { exists: false } | { exists: true; mode: 'password'; requireHg: boolean }
+
+/** 查询这个账号在云端有没有开通、用的是哪种方式：必须带鹰角 token（服务器核实账号是你的才回答） */
+export async function apiStatus(hg: NonNullable<Proof['hg']>): Promise<CloudStatus> {
+  const res = await call('status', proofHeader({ hg }))
+  const body = (await res.json()) as CloudStatus
+  if (typeof body?.exists !== 'boolean') throw new CloudApiError(200, 'bad_response', '云端返回的数据格式不对。')
+  return body
+}
+
 export interface PullMeta {
   kid: number
   requireHg: boolean

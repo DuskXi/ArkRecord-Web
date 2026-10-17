@@ -128,6 +128,33 @@ describe('云同步接口：鹰角核实与 locator', () => {
     expect(unframe(internal.body)!.header).toEqual({ authKey: AUTH, wrappedDek: WRAPPED, kid: 5, requireHg: false })
   })
 
+  it('查询状态：必须核实过鹰角 token；只回答开通了没有、是哪种方式', async () => {
+    const { handleCloud } = await import('./cloud')
+    const e = makeEnv()
+    const call = (op: string, header: Record<string, unknown>, proof: HgProof, payload?: Uint8Array) =>
+      handleCloud(
+        new Request(`${SELF}/api/cloud/v1/${op}`, {
+          method: 'POST',
+          headers: { 'x-arkrecord-client': '1', 'sec-fetch-site': 'same-origin', 'content-type': 'application/octet-stream' },
+          body: frame(header, payload),
+        }),
+        e,
+        new URL(`${SELF}/api/cloud/v1/${op}`),
+        { verify: async () => proof },
+      )
+    const who = { game: 'arknights', uid: '12345678' }
+    // 只知道 UID 查不到：没有鹰角核实直接拒绝，不访问存储
+    expect((await call('status', { locator: await computeLocator('arknights', '12345678') }, { status: 'absent' })).status).toBe(403)
+    expect(e.cloud.requests).toHaveLength(0)
+    // 不接受其他字段
+    expect((await call('status', { ...who, authKey: AUTH }, verified())).status).toBe(400)
+    expect((await call('status', who, verified(), new Uint8Array([1]))).status).toBe(400)
+    expect(await (await call('status', who, verified())).json()).toEqual({ exists: false })
+    expect(unframe(e.cloud.requests.at(-1)!.body)!.header).toEqual({})
+    await call('claim', { authKey: AUTH, wrappedDek: WRAPPED, kid: 5, requireHg: true, ...who }, verified(), envelope('snapshot', 5, 1))
+    expect(await (await call('status', who, verified())).json()).toEqual({ exists: true, mode: 'password', requireHg: true })
+  })
+
   it('客户端伪造的内部请求头不会被采用', async () => {
     const e = makeEnv()
     const res = await post('claim', frame({ authKey: AUTH, wrappedDek: WRAPPED, kid: 5, requireHg: false, locator: 'L'.repeat(43) }, envelope('snapshot', 5, 1)), e, {

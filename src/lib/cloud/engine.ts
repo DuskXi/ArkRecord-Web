@@ -1,8 +1,12 @@
 /**
  * 云同步的流程（docs/rewrite/cloud-sync.md 7、10）。
  *
+ *   - cloudStatus：查询云端有没有开通、是哪种方式（需要鹰角 OAuth token 证明账号是你的）。
  *   - enableCloud：开通 / 覆盖。需要鹰角 OAuth token 证明账号是你的；用新密码、新 DEK 上传本地的完整快照，
- *     云端原有的数据整体换掉（忘记密码时就用它，从数据最全的浏览器覆盖）。
+ *     云端原有的数据整体换掉（忘记密码时就用它，从数据最全的浏览器覆盖）。开通（不是覆盖）前先查询状态，
+ *     云端已经开通时拒绝，不会误覆盖别的设备上传的数据。
+ *
+ * 鹰角 OAuth token 只由调用方传入：界面只有在用户点击并确认之后才会换取它（见 consent.ts）。
  *   - unlockCloud：在新设备上（或者密码在别处改过、云端被覆盖之后）输入密码，下载并合并云端数据，再上传本地多出来的。
  *   - syncCloud：一次云同步，最多两个请求：下载新批次并合并 → 上传本地多出来的记录（批次多了就改为上传快照）。
  *   - changePassword：知道旧密码时改密码，只换包裹，不用重新上传数据。
@@ -23,7 +27,19 @@ import {
 import { makeAccountId } from '../archive'
 import { db } from '../db'
 import type { Account } from '../types'
-import { apiClaim, apiDelete, apiPull, apiPush, apiRekey, apiTwoFactor, CloudApiError, type Proof, type PullMeta } from './api'
+import {
+  apiClaim,
+  apiDelete,
+  apiPull,
+  apiPush,
+  apiRekey,
+  apiStatus,
+  apiTwoFactor,
+  CloudApiError,
+  type CloudStatus,
+  type Proof,
+  type PullMeta,
+} from './api'
 import { type CloudDataset, CodecError, decodeDatasetBytes, encodeDatasetBytes, fingerprint, UnsupportedVersionError } from './codec'
 import { generateDek, newBatchId, openEnvelope, passwordKeys, randomKid, sealEnvelope, unwrapDek, wrapDek } from './crypto'
 import { applyDataset, readLocalDataset, recordCount, recordHashes, subset } from './dataset'
@@ -49,6 +65,8 @@ export type CloudSyncErrorCode =
   | 'weak_password'
   /** 这个账号还没有开通云同步 */
   | 'not_enabled'
+  /** 开通时发现云端已经开通了（应该输入密码，忘记密码才覆盖） */
+  | 'already_enabled'
 
 export class CloudSyncError extends Error {
   constructor(
@@ -91,14 +109,32 @@ async function sealDeltas(dek: CryptoKey, locator: string, kid: number, ds: Clou
   return [...(await sealDeltas(dek, locator, kid, ds, ids.slice(0, half))), ...(await sealDeltas(dek, locator, kid, ds, ids.slice(half)))]
 }
 
-/** 开通 / 覆盖：用新密码、新 DEK 上传本地的完整快照，云端原有的数据整体换掉 */
+/** 查询云端有没有开通这个账号、是哪种方式：服务器核实鹰角 token、确认账号是你的才回答 */
+export async function cloudStatus(target: { game: CloudGame; uid: string }, oauthToken: string): Promise<CloudStatus> {
+  return apiStatus({ game: target.game, uid: target.uid, token: oauthToken })
+}
+
+/**
+ * 开通 / 覆盖：用新密码、新 DEK 上传本地的完整快照，云端原有的数据整体换掉。
+ * overwrite 为 false（开通）时先查询状态，云端已经开通就拒绝。
+ */
 export async function enableCloud(
   account: Account,
-  options: { password: string; oauthToken: string; requireHg: boolean; remember: boolean; onProgress?: (fraction: number) => void },
+  options: {
+    password: string
+    oauthToken: string
+    requireHg: boolean
+    remember: boolean
+    overwrite: boolean
+    onProgress?: (fraction: number) => void
+  },
 ): Promise<CloudState> {
   const check = checkPassword(options.password, { uid: account.uid, nickName: account.nickName })
   if (!check.ok) throw new CloudSyncError('weak_password', '密码不符合规则。')
   const game = account.game
+  if (!options.overwrite && (await cloudStatus(account, options.oauthToken)).exists) {
+    throw new CloudSyncError('already_enabled', '这个账号已经在别处开通了云同步：请输入云同步密码。只有忘记密码时才需要覆盖云端。')
+  }
   const keys = await passwordKeys(game, account.uid, options.password, { onProgress: options.onProgress })
   const locator = await computeLocator(game, account.uid)
   const dek = await generateDek()

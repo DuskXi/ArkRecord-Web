@@ -19,13 +19,26 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 
 | 位置 | 什么时候 | 做什么 |
 |---|---|---|
-| [`worker/proxy.ts`](worker/proxy.ts)、[`worker/upstreams.ts`](worker/upstreams.ts) | 从鹰角同步记录时 | 浏览器不能直接请求鹰角接口（没有 CORS），所以经 Worker 转发。账号 token 等原样转给白名单内的鹰角接口，**不解析、不记录、不存储** |
-| [`worker/hg-verify.ts`](worker/hg-verify.ts) | 云同步：开通 / 覆盖、忘记密码时删除、开关双重验证、开启双重验证的账号的每个请求 | 用 OAuth token 查询鹰角的角色绑定列表，确认这个 UID 属于你；**核实完立即丢弃**，不写入存储、不写日志、不出现在返回值里 |
+| [`worker/proxy.ts`](worker/proxy.ts)、[`worker/upstreams.ts`](worker/upstreams.ts) | 从鹰角同步记录时 | 浏览器不能直接请求鹰角接口（没有 CORS），所以经 Worker 转发。浏览器把参数（包括 token）放在请求体里，Worker 按白名单拼成上游请求，转给鹰角接口，**不记录、不存储** |
+| [`worker/hg-verify.ts`](worker/hg-verify.ts) | 云同步：检测云端状态、开通 / 覆盖、忘记密码时删除、开关双重验证、开启双重验证的账号的每个请求 | 用 OAuth token 查询鹰角的角色绑定列表，确认这个 UID 属于你；**核实完立即丢弃**，不写入存储、不写日志、不出现在返回值里 |
 
-保证这一点的机制：
+### token 只存在于 Worker 处理请求时的内存里
 
+- **只放在请求体里。**浏览器发给 Worker 的请求，token 一律放在请求体里，不出现在网址和请求头里：Cloudflare 的统计、安全事件可能记录网址，实时日志（`wrangler tail`）会显示网址和请求头，但都不包含请求体。转发接口拒绝网址里带参数的请求（[`worker/proxy.ts`](worker/proxy.ts) 的 `ProxyEnvelope`）。
+- **不留日志。**Worker 的日志功能（observability）是关闭的，见 [`wrangler.jsonc`](wrangler.jsonc)；Worker 代码里没有任何 `console` 输出（CI 检查）。
+- **异常不带细节。**未预料的异常在入口（[`worker/index.ts`](worker/index.ts)）统一变成不带任何细节的 500，异常信息（可能含有带 token 的上游地址）不会交给平台；转发失败时也只返回 `upstream_unreachable`。
+- **不写入存储。**云同步的存储（Durable Object）只收到按白名单重新组装的字段；测试（[`worker/hg-verify.test.ts`](worker/hg-verify.test.ts)）经过完整的 Worker，检查存储收到的请求、存储里的内容和返回给浏览器的响应里都没有 token。
 - **只有一个文件读取 token。**云同步中读取鹰角 token 的代码只在 `worker/hg-verify.ts`。CI 检查（[`worker/token-fields.test.ts`](worker/token-fields.test.ts)）保证 `worker/`、`shared/` 目录里除了这个文件，任何地方都不出现 token 字段名。
-- **不留日志。**Worker 的日志功能（observability）是关闭的，见 [`wrangler.jsonc`](wrangler.jsonc)。
+- 唯一离开内存的地方是发给鹰角的请求本身：鹰角的接口要求 token 放在网址的查询参数里，这是 Worker 向鹰角发出的请求，不经过任何日志。
+
+## 浏览器什么时候把鹰角 token 发给云同步
+
+**不是你点击按钮、并在确认窗口里点了“确认发送”，鹰角 token 绝不发给云同步接口。**
+
+- 确认窗口写明这次要做的事、发送什么、发给谁、做什么用、服务器怎么处理，并链接到核实代码。
+- 需要确认的操作：检测云端状态、开通 / 覆盖、一键启用、开关双重验证、没有钥匙时删除，以及开启了双重验证的账号的每一次云同步。
+- 从鹰角同步记录之后的“顺便云同步”只处理不需要 token 的账号；开启了双重验证的账号只会提示你点击。
+- 代码上的保证：云同步要用的 OAuth token 只能通过 [`src/lib/cloud/consent.ts`](src/lib/cloud/consent.ts) 换取，必须带着确认窗口创建的、几分钟内有效的“同意”；CI 检查（`src/lib/cloud/consent.test.ts`）保证云同步的其他代码不能直接换取 token，并且只有两个确认按钮能创建“同意”。
 
 ## 云同步
 
@@ -45,6 +58,8 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 - **核对通过之前什么都不给**：只知道 UID 的人拿不到任何东西，连密文也拿不到。账号不存在和密码错误返回同样的结果。
 - **防猜密码**：同一个账号连续失败 5 次后开始退避，最长每小时一次。退避按账号计算，与攻击者有多少 IP 无关。
 - **可选的鹰角 token 双重验证**：开启后，没有有效鹰角 token 的请求连核对密码的机会都没有。
+- **检测云端状态**：只有核实过鹰角 token、证明账号是你的，服务器才回答“开通了没有、是否开启了双重验证”，不返回任何数据；只知道 UID 的人查不到。
+- **同步配置（可选）**：可以把云同步密码保存为同步配置，之后其他账号一键开通或启用。密码用一把不可导出的钥匙加密后存在你的浏览器里（不记住时只在内存里），不上传、不导出。能在这台设备上打开本站的人可以使用它，所以公用电脑请不要保存。
 - **最终防线**：Cloudflare 账号一旦被攻破，存储和服务器密钥会一起泄露。这时只剩 Argon2id、盐和你的密码强度在起作用，所以请使用足够长、不和别的网站共用的密码，或者直接用“生成”的密码。
 - **忘记密码无法找回**：只能用数据最全的浏览器，凭鹰角 token 覆盖云端。本地数据始终不受影响。
 

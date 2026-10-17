@@ -86,6 +86,21 @@ describe('开通与核对', () => {
   })
 })
 
+describe('查询状态', () => {
+  it('只有核实过鹰角 token 才回答；只读，不计失败次数，不写入任何东西', async () => {
+    const { vault, storage, claim } = await setup()
+    expect(vault.status(false).status).toBe(403)
+    expect(bodyJson(vault.status(true))).toEqual({ exists: false })
+    // 查询不存在的账号不会建表
+    expect(storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").toArray()).toEqual([])
+    await claim({ requireHg: true })
+    const before = JSON.stringify(storage.sql.exec('SELECT * FROM meta').toArray())
+    expect(bodyJson(vault.status(true))).toEqual({ exists: true, mode: 'password', requireHg: true })
+    expect(vault.status(false).status).toBe(403)
+    expect(JSON.stringify(storage.sql.exec('SELECT * FROM meta').toArray())).toBe(before)
+  })
+})
+
 describe('按账号退避', () => {
   it('连续失败 5 次后退避，退避期间连正确的密码也不核对；时间到了恢复，成功后清零', async () => {
     const { vault, claim, advance, storage } = await setup()

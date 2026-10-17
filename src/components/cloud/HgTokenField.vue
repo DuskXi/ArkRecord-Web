@@ -8,7 +8,7 @@ import type { Account } from '@/lib/types'
  * 鹰角 token：只用来让服务器核实这个 UID 属于你（worker/hg-verify.ts），核实完立即丢弃。
  * 账号保存了登录时直接用；否则粘贴账号 token（与“添加账号”时相同）。
  */
-const props = defineProps<{ account?: Account; reason: string }>()
+const props = defineProps<{ account?: Account; reason: string; hideNote?: boolean }>()
 const pasted = defineModel<string>({ default: '' })
 const ready = defineModel<boolean>('ready', { default: false })
 
@@ -44,8 +44,8 @@ watchEffect(() => {
       />
       <p v-if="pasted && !parsed" class="text-xs text-error">无法识别这个 token，请复制整页内容。</p>
     </template>
-    <p class="text-xs leading-relaxed text-dimmed">
-      服务器用它查询鹰角的角色绑定列表，确认这个 UID 是你的，核实完立即丢弃，不保存、不记录。
+    <p v-if="!hideNote" class="text-xs leading-relaxed text-dimmed">
+      服务器用它查询鹰角的角色绑定列表，确认这个 UID 是你的，核实完立即丢弃，不保存、不记录。提交前会再请你确认。
       <ULink :to="HG_VERIFY_URL" target="_blank" class="text-primary">查看这段代码</ULink>
     </p>
   </div>

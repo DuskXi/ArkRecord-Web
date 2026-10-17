@@ -7,7 +7,7 @@
 
 export const PROTOCOL_VERSION = 1
 export const CLOUD_PREFIX = '/api/cloud/v1/'
-export const CLOUD_OPS = ['claim', 'pull', 'push', 'rekey', 'twofactor', 'delete'] as const
+export const CLOUD_OPS = ['status', 'claim', 'pull', 'push', 'rekey', 'twofactor', 'delete'] as const
 export type CloudOp = (typeof CLOUD_OPS)[number]
 
 export const GAMES = ['arknights', 'endfield'] as const

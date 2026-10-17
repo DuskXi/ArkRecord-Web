@@ -41,6 +41,8 @@ declare module 'vue' {
     StatTile: typeof import('./src/components/ui/StatTile.vue')['default']
     SyncButton: typeof import('./src/components/shell/SyncButton.vue')['default']
     TimePanel: typeof import('./src/components/stats/TimePanel.vue')['default']
+    TokenConsentDialog: typeof import('./src/components/cloud/TokenConsentDialog.vue')['default']
+    TokenDisclosure: typeof import('./src/components/cloud/TokenDisclosure.vue')['default']
     UAlert: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Alert.vue')['default']
     UApp: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/App.vue')['default']
     UAvatar: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Avatar.vue')['default']

@@ -5,7 +5,7 @@
  *   1. 路径白名单、只接受 POST、同源检查、限速、请求体大小；
  *   2. 解析二进制分帧，头部 JSON 不超过 1 KiB；
  *   3. 鹰角 token（如果有）交给 hg-verify.ts 核实，token 读出后立即从头部删除；
- *      需要鹰角证明的操作（开通 / 覆盖、开关双重验证）没有核实通过就拒绝；
+ *      需要鹰角证明的操作（查询状态、开通 / 覆盖、开关双重验证）没有核实通过就拒绝；
  *   4. locator：核实过鹰角 token 的请求由 Worker 用核实过的 UID 自己计算，忽略客户端传来的值；
  *      其他请求只把它当查找键，授权取决于 Durable Object 里对 authKey 的核对；
  *   5. 按操作的字段白名单逐个校验，重新组装成内部请求交给这个账号的 Durable Object（cloud-vault.ts），
@@ -56,6 +56,9 @@ function internalHeader(op: CloudOp, h: Record<string, unknown>, hasPayload: boo
   const authKey = h.authKey === undefined ? undefined : isKey(h.authKey, 32) ? h.authKey : null
   if (authKey === null) return null
   switch (op) {
+    case 'status':
+      // 只回答“这个账号开通了没有、是哪种方式”，不需要也不接受其他字段
+      return h.authKey === undefined && !hasPayload ? {} : null
     case 'pull':
       return authKey && isSeq(h.afterSeq) && !hasPayload ? { authKey, afterSeq: h.afterSeq } : null
     case 'push':
@@ -85,7 +88,8 @@ function internalHeader(op: CloudOp, h: Record<string, unknown>, hasPayload: boo
 }
 
 /** 需要核实过鹰角 token 才能执行的操作 */
-const HG_REQUIRED: ReadonlySet<CloudOp> = new Set(['claim', 'twofactor'])
+// 查询状态也必须核实：否则任何人都能用别人的 UID 查到对方有没有开通云同步
+const HG_REQUIRED: ReadonlySet<CloudOp> = new Set(['status', 'claim', 'twofactor'])
 
 export interface CloudDeps {
   verify?: typeof verifyHgProof
