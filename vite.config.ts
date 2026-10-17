@@ -8,7 +8,7 @@ import { defineConfig } from 'vite'
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 
 export default defineConfig({
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __BUILD_COMMIT__: JSON.stringify(process.env.GITHUB_SHA ?? 'dev') },
   plugins: [
     vue(),
     ui({

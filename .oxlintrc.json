@@ -42,7 +42,8 @@
       "warn",
       {
         "allow": [
-          "__APP_VERSION__"
+          "__APP_VERSION__",
+          "__BUILD_COMMIT__"
         ]
       }
     ]

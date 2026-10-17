@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe('入口模块', () => {
   it('只导出处理器和 Durable Object 类（Workers 要求入口模块的命名导出都是处理器或类，否则部署后无法启动）', () => {
-    expect(Object.keys(entry).toSorted()).toEqual(['FeedbackStore', 'UsageStats', 'default'])
+    expect(Object.keys(entry).toSorted()).toEqual(['CloudVault', 'FeedbackStore', 'UsageStats', 'default'])
     expect(typeof entry.UsageStats).toBe('function')
     expect(typeof entry.FeedbackStore).toBe('function')
   })

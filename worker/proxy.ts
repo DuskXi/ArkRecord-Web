@@ -3,13 +3,15 @@
  * Workers 要求入口模块的命名导出都是处理器，所以工具函数和常量放在这个文件里。
  */
 
+import { CLOUD_PREFIX } from '../shared/cloud-protocol'
+import { type CloudEnv, handleCloud } from './cloud'
 import { FEEDBACK_PREFIX, hashToken, newFeedbackId, newFeedbackToken, parseFeedback } from './feedback'
 import { handleImage, IMAGE_PREFIX } from './images'
 import { checkSameOrigin, rateLimitClient } from './security'
 import { parsePing, STATS_PREFIX } from './stats'
 import { findRoute, type Limiter, type Upstream } from './upstreams'
 
-export interface Env {
+export interface Env extends CloudEnv {
   ASSETS?: Fetcher
   RL_AUTH?: RateLimit
   RL_DATA?: RateLimit
@@ -40,6 +42,7 @@ export async function handleRequest(request: Request, env: Env, ctx?: Pick<Execu
   if (url.pathname.startsWith(API_PREFIX)) return handleProxy(request, env, url)
   if (url.pathname.startsWith(STATS_PREFIX)) return handleStats(request, env, url, ctx)
   if (url.pathname === FEEDBACK_PREFIX || url.pathname.startsWith(`${FEEDBACK_PREFIX}/`)) return handleFeedback(request, env, url)
+  if (url.pathname.startsWith(CLOUD_PREFIX)) return handleCloud(request, env, url)
   if (url.pathname.startsWith(IMAGE_PREFIX)) {
     return handleImage(request, url, {
       allowUpstream: () => withinRateLimit(env, 'data', request),
