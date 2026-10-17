@@ -39,7 +39,8 @@ function makeEnv(cloud = fakeCloud(PEPPER)): Env & { cloud: ReturnType<typeof fa
 describe('云同步接口：请求格式与来源', () => {
   it('info：返回协议版本和线上部署的 commit', async () => {
     const res = (await worker.fetch(new Request(`${SELF}/api/cloud/v1/info`) as never, makeEnv(), ctx)) as Response
-    expect(await res.json()).toEqual({ protocol: 1, commit: 'dev', available: true })
+    // 本地是 dev，CI 里是 GITHUB_SHA
+    expect(await res.json()).toEqual({ protocol: 1, commit: expect.stringMatching(/^(dev|[0-9a-f]{40})$/), available: true })
   })
 
   it('只接受本站页面的 POST 二进制请求', async () => {
