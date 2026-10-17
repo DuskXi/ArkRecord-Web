@@ -220,7 +220,7 @@ export const useCloudStore = defineStore('cloud', () => {
         'profile',
         undefined,
         undefined,
-        `一键启用要先在这台设备上保存同步配置（云同步密码和选项）。保存后接着为「${account.nickName}」启用：云端还没开通就开通，已经开通就用这个密码解锁。`,
+        `这个浏览器里还没有同步配置（同步配置按浏览器保存）。保存后接着为「${account.nickName}」启用：云端还没开通就开通，已经开通就用这个密码解锁。`,
         account.id,
       )
       return
