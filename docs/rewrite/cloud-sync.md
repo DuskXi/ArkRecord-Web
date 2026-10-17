@@ -91,8 +91,10 @@ Worker 把收到的一切都当作不可信的输入。能不能读数据、能�
 - **CI 加一条检查**：worker 目录下除了 `hg-verify.ts`，任何文件都不允许出现 token 字段名（`oauthToken` 等）。这样以后改代码时，不会在别处悄悄用到 token。
 - **线上代码可以对照**：
   - 生产环境只通过公开仓库的 GitHub Actions 部署，运行日志公开；
-  - `/api/cloud/v1/info` 返回线上部署的 commit hash，任何人都可以和仓库对照。
-- 局限：审计能证明仓库里的代码做了什么，但不能从密码学上保证线上运行的就是这份代码，因为持有 Cloudflare 账号的人可以绕过 Actions 部署。
+  - `/api/cloud/v1/info` 返回线上部署的 commit hash，任何人都可以和仓库对照；
+  - 每次部署生成构建清单（`/build-manifest.json`，网站每个文件和 Worker 每个模块的 SHA-256），由 Actions 签发构建证明（Sigstore 公开透明日志）；构建可以复现；
+  - 任何人都可以用 `scripts/audit/verify-site.mjs` 核对网站文件；Worker 代码由公开的 `audit-deployment.yml` 每小时核对：最近 48 小时上传的每个版本都必须有部署流程签发的构建证明。做法和局限见 `SECURITY.md` 的“对照线上代码”。
+- 局限：Cloudflare Workers 没有远程证明，持有 Cloudflare 账号的人仍然可以绕过 Actions 部署；上面的措施让这种行为会被发现、留下删不掉的记录，但不能从密码学上阻止。
 
 ### 4.4 发送鹰角 token 之前必须取得同意
 

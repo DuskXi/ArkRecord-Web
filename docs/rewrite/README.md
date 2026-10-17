@@ -104,6 +104,8 @@ Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它�
 2. 在 `src/lib/announcements/content.ts` 的**最前面**加一篇公告，`id` 为 `v` + 版本号。写给玩家看：改了什么、对自己有什么影响；正文支持 `**加粗**` 和 `[文字](/页面)`。
 3. 测试会检查：当前版本有公告、公告按日期倒序、id 不重复、链接有效。
 
+部署流程会顺带生成构建清单（`/build-manifest.json`）、签发构建证明，并在部署后运行 `audit-deployment.yml` 核对线上代码；这个核对每小时也会运行一次。用的是已有的 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`，不需要新增 Secret。核对失败时 Actions 会标红，原因写在运行摘要里。说明见 SECURITY.md 的“对照线上代码”。
+
 老用户更新后第一次打开网站时会弹出最新一篇（以及其他没看过的标题）；全新访问不弹。小修复可以设 `popup: false`，只在“更新公告”页标为未读。规则见 `src/lib/announcements/index.ts`。
 
 ## 分阶段计划

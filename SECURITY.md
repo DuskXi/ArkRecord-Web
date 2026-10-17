@@ -90,9 +90,58 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 
 ## 对照线上代码
 
-- 正式环境只通过本仓库公开的 GitHub Actions 部署，运行日志公开。
-- `https://ark.kaltsit.dev/api/cloud/v1/info` 返回线上部署的 commit，可以和仓库对照。
-- 局限：审计能证明仓库里的代码做了什么，但不能从密码学上保证线上运行的就是这份代码，因为持有 Cloudflare 账号的人可以绕过 Actions 部署。
+审计源码只能说明仓库里的代码做了什么。为了让任何人都能确认**线上运行的就是这份代码**，每次部署都会留下公开、可以独立验证的记录，并且有定时任务持续核对。
+
+### 每次部署留下什么
+
+部署只通过本仓库公开的 GitHub Actions（[`deploy-production.yml`](.github/workflows/deploy-production.yml)、[`deploy-preview.yml`](.github/workflows/deploy-preview.yml)），运行日志公开。构建之后、部署之前：
+
+1. **构建清单** [`/build-manifest.json`](https://ark.kaltsit.dev/build-manifest.json)（[`scripts/audit/manifest.mjs`](scripts/audit/manifest.mjs)）：网站上每个文件的 SHA-256，以及 Cloudflare 为这个 Worker 版本保存的每个模块（Worker 代码 `index.js` 和响应头配置 `_headers`）的 SHA-256。随网站一起公开。
+2. **构建证明**：清单和每个 Worker 模块由部署流程用 [`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance) 签发，记录在 Sigstore 的公开透明日志里。证明写明是本仓库哪个流程、哪个 commit、哪次运行构建的；透明日志只能追加，事后删不掉、也改不了时间，连仓库管理员也不行。
+3. Cloudflare 上的 Worker 版本标记为对应的 commit。
+
+签发构建证明的任务单独运行：不检出代码、不安装任何依赖，只拿到构建清单和模块的哈希。安装依赖、构建、部署的任务都没有签发权限，所以即使某个 npm 依赖被投毒，也没法给别的代码伪造“本仓库构建”的证明。
+
+构建是可复现的：同一个 commit 在另一台机器上构建，得到的 Worker 代码和网站文件逐字节相同（部署时从外部拉取的游戏数据和头像除外，它们由清单和构建证明覆盖）。
+
+### 任何人都可以核对网站
+
+网站文件（包括在浏览器里加密数据的代码）是公开的，任何人都能下载下来对比。需要 Node 20+；验证构建证明还需要 [GitHub CLI](https://cli.github.com/)（`gh auth login`）：
+
+```sh
+git clone https://github.com/DuskXi/ArkRecord-Web && cd ArkRecord-Web
+node scripts/audit/verify-site.mjs            # 正式环境：验证清单的构建证明，核对代码文件和安全响应头
+node scripts/audit/verify-site.mjs --all      # 核对全部文件（含图片、字体、文字识别模型）
+```
+
+也可以自己从源码构建，和线上的清单对比：
+
+```sh
+git checkout <线上的 commit> && npm ci
+GITHUB_SHA=<线上的 commit> CLOUDFLARE_ENV=production npx vite build
+node scripts/audit/manifest.mjs --compare https://ark.kaltsit.dev/build-manifest.json
+```
+
+只验证构建证明：`gh attestation verify build-manifest.json --repo DuskXi/ArkRecord-Web --signer-workflow DuskXi/ArkRecord-Web/.github/workflows/deploy-production.yml`。
+
+### Worker 代码：公开的定时核对
+
+Worker 代码只有 Cloudflare 账号持有者能取回，所以由仓库里公开的 [`audit-deployment.yml`](.github/workflows/audit-deployment.yml) 代为核对：每小时一次，每次部署之后也立即运行一次，正式环境和测试环境都核对。
+
+- [`verify-site.mjs`](scripts/audit/verify-site.mjs)：同上，验证网站上的文件、清单和构建证明。
+- [`verify-worker.mjs`](scripts/audit/verify-worker.mjs)：用 Cloudflare 接口取回**最近 48 小时内上传的每一个 Worker 版本**的代码（不论是谁上传、有没有部署），每个模块都必须有本仓库部署流程签发的构建证明；正在运行的版本还必须和网站上的构建清单完全一致。按时间而不是按个数取版本，连续上传再多版本也挤不出核对范围；在网页后台修改密钥会产生新版本，但代码不变，所以同样能通过。
+- 结果写在每次运行的摘要里（Actions 页面公开）；完整报告作为附件保留 90 天，并且同样签发构建证明，记录在透明日志里。核对失败时运行会标成失败。
+
+核对流程不安装任何依赖（脚本只用 Node 自带模块）。Cloudflare 令牌只交给 `verify-worker.mjs`：它只发 GET 请求、只访问固定的几个 Worker 接口，不把令牌传给子进程；报告里只有版本号、时间、来源、哈希和构建来源，不包含账号 ID、邮箱、IP 和绑定的值。
+
+### 仍然存在的局限
+
+Cloudflare Workers 没有远程证明（可信执行环境）这类机制，所以这些措施让“绕过 Actions 部署别的代码”**会被发现、留下删不掉的记录**，但不能从密码学上阻止：
+
+- 定时核对每小时一次：临时换上别的代码、在下一次核对之前换回来，网站文件那部分可能发现不了；Worker 部分会在 48 小时内的每次核对里发现那个没有构建证明的版本。
+- 只对个别用户返回不同的网页（例如按 IP），别人核对时看到的是正常文件。想确认自己拿到的文件，可以自己运行 `verify-site.mjs`。
+- 定时核对用的 Cloudflare 令牌由运营者配置，理论上可以换成另一个账号的令牌。
+- 运营者可以停用定时核对；停用后透明日志里就不再有新的核对记录，这本身是可见的。
 
 ## 网页端加密的共同局限
 

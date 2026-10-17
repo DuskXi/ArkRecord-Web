@@ -1,0 +1,108 @@
+# 线上部署核对（说明见 SECURITY.md 的“对照线上代码”）：
+#   - 每小时一次，核对正式环境和测试环境（网站只核对代码文件）；
+#   - 每次部署之后由部署流程调用，核对刚部署的环境（网站的全部文件）；
+#   - 也可以在 Actions 页面手动运行。
+# 运行记录和摘要公开；每次的核对报告都签发构建证明，记录在 Sigstore 的公开透明日志里，删不掉、改不了时间。
+#
+# 安全：不安装任何依赖（核对脚本只用 Node 自带模块）；Cloudflare 令牌只交给只发 GET 请求的 verify-worker.mjs，
+# 它不会把令牌传给子进程，报告里不含账号 ID、邮箱、IP 和绑定的值。
+name: Audit deployment
+
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 核对哪个环境
+        type: choice
+        options: [production, preview]
+        default: production
+      scope:
+        description: 网站文件的核对范围
+        type: choice
+        options: [all, code]
+        default: all
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      expect-commit:
+        description: 刚部署的 commit（等它生效后再核对）
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # 给核对报告签发构建证明
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(inputs.environment && format('["{0}"]', inputs.environment) || '["production","preview"]') }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: 核对网站文件与构建清单
+        id: site
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_ENV: ${{ matrix.environment }}
+          EXPECT_COMMIT: ${{ inputs.expect-commit }}
+          SCOPE: ${{ (github.event_name == 'schedule' || inputs.scope == 'code') && 'code' || 'all' }}
+        run: |
+          args=(--env "$AUDIT_ENV" --report site.json --manifest-out build-manifest.json)
+          if [ "$SCOPE" = all ]; then args+=(--all); fi
+          if [ -n "$EXPECT_COMMIT" ]; then args+=(--expect-commit "$EXPECT_COMMIT"); fi
+          node scripts/audit/verify-site.mjs "${args[@]}"
+
+      - name: 核对 Cloudflare 上运行的 Worker 代码
+        id: worker
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_ENV: ${{ matrix.environment }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          args=(--env "$AUDIT_ENV" --report worker.json)
+          if [ -f build-manifest.json ]; then args+=(--manifest build-manifest.json); fi
+          node scripts/audit/verify-worker.mjs "${args[@]}"
+
+      - name: 汇总
+        env:
+          AUDIT_ENV: ${{ matrix.environment }}
+        run: node scripts/audit/summary.mjs --site site.json --worker worker.json --environment "$AUDIT_ENV" --out "audit-report-$AUDIT_ENV.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 为核对报告签发构建证明（公开透明日志）
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: audit-report-${{ matrix.environment }}.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit-report-${{ matrix.environment }}
+          path: audit-report-${{ matrix.environment }}.json
+          retention-days: 90
+
+      - name: 结果
+        if: steps.site.outcome != 'success' || steps.worker.outcome != 'success'
+        run: |
+          echo "::error::线上部署核对发现问题，见这次运行的摘要"
+          exit 1
