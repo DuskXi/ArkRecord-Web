@@ -74,8 +74,7 @@ function menu(a: Account): DropdownMenuItem[][] {
     />
     <div class="mb-3 rounded-(--ui-radius) border border-primary/30 bg-primary/5 p-4 text-xs leading-relaxed text-muted">
       <p>
-        在多个浏览器、多台设备之间合并同一个账号的记录。记录在你的浏览器里用<b class="text-highlighted">云同步密码</b>加密后才上传，服务器只保存密文，解不开；只知道 UID 的人拿不到任何东西。
-        <b class="text-highlighted">密码无法找回</b>，所以本地仍然是主副本，请继续定期导出备份。
+        在多个浏览器、多台设备之间合并同一个账号的记录。记录在你的浏览器里用<b class="text-highlighted">云同步密码</b>加密后才上传，服务器只保存密文，解不开；只知道 UID 的人拿不到任何东西。<b class="text-highlighted">密码无法找回</b>，所以本地仍然是主副本，请继续定期导出备份。
       </p>
       <p class="mt-1.5">
         <ULink :to="SECURITY_URL" target="_blank" class="text-primary">安全说明</ULink>
