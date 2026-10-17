@@ -71,7 +71,9 @@
 云同步（[cloud-sync.md](cloud-sync.md)）需要一个服务器端密钥 `SYNC_PEPPER`，**直接在 Cloudflare 后台设置，不进仓库，也不放进 GitHub Secrets**：
 
 1. Cloudflare 后台 → Workers & Pages → 选择 Worker（测试环境 `arkrecord-next`，正式环境 `arkrecord`）→ Settings → Variables and Secrets → Add；
-2. Type 选 **Secret**，Name 填 `SYNC_PEPPER`，Value 填一个 32 个字符以上的随机字符串（例如用密码管理器生成，或 `openssl rand -base64 32`）；
+2. 类型选 **Secret（中文界面是「密钥」）**，**不要选 Text（「文本」）**；Name 填 `SYNC_PEPPER`，Value 填一个 32 个字符以上的随机字符串（例如用密码管理器生成，或 `openssl rand -base64 32`）；
+   - 选成文本的话，任何能看后台的人都能看到它；而且下次 `wrangler deploy` 会把后台单独加的文本变量删掉，云端数据就再也解不开了。
+   - 添加后页面上会出现“更新您的 Wrangler 配置……”的黄色提示，**不用管**：密钥不能写进 `wrangler.jsonc`（那是公开仓库）。
 3. 两个环境用**不同**的值；正式环境的值**另外离线备份**（例如密码管理器）。丢了它，所有密码模式的云端数据都再也解不开（本地数据不受影响，用户可以用“覆盖”重建）。
 
 Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它。没有设置时，网站的云同步部分会提示“暂时不可用”，其他功能不受影响。第二阶段（无密码模式）还需要另一个 `SYNC_HG_SECRET`，到时再加。
