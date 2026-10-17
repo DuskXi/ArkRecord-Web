@@ -68,8 +68,9 @@ describe('鹰角 token 只在处理请求时的内存里', () => {
     const TOKEN = 'oauth-token-must-not-leak-0123456789'
     const upstream = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(OK), { status: 200 }))
     vi.stubGlobal('fetch', upstream)
-    const cloud = fakeCloud('test-pepper-0123456789abcdef0123456789abcdef')
-    const env = { CLOUD: cloud.namespace, SYNC_PEPPER: 'test-pepper-0123456789abcdef0123456789abcdef' } as never
+    const HG_SECRET = 'test-hg-secret-0123456789abcdef0123456789'
+    const cloud = fakeCloud('test-pepper-0123456789abcdef0123456789abcdef', HG_SECRET)
+    const env = { CLOUD: cloud.namespace, SYNC_PEPPER: 'test-pepper-0123456789abcdef0123456789abcdef', SYNC_HG_SECRET: HG_SECRET } as never
     const send = (op: string, fields: Record<string, unknown>, payload?: Uint8Array) =>
       worker.fetch(
         new Request(`https://ark-next.kaltsit.dev/api/cloud/v1/${op}`, {
@@ -83,21 +84,27 @@ describe('鹰角 token 只在处理请求时的内存里', () => {
     const snapshot = new Uint8Array(ENVELOPE_HEADER_BYTES + 16)
     snapshot.set([1, 5, 2, 1])
     const who = { hgToken: TOKEN, game: 'arknights', uid: '12345678' }
+    const hgSnapshot = new Uint8Array(ENVELOPE_HEADER_BYTES + 16)
+    hgSnapshot.set([1, 9, 2, 2])
     const responses = [
       await send('status', who),
       await send('claim', { ...who, authKey: toBase64Url(new Uint8Array(32).fill(1)), wrappedDek: toBase64Url(new Uint8Array(60)), kid: 5, requireHg: true }, snapshot),
       await send('status', who),
+      // 切换为无密码模式，再用鹰角 token 下载
+      await send('status', { ...who, kek: true }),
+      await send('claim', { ...who, mode: 'hg', wrappedDek: toBase64Url(new Uint8Array(60)), kid: 9 }, hgSnapshot),
+      await send('pull', { ...who, afterSeq: 0 }),
     ]
-    expect(responses.map((r) => r.status)).toEqual([200, 200, 200])
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 200, 200, 200, 200])
     // token 只用来请求写死的绑定列表地址
-    expect(upstream).toHaveBeenCalledTimes(3)
+    expect(upstream).toHaveBeenCalledTimes(6)
     for (const [url] of upstream.mock.calls) expect(String(url)).toMatch(/^https:\/\/binding-api-account-prod\.hypergryph\.com\/account\/binding\/v1\/binding_list\?/)
     const leaks = (text: string) => text.includes(TOKEN)
     for (const r of responses) {
       expect(leaks(await r.clone().text())).toBe(false)
       expect(leaks(JSON.stringify([...r.headers]))).toBe(false)
     }
-    expect(cloud.requests).toHaveLength(3)
+    expect(cloud.requests).toHaveLength(6)
     for (const req of cloud.requests) {
       expect(leaks(new TextDecoder().decode(req.body))).toBe(false)
       expect(leaks(JSON.stringify([...req.headers]))).toBe(false)

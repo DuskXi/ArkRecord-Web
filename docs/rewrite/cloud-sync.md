@@ -1,6 +1,6 @@
 # 云同步（跨设备加密同步）设计草案
 
-> 状态：**第一阶段（密码模式 + 可选的鹰角 token 双重验证）已实现**，代码位置见第 20 节；第二阶段（无密码模式）尚未实现。第 16 节的实测还有几项需要在真实设备上完成。
+> 状态：**第一阶段（密码模式 + 可选的鹰角 token 双重验证）和第二阶段（无密码模式）都已实现**，代码位置见第 20 节。第 16 节的实测还有几项需要在真实设备上完成。
 >
 > 命名：网站里的“同步”已经指“从鹰角拉取记录”，所以这个功能叫 **云同步**，避免混淆。
 
@@ -409,6 +409,14 @@ OPRF（RFC 9497）可以让服务器参与密码派生、又看不到密码。�
 - 鹰角接口出问题时，无密码模式就用不了（fail closed）。
 - OAuth token 失效后就不能再用来证明所有权，它的有效期需要实测（第 16 节）。
 
+实现（第二阶段）：
+
+- 开通：浏览器先查询状态并请求 `kek: true`，服务器核实鹰角 token 后在状态里带上 `KEK_hg`；浏览器生成新 DEK，用 `KEK_hg` 包裹，`claim` 时带 `mode: 'hg'`、不带 `authKey`。DO 里 `verifier` 留空，`require_hg` 为 1。
+- 下载：`pull` 不带 `authKey`，Worker 核实鹰角 token；DO 按账号的模式检查（无密码模式只认核实过的鹰角 token），响应里带上 `mode` 和 `KEK_hg`。
+- 浏览器不保存任何钥匙：每次云同步都用响应里的 `KEK_hg` 解开 DEK，只在内存里用。
+- 不能改密码、不能关双重验证（返回 `wrong_mode`）；没有核实鹰角 token 的请求与密码错误返回同样的 401，不计失败次数。
+- 服务器没有配置 `SYNC_HG_SECRET` 时返回 `hg_mode_unavailable`，`/info` 里的 `hgAvailable` 为假，界面不提供无密码模式。
+
 ### 8.3 密钥
 
 ```
@@ -426,8 +434,15 @@ KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ l
 ### 8.4 切换模式
 
 - 两个方向随时都可以切换，都用“覆盖”（7.10）：换新 DEK，上传完整快照。
+- 实现（`switchCloudMode`）：先把云端的记录合并进本地，再覆盖。这样别的设备已经上传的记录不会丢；别的设备还没上传的，在它们重新启用后补传。合并的方式按顺序：
+  1. 这台设备上有这个账号的钥匙（或者是无密码模式）：云同步一次；
+  2. 云端是无密码模式：用鹰角 token 取得钥匙，下载并合并（`unlockHgCloud`）；
+  3. 云端是密码模式、这台设备上没有钥匙：用户输入**现在的**云同步密码解锁并合并；
+  4. 用户不知道现在的密码：只有明确勾选“不合并，直接覆盖”才继续，云端有、本地没有的记录会丢失，界面上写明。
 - 从无密码模式切到密码模式时，必须换新 DEK，因为旧 DEK 服务器能算出来。
 - 从密码模式切到无密码模式时，要明确警告。
+- **同步配置和云端模式不一致**（例如同步配置是无密码模式，云端账号是密码模式）：一键启用、一键解锁不会去解锁旧模式，也不会报“云端没有这个模式的数据”，而是按同步配置**切换模式（覆盖云端）**。修改同步配置时，已开通、模式不同的账号会列出来，保存后（默认开启、可关闭）一并切换。
+- 凡是会覆盖云端的操作，发送鹰角 token 前的确认窗口最上面都有红色警告“会用这个浏览器的数据覆盖云端”，确认按钮也是红色；选择不合并时，警告和步骤都写明“不合并”。
 
 ## 9. 数据格式与密度
 
@@ -455,6 +470,8 @@ KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ l
 - 可推算的字段只在与推算结果完全相同时才省略（见 9.3 的“全覆盖性”）。
 - 源石/充值：`kind`、`key`、`ts` 按列存，`raw` 按 RFC 8785 规范化。终末地卡池信息只存记录里用到的卡池。
 - 账号信息（昵称、渠道、观察时间）放在头部。
+- 截图识别的已拥有干员（`roster`，两个游戏都有）：每名干员一条 `{itemId, name, copies, potential, observedAt, importedAt, source}`，
+  按 `itemId` 排序、RFC 8785 规范化。**格式版本 2**；没有已拥有干员时一律写成版本 1，以前的网页也能读（规范唯一：版本 2 必须有这一项，版本 1 不能有）。
 - 云同步**不复用导出文件格式**：导出格式导入终末地记录时会把 `source` 改成 `import`，不是无损的。云同步直接对本地表的字段编码。
 
 ### 9.3 编码规范：四个性质
@@ -611,6 +628,7 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 | 源石 / 充值 | 新接口格式 > 旧版格式 → 规范编码字节序更小的 |
 | 账号信息（昵称、渠道） | 观察时间更新的 → 规范编码字节序更小的 |
 | 终末地卡池信息 | `fetchedAt` 更新的 → 规范编码字节序更小的 |
+| 已拥有干员（截图识别） | `observedAt`（截图时间）更新的 → `importedAt`（导入时间）更新的 → 规范编码字节序更大的 |
 
 在全序上取最大值，天然满足幂等、交换、结合。
 
@@ -632,8 +650,8 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 
 | 接口 | 证明 | 用途 |
 |---|---|---|
-| `/api/cloud/v1/status` | 鹰角 token | 检测云端状态：有没有开通、哪种模式、是否开启双重验证（只读，不返回数据）。开通（不是覆盖）之前浏览器先查一次，已开通时不会误覆盖 |
-| `/api/cloud/v1/claim` | 鹰角 token | 开通 / 覆盖：设定模式和新密码，上传完整快照（7.10、8.4） |
+| `/api/cloud/v1/status` | 鹰角 token | 检测云端状态：有没有开通、哪种模式、是否开启双重验证（只读，不返回数据）。开通（不是覆盖）之前浏览器先查一次，已开通时不会误覆盖。带 `kek: true` 时同时返回这个账号的 `KEK_hg`（开通无密码模式用） |
+| `/api/cloud/v1/claim` | 鹰角 token | 开通 / 覆盖：设定模式（`mode: 'hg'` 为无密码模式，不带 `authKey`）和新钥匙，上传完整快照（7.10、8.4） |
 | `/api/cloud/v1/pull` | `authKey` 或鹰角 token | 下载 `afterSeq` 之后的批次 |
 | `/api/cloud/v1/push` | `authKey` 或鹰角 token | 上传 delta；或者上传 snapshot，并注明覆盖到哪个 seq |
 | `/api/cloud/v1/rekey` | 旧 `authKey` | 知道旧密码时改密码（只换包裹） |
@@ -724,7 +742,7 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 
 ## 18. 部署需要新增的配置（实现时再加）
 
-- Worker secrets：`SYNC_PEPPER`、`SYNC_HG_SECRET`。
+- Worker secrets：`SYNC_PEPPER`、`SYNC_HG_SECRET`（无密码模式；没有设置时只能用密码模式）。
   - 预览和生产各一套，各自是 32 字节随机数。
   - 直接在 Cloudflare 后台设置为 Secret 类型，不经过 GitHub。`wrangler deploy` 不会覆盖已有的 secret。
   - **生产环境的这几个值必须另外离线备份**（例如密码管理器）。丢了 `SYNC_PEPPER`，所有密码模式的云端数据都再也解不开（本地不受影响，可以用“覆盖”重建）；丢了 `SYNC_HG_SECRET`，无密码模式的云端数据也一样。
@@ -764,7 +782,8 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 | 发送 token 前的确认（4.4） | `src/lib/cloud/consent.ts`、`src/components/cloud/TokenConsentDialog.vue`、`TokenDisclosure.vue` | `src/lib/cloud/consent.test.ts` |
 | 检测云端状态（11） | `worker/cloud.ts`、`worker/cloud-vault.ts`、`src/lib/cloud/engine.ts` 的 `cloudStatus` | `worker/cloud.test.ts`、`worker/cloud-vault.test.ts`、`src/lib/cloud/engine.test.ts` |
 | 同步配置（7.8） | `src/lib/cloud/profile.ts`、`src/stores/cloud.ts` 的 `quickStart` | `src/lib/cloud/profile.test.ts` |
-| 界面 | `src/components/cloud/*`、`src/stores/cloud.ts`、数据页、关于页 | 本地浏览器实测 |
+| 无密码模式（8）：KEK_hg、按模式认证、切换 | `worker/cloud-vault.ts` 的 `HgKeys`、`worker/cloud.ts`、`src/lib/cloud/engine.ts` 的 `enableCloud(mode: 'hg')`、`unlockHgCloud`、`switchCloudMode` | `worker/cloud-vault.test.ts`、`worker/cloud.test.ts`、`worker/hg-verify.test.ts`、`src/lib/cloud/engine.test.ts` |
+| 界面 | `src/components/cloud/*`（无密码模式的保护范围：`HgModeNotice.vue`）、`src/stores/cloud.ts`、数据页、关于页 | 本地浏览器实测 |
 
 实现中补充的细节：
 

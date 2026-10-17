@@ -1,7 +1,7 @@
 /**
  * 云同步接口的调用（服务器端见 worker/cloud.ts）。请求体是二进制分帧：[头部 JSON][数据]，见 shared/cloud-protocol.ts。
  */
-import { CLOUD_PREFIX, type CloudOp, frame, splitEnvelopes, unframe } from '../../../shared/cloud-protocol'
+import { type CloudMode, CLOUD_PREFIX, type CloudOp, frame, splitEnvelopes, unframe } from '../../../shared/cloud-protocol'
 
 export class CloudApiError extends Error {
   constructor(
@@ -33,6 +33,10 @@ function messageOf(status: number, code: string, retryAfter?: number): string {
       return '云端数据超过了每个账号的上限。'
     case 'cloud_unavailable':
       return '云同步暂时不可用。'
+    case 'hg_mode_unavailable':
+      return '服务器还没有配置无密码模式，请使用密码模式。'
+    case 'wrong_mode':
+      return '这个账号用的是无密码模式，没有密码可改，也不能关闭鹰角 token 验证。'
     case 'network':
       return '网络连接失败，请检查网络后重试。'
     default:
@@ -75,17 +79,26 @@ function proofHeader(proof: Proof): Record<string, unknown> {
   }
 }
 
-export type CloudStatus = { exists: false } | { exists: true; mode: 'password'; requireHg: boolean }
+export type CloudStatus = ({ exists: false } | { exists: true; mode: CloudMode; requireHg: boolean }) & {
+  /** 无密码模式的 KEK_hg（只在请求了 kek 时返回） */
+  hgKek?: string
+}
 
-/** 查询这个账号在云端有没有开通、用的是哪种方式：必须带鹰角 token（服务器核实账号是你的才回答） */
-export async function apiStatus(hg: NonNullable<Proof['hg']>): Promise<CloudStatus> {
-  const res = await call('status', proofHeader({ hg }))
+/**
+ * 查询这个账号在云端有没有开通、用的是哪种方式：必须带鹰角 token（服务器核实账号是你的才回答）。
+ * kek：准备开通无密码模式时，顺便取回用来包裹新 DEK 的 KEK_hg。
+ */
+export async function apiStatus(hg: NonNullable<Proof['hg']>, options: { kek?: boolean } = {}): Promise<CloudStatus> {
+  const res = await call('status', { ...proofHeader({ hg }), ...(options.kek ? { kek: true } : {}) })
   const body = (await res.json()) as CloudStatus
   if (typeof body?.exists !== 'boolean') throw new CloudApiError(200, 'bad_response', '云端返回的数据格式不对。')
   return body
 }
 
 export interface PullMeta {
+  mode?: CloudMode
+  /** 无密码模式：解开 wrappedDek 用的 KEK_hg */
+  hgKek?: string
   kid: number
   requireHg: boolean
   wrappedDek: string
@@ -110,7 +123,7 @@ export async function apiPush(proof: Proof, envelope: Uint8Array, upToSeq?: numb
 
 export async function apiClaim(
   proof: Proof,
-  body: { authKey: string; wrappedDek: string; kid: number; requireHg: boolean },
+  body: { authKey: string; wrappedDek: string; kid: number; requireHg: boolean } | { mode: 'hg'; wrappedDek: string; kid: number },
   envelope: Uint8Array,
 ): Promise<{ seq: number }> {
   const res = await call('claim', { ...proofHeader(proof), ...body }, envelope)
@@ -129,10 +142,18 @@ export async function apiDelete(proof: Proof): Promise<void> {
   await call('delete', proofHeader(proof))
 }
 
-export async function apiInfo(): Promise<{ protocol: number; commit: string; available: boolean } | null> {
+export interface CloudInfo {
+  protocol: number
+  commit: string
+  available: boolean
+  /** 服务器是否配置了无密码模式 */
+  hgAvailable?: boolean
+}
+
+export async function apiInfo(): Promise<CloudInfo | null> {
   try {
     const res = await fetch(`${CLOUD_PREFIX}info`)
-    return res.ok ? ((await res.json()) as { protocol: number; commit: string; available: boolean }) : null
+    return res.ok ? ((await res.json()) as CloudInfo) : null
   } catch {
     return null
   }

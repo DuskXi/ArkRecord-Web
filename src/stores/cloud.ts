@@ -8,15 +8,32 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useLiveQuery } from '@/composables/useLiveQuery'
-import { CloudApiError, type CloudStatus } from '@/lib/cloud/api'
+import { apiInfo, CloudApiError, type CloudStatus } from '@/lib/cloud/api'
 import { type Consent, ConsentError, cloudOAuthToken, revokeConsent } from '@/lib/cloud/consent'
-import { cloudStatus, CloudSyncError, enableCloud, syncCloud, type SyncSummary, unlockCloud } from '@/lib/cloud/engine'
-import { loadProfile, profileInfo, type SyncProfileInfo } from '@/lib/cloud/profile'
-import { type CloudState, keysOf } from '@/lib/cloud/state'
+import { cloudStatus, CloudSyncError, enableCloud, switchCloudMode, syncCloud, type SyncSummary, unlockCloud, unlockHgCloud } from '@/lib/cloud/engine'
+import { loadProfile, profileInfo, type SyncProfile, type SyncProfileInfo } from '@/lib/cloud/profile'
+import { type CloudState, isReady } from '@/lib/cloud/state'
 import { db } from '@/lib/db'
 import type { Account, Game } from '@/lib/types'
+import type { CloudMode } from '../../shared/cloud-protocol'
 
-export type CloudDialogMode = 'enable' | 'overwrite' | 'unlock' | 'restore' | 'password' | 'twofactor' | 'delete' | 'profile'
+export const MODE_LABEL: Record<CloudMode, string> = { password: '密码模式', hg: '无密码模式' }
+
+/** 切换模式会覆盖云端：确认时醒目地写出来 */
+/** merge：false 表示用户选择了不合并、直接覆盖 */
+export function switchWarning(to: CloudMode, merge = true): { title: string; description: string } {
+  return {
+    title: `会用这个浏览器的数据覆盖云端，切换为${MODE_LABEL[to]}`,
+    description:
+      (merge
+        ? '先下载云端的记录并合并到这个浏览器，再换一把新钥匙，用这个浏览器的数据替换云端的全部数据。'
+        : '不合并云端的记录：直接换一把新钥匙，用这个浏览器的数据替换云端的全部数据，云端有、这个浏览器里没有的记录会丢失。') +
+      `其他设备上的这个账号需要重新启用（${to === 'hg' ? '用鹰角登录连接' : '输入新的云同步密码'}），它们还没上传的记录在重新启用后会补传。` +
+      (to === 'hg' ? '无密码模式下，本站运营者和拿到你有效鹰角 token 的人技术上能读取你的云端记录。' : ''),
+  }
+}
+
+export type CloudDialogMode = 'enable' | 'overwrite' | 'unlock' | 'restore' | 'password' | 'twofactor' | 'delete' | 'profile' | 'switch'
 
 export interface CloudDialog {
   mode: CloudDialogMode
@@ -27,6 +44,10 @@ export interface CloudDialog {
   note?: string
   /** profile：保存同步配置之后接着一键启用这个账号 */
   continueWith?: string
+  /** unlock / restore：预先选好“无密码模式” */
+  hg?: boolean
+  /** switch：切换到哪种模式（默认切换到另一种） */
+  to?: CloudMode
 }
 
 /** 发送鹰角 token 前的确认弹窗（TokenConsentDialog.vue） */
@@ -37,6 +58,10 @@ export interface ConsentRequest {
   accounts: Account[]
   /** 刚才从鹰角同步记录时用过的账号 token（只在内存里） */
   accountToken?: string
+  /** 醒目的提示（例如切换模式会覆盖云端） */
+  warning?: { title: string; description: string }
+  /** 涉及无密码模式：服务器核实后会给出解开数据的钥匙 */
+  hg?: boolean
   resolve: (consent: Consent | null) => void
 }
 
@@ -57,7 +82,8 @@ export const useCloudStore = defineStore('cloud', () => {
   const keysVersion = ref(0)
   const byAccount = computed(() => {
     void keysVersion.value
-    return new Map(states.value.map((s) => [s.accountId, { state: s, hasKeys: keysOf(s) !== null }]))
+    // hasKeys：这台设备上能直接云同步（无密码模式不需要钥匙，每次用鹰角 token）
+    return new Map(states.value.map((s) => [s.accountId, { state: s, hasKeys: isReady(s) }]))
   })
   const busy = ref<string | null>(null)
   /** 正在处理的账号的进度（由密码计算钥匙） */
@@ -67,6 +93,13 @@ export const useCloudStore = defineStore('cloud', () => {
   /** 点击“检测云端状态”得到的结果（只在内存里） */
   const detected = ref(new Map<string, Detected>())
   const profile = ref<SyncProfileInfo | null>(null)
+  /** 服务器是否配置了云同步、无密码模式（null：还不知道） */
+  const available = ref<boolean | null>(null)
+  const hgAvailable = ref<boolean | null>(null)
+  void apiInfo().then((info) => {
+    available.value = info ? info.available : null
+    hgAvailable.value = info ? Boolean(info.hgAvailable) : null
+  })
 
   function touchKeys() {
     keysVersion.value++
@@ -113,9 +146,15 @@ export const useCloudStore = defineStore('cloud', () => {
     if (entry.state.requireHg) {
       consent = await askConsent({
         title: '云同步需要核实账号',
-        steps: ['这个账号开启了双重验证：每次云同步都要用鹰角 token 向服务器证明账号是你的', '下载云端的新记录并合并，上传本地多出来的记录'],
+        steps: [
+          entry.state.mode === 'hg'
+            ? '这个账号用的是无密码模式：每次云同步都要用鹰角 token 向服务器证明账号是你的，服务器核实后给出解开数据的钥匙'
+            : '这个账号开启了双重验证：每次云同步都要用鹰角 token 向服务器证明账号是你的',
+          '下载云端的新记录并合并，上传本地多出来的记录',
+        ],
         accounts: [account],
         accountToken: options.accountToken,
+        hg: entry.state.mode === 'hg',
       })
       if (!consent) return null
     }
@@ -136,7 +175,7 @@ export const useCloudStore = defineStore('cloud', () => {
     } catch (error) {
       if (error instanceof CloudSyncError && (error.code === 'need_password' || error.code === 'auth_changed')) {
         touchKeys()
-        toast.add({ title: '需要输入云同步密码', description: error.message, color: 'warning', icon: 'i-lucide-key-round' })
+        toast.add({ title: error.code === 'auth_changed' ? '需要重新启用云同步' : '需要输入云同步密码', description: error.message, color: 'warning', icon: 'i-lucide-key-round' })
         open('unlock', account.id)
       } else {
         toast.add({ title: '云同步失败', description: describeError(error), color: 'error', icon: 'i-lucide-cloud-off' })
@@ -158,7 +197,7 @@ export const useCloudStore = defineStore('cloud', () => {
     if (entry.state.requireHg) {
       toast.add({
         title: '要顺便云同步吗？',
-        description: `${account.nickName} 开启了双重验证，云同步需要发送鹰角 token，所以不会自动进行。`,
+        description: `${account.nickName} ${entry.state.mode === 'hg' ? '用的是无密码模式' : '开启了双重验证'}，云同步需要发送鹰角 token，所以不会自动进行。`,
         color: 'neutral',
         icon: 'i-lucide-cloud',
         duration: 15_000,
@@ -199,22 +238,31 @@ export const useCloudStore = defineStore('cloud', () => {
       const found = targets.filter((a) => detected.value.get(a.id)?.status.exists).length
       toast.add({
         title: '检测完成',
-        description: found ? `${found} 个账号已在云端开通，可以输入密码${profile.value ? '或一键启用' : ''}。` : '这些账号都还没有在云端开通。',
+        description: found
+          ? `${found} 个账号已在云端开通，可以${targets.some((a) => isHgDetected(a.id)) ? '直接连接（无密码模式）、' : ''}输入密码${profile.value ? '或一键启用' : ''}。`
+          : '这些账号都还没有在云端开通。',
         color: 'success',
         icon: 'i-lucide-search-check',
       })
     }
   }
 
+  function isHgDetected(accountId: string): boolean {
+    const d = detected.value.get(accountId)?.status
+    return Boolean(d?.exists && d.mode === 'hg')
+  }
+
   /**
-   * 用同步配置一键开始：云端没开通就开通，开通了就解锁并合并。
+   * 用同步配置一键开始：云端没开通就开通，开通了就解锁并合并（无密码模式的账号直接连接，不需要密码）。
    * 需要鹰角 token 的步骤（检测、开通、双重验证账号的解锁）会先弹出确认，一次确认涵盖整个流程。
    */
   async function quickStart(account: Account): Promise<void> {
     if (busy.value) return
     const entry = byAccount.value.get(account.id)
     const config = await loadProfile()
-    if (!config) {
+    // 已知是无密码模式的账号：不需要同步配置，也不需要密码
+    const hgKnown = entry ? entry.state.mode === 'hg' : isHgDetected(account.id)
+    if (!config && !hgKnown) {
       // 还没有同步配置：先设置（只保存在这台设备上），保存后接着为这个账号启用
       open(
         'profile',
@@ -225,8 +273,15 @@ export const useCloudStore = defineStore('cloud', () => {
       )
       return
     }
-    let status: CloudStatus | null = entry ? { exists: true, mode: 'password', requireHg: entry.state.requireHg } : (detected.value.get(account.id)?.status ?? null)
+    let status: CloudStatus | null = entry
+      ? { exists: true, mode: entry.state.mode, requireHg: entry.state.requireHg }
+      : (detected.value.get(account.id)?.status ?? null)
+    // 同步配置的模式和云端不一致：按同步配置切换（覆盖云端），见 switchToProfile
+    type Existing = Extract<CloudStatus, { exists: true }>
+    const mismatched = (s: CloudStatus | null): boolean => Boolean(config && s?.exists && s.mode !== config.mode)
+    if (mismatched(status)) return switchToProfile(account, config!, status as Existing)
     const needsToken = !status || !status.exists || status.requireHg
+    const enableStep = config?.mode === 'hg' ? '按同步配置用无密码模式开通（记录在浏览器里加密后上传；服务器技术上能解密）' : '按同步配置开通（记录在浏览器里加密后上传）'
     let consent: Consent | null = null
     if (needsToken) {
       consent = await askConsent({
@@ -234,27 +289,40 @@ export const useCloudStore = defineStore('cloud', () => {
         steps: !status
           ? [
               '用鹰角 token 向服务器证明账号是你的，并检测云端状态',
-              '云端还没开通：按同步配置开通（记录在浏览器里加密后上传）',
-              '云端已经开通：用同步配置里的密码解锁，下载并合并',
+              `云端还没开通：${enableStep}`,
+              `云端已经开通：模式和同步配置一样就${config?.mode === 'hg' ? '直接连接' : '用同步配置里的密码解锁'}，下载并合并；不一样时会先再问你一次（切换模式要覆盖云端）`,
             ]
           : !status.exists
-            ? ['用鹰角 token 向服务器证明账号是你的', '按同步配置开通（记录在浏览器里加密后上传）']
-            : ['这个账号开启了双重验证：用鹰角 token 向服务器证明账号是你的', '用同步配置里的密码解锁，下载并合并'],
+            ? ['用鹰角 token 向服务器证明账号是你的', enableStep]
+            : status.mode === 'hg'
+              ? ['这个账号用的是无密码模式：用鹰角 token 向服务器证明账号是你的，服务器核实后给出解开数据的钥匙', '下载并合并，上传本地多出来的记录']
+              : ['这个账号开启了双重验证：用鹰角 token 向服务器证明账号是你的', '用同步配置里的密码解锁，下载并合并'],
         accounts: [account],
+        hg: config?.mode === 'hg' || (status?.exists === true && status.mode === 'hg'),
       })
       if (!consent) return
     }
     busy.value = account.id
     progress.value = null
     const onProgress = (fraction: number) => (progress.value = fraction)
+    /** 检测之后才发现模式不一致：结束这一步，再单独确认切换 */
+    let switchTo: Existing | null = null
     try {
       const token = () => cloudOAuthToken(consent!, account.id, account)
       if (!status) {
         status = await cloudStatus(account, await token())
         setDetected(account.id, status)
       }
-      if (!status.exists) {
+      if (mismatched(status)) {
+        switchTo = status as Existing
+      } else if (!status.exists) {
+        if (!config) {
+          // 检测结果过期了（云端已经被删除）：先设置同步配置
+          open('profile', undefined, undefined, `「${account.nickName}」在云端还没有开通。保存同步配置后接着开通。`, account.id)
+          return
+        }
         await enableCloud(account, {
+          mode: config.mode,
           password: config.password,
           oauthToken: await token(),
           requireHg: config.requireHg,
@@ -262,7 +330,23 @@ export const useCloudStore = defineStore('cloud', () => {
           overwrite: false,
           onProgress,
         })
-        toast.add({ title: '已开通云同步', description: `${account.nickName}：按同步配置开通完成。`, color: 'success', icon: 'i-lucide-cloud-check' })
+        toast.add({
+          title: '已开通云同步',
+          description: `${account.nickName}：按同步配置开通完成${config.mode === 'hg' ? '（无密码模式）' : ''}。`,
+          color: 'success',
+          icon: 'i-lucide-cloud-check',
+        })
+      } else if (status.mode === 'hg') {
+        const result = await unlockHgCloud(account, { oauthToken: await token() })
+        toast.add({
+          title: '云同步完成',
+          description: `${account.nickName}（无密码模式）：从云端新增 ${result.downloaded} 条，上传 ${result.uploaded} 条`,
+          color: 'success',
+          icon: 'i-lucide-cloud-check',
+        })
+      } else if (!config) {
+        open('unlock', account.id, undefined, '这个账号用的是密码模式，请输入它的云同步密码。')
+        return
       } else {
         const result = await unlockCloud(account, {
           password: config.password,
@@ -293,6 +377,101 @@ export const useCloudStore = defineStore('cloud', () => {
       progress.value = null
       revokeConsent(consent)
     }
+    if (switchTo && config) await switchToProfile(account, config, switchTo)
+  }
+
+  /**
+   * 一键启用时云端的模式和同步配置不一样：按同步配置切换，也就是先合并云端数据、再用新的方式覆盖云端。
+   * 能合并时（这台设备上能云同步这个账号，或者云端是无密码模式）弹出醒目的确认后直接切换；
+   * 云端是密码模式、这台设备上又没有钥匙时，打开切换对话框：输入现在的密码合并，或者明确选择直接覆盖。
+   */
+  async function switchToProfile(account: Account, config: SyncProfile, status: Extract<CloudStatus, { exists: true }>): Promise<void> {
+    const entry = byAccount.value.get(account.id)
+    const canMerge = status.mode === 'hg' || Boolean(entry && entry.state.mode === status.mode && entry.hasKeys)
+    if (!canMerge) {
+      dialog.value = {
+        mode: 'switch',
+        accountId: account.id,
+        to: config.mode,
+        note: `同步配置是${MODE_LABEL[config.mode]}，这个账号在云端是${MODE_LABEL[status.mode]}，所以要按同步配置切换模式（覆盖云端）；这台设备上没有这个账号的钥匙，需要先输入现在的云同步密码合并云端数据，或者选择不合并、直接覆盖。`,
+      }
+      return
+    }
+    await switchAccounts([account], config)
+  }
+
+  /**
+   * 把账号切换为同步配置的模式（覆盖云端）：一次确认涵盖全部账号，确认窗口醒目地写出会覆盖云端。
+   * 需要先输入密码才能合并云端数据的账号跳过，并提示在它那一行单独切换。
+   */
+  async function switchAccounts(accounts: Account[], config?: SyncProfile | null): Promise<void> {
+    config ??= await loadProfile()
+    if (!config || busy.value || !accounts.length) return
+    const to = config.mode
+    const consent = await askConsent({
+      title: accounts.length > 1 ? `把 ${accounts.length} 个账号切换为${MODE_LABEL[to]}` : `切换为${MODE_LABEL[to]}`,
+      steps: [
+        '用鹰角 token 向服务器证明账号是你的',
+        '下载云端的记录，合并到这个浏览器（别的设备上传过的记录不会丢）',
+        `换一把新钥匙，用这个浏览器的数据覆盖云端，切换为${MODE_LABEL[to]}${to === 'password' ? '（使用同步配置里的密码）' : ''}`,
+      ],
+      accounts,
+      warning: switchWarning(to),
+      hg: true,
+    })
+    if (!consent) return
+    const done: string[] = []
+    const skipped: Account[] = []
+    const failed: string[] = []
+    try {
+      for (const a of accounts) {
+        busy.value = a.id
+        progress.value = null
+        try {
+          const result = await switchCloudMode(a, {
+            to,
+            password: config.password,
+            oauthToken: await cloudOAuthToken(consent, a.id, a),
+            requireHg: config.requireHg,
+            remember: config.remember,
+            onProgress: (fraction) => (progress.value = fraction),
+          })
+          done.push(result.created ? `${a.nickName}（云端原来没有开通，已直接开通）` : a.nickName)
+        } catch (error) {
+          if (error instanceof CloudSyncError && error.code === 'need_password') skipped.push(a)
+          else if (error instanceof CloudSyncError && error.code === 'wrong_mode') done.push(a.nickName)
+          else failed.push(`${a.nickName}：${describeError(error)}`)
+        }
+      }
+    } finally {
+      busy.value = null
+      progress.value = null
+      revokeConsent(consent)
+      touchKeys()
+    }
+    if (done.length) {
+      toast.add({
+        title: `已切换为${MODE_LABEL[to]}`,
+        description: `${done.join('、')}。其他设备需要重新启用（${to === 'hg' ? '用鹰角登录连接' : '输入新的云同步密码'}）。`,
+        color: 'success',
+        icon: 'i-lucide-cloud-check',
+        duration: 10_000,
+      })
+    }
+    if (skipped.length) {
+      toast.add({
+        title: '有账号需要先输入密码',
+        description: `${skipped.map((a) => a.nickName).join('、')}：这台设备上没有它的钥匙，切换前要先输入现在的云同步密码合并云端数据（不知道密码也可以选择直接覆盖）。${skipped.length > 1 ? '请在它那一行的“…”里选择切换。' : ''}`,
+        color: 'warning',
+        icon: 'i-lucide-key-round',
+        duration: 15_000,
+        actions:
+          skipped.length === 1
+            ? [{ label: '切换', icon: 'i-lucide-arrow-left-right', color: 'warning', variant: 'soft', onClick: () => (dialog.value = { mode: 'switch', accountId: skipped[0]!.id, to }) }]
+            : undefined,
+      })
+    }
+    if (failed.length) toast.add({ title: '切换失败', description: failed.join('；'), color: 'error', icon: 'i-lucide-cloud-off', duration: 15_000 })
   }
 
   return {
@@ -304,6 +483,8 @@ export const useCloudStore = defineStore('cloud', () => {
     consentRequest,
     detected,
     profile,
+    available,
+    hgAvailable,
     open,
     askConsent,
     setDetected,
@@ -311,6 +492,7 @@ export const useCloudStore = defineStore('cloud', () => {
     afterHgSync,
     detect,
     quickStart,
+    switchAccounts,
     refreshProfile,
     touchKeys,
   }

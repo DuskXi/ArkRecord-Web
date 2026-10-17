@@ -26,7 +26,7 @@ export interface PullEvent {
   /** 是否适用主保底模型（用于运气百分位） */
   mainModel: boolean
   isNew: boolean
-  /** 是否计入保底（终末地的免费十连、赠送条目不计入） */
+  /** 是否计入保底（终末地的免费十连不计入） */
   countsForPity: boolean
   /** 6★ 是否为当期 UP；UP 名单未知时为 null */
   isUp: boolean | null
@@ -124,8 +124,15 @@ function efIsUp(p: EfPull, info: EfPoolInfo | undefined, meta: EfMeta | undefine
   return null
 }
 
+/** 终末地的赠送条目（信物赠礼、寻访情报书等）：不是抽出来的，见 gifts.ts */
+export function isGift(p: Pick<EfPull, 'kind'>): boolean {
+  return typeof p.kind === 'string' && p.kind.startsWith('gift')
+}
+
+/** 终末地的寻访事件：只有抽出来的（含免费十连），赠送条目另见 gifts.ts 的 endfieldGifts */
 export function normalizeEndfield(pulls: EfPull[], pools: Map<string, EfPoolInfo>, meta?: EfMeta): PullEvent[] {
   return pulls
+    .filter((p) => !isGift(p))
     .map((p) => {
       const info = pools.get(p.poolId)
       const weapon = p.type === 'weapon'

@@ -43,7 +43,8 @@
       {
         "allow": [
           "__APP_VERSION__",
-          "__BUILD_COMMIT__"
+          "__BUILD_COMMIT__",
+          "__OCR_BASE__"
         ]
       }
     ]

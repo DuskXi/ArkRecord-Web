@@ -14,13 +14,21 @@
  *   - deleteCloud：删除云端数据（忘记密码时可以只用鹰角 token）。
  *   - forgetCloud：只删除这台设备上的状态和钥匙。
  *
+ * 无密码模式（mode = 'hg'，不推荐，cloud-sync.md 8）：没有密码；每个请求都带鹰角 token，服务器核实后给出 KEK_hg，
+ * 浏览器用它解开 DEK。这台设备上不保存任何钥匙。
+ *   - enableCloud(mode: 'hg')：开通 / 覆盖为无密码模式；
+ *   - unlockHgCloud：在新设备上连接一个无密码模式的账号（不需要密码）；
+ *   - switchCloudMode：两种模式互相切换（先合并云端数据，再用新钥匙覆盖）。
+ *
  * 合并走与从鹰角同步、导入文件相同的规则（merge.ts），所以重复下载、批次乱序、失败重试都不影响结果。
  */
 import {
   type CloudGame,
+  type CloudMode,
   COMPACT_AT,
   computeLocator,
   fromBase64Url,
+  HG_KEK_BYTES,
   MAX_ENVELOPE_BYTES,
   toBase64Url,
 } from '../../../shared/cloud-protocol'
@@ -41,10 +49,10 @@ import {
   type PullMeta,
 } from './api'
 import { type CloudDataset, CodecError, decodeDatasetBytes, encodeDatasetBytes, fingerprint, UnsupportedVersionError } from './codec'
-import { generateDek, newBatchId, openEnvelope, passwordKeys, randomKid, sealEnvelope, unwrapDek, wrapDek } from './crypto'
+import { generateDek, hgKekKey, newBatchId, openEnvelope, passwordKeys, randomKid, sealEnvelope, unwrapDek, wrapDek } from './crypto'
 import { applyDataset, readLocalDataset, recordCount, recordHashes, subset } from './dataset'
 import { checkPassword } from './password'
-import { type CloudState, dropKeys, keysOf, loadState, removeState, saveState } from './state'
+import { type CloudState, dropKeys, isReady, keysOf, loadState, removeState, saveState } from './state'
 
 export type CloudSyncErrorCode =
   /** 这台设备上没有保存钥匙，需要输入密码 */
@@ -67,6 +75,8 @@ export type CloudSyncErrorCode =
   | 'not_enabled'
   /** 开通时发现云端已经开通了（应该输入密码，忘记密码才覆盖） */
   | 'already_enabled'
+  /** 这个操作不适用于这个账号的模式（例如无密码模式改密码） */
+  | 'wrong_mode'
 
 export class CloudSyncError extends Error {
   constructor(
@@ -114,57 +124,189 @@ export async function cloudStatus(target: { game: CloudGame; uid: string }, oaut
   return apiStatus({ game: target.game, uid: target.uid, token: oauthToken })
 }
 
+/** 无密码模式：用服务器给的 KEK_hg 解开 DEK（只在内存里，不保存） */
+async function hgDek(meta: Pick<PullMeta, 'hgKek' | 'wrappedDek' | 'kid'>, locator: string): Promise<CryptoKey> {
+  const raw = fromBase64Url(meta.hgKek, HG_KEK_BYTES)
+  const wrapped = fromBase64Url(meta.wrappedDek)
+  if (!raw || !wrapped) throw new CloudSyncError('corrupt', '云端的钥匙格式不对。')
+  return unwrapDek(wrapped, await hgKekKey(raw), locator, meta.kid)
+}
+
+const alreadyEnabled = () =>
+  new CloudSyncError('already_enabled', '这个账号已经在别处开通了云同步：请输入云同步密码（无密码模式的账号直接连接）。只有忘记密码或者切换模式时才需要覆盖云端。')
+
 /**
- * 开通 / 覆盖：用新密码、新 DEK 上传本地的完整快照，云端原有的数据整体换掉。
+ * 开通 / 覆盖：用新钥匙、新 DEK 上传本地的完整快照，云端原有的数据整体换掉。
  * overwrite 为 false（开通）时先查询状态，云端已经开通就拒绝。
+ * mode：password（默认）用密码派生的 kek 包裹 DEK；hg（无密码模式）用服务器给的 KEK_hg 包裹，不需要密码。
  */
 export async function enableCloud(
   account: Account,
   options: {
-    password: string
+    mode?: CloudMode
+    password?: string
     oauthToken: string
-    requireHg: boolean
-    remember: boolean
+    requireHg?: boolean
+    remember?: boolean
     overwrite: boolean
     onProgress?: (fraction: number) => void
   },
 ): Promise<CloudState> {
-  const check = checkPassword(options.password, { uid: account.uid, nickName: account.nickName })
-  if (!check.ok) throw new CloudSyncError('weak_password', '密码不符合规则。')
+  const mode = options.mode ?? 'password'
   const game = account.game
-  if (!options.overwrite && (await cloudStatus(account, options.oauthToken)).exists) {
-    throw new CloudSyncError('already_enabled', '这个账号已经在别处开通了云同步：请输入云同步密码。只有忘记密码时才需要覆盖云端。')
-  }
-  const keys = await passwordKeys(game, account.uid, options.password, { onProgress: options.onProgress })
+  const hg = hgOf(game, account.uid, options.oauthToken)!
   const locator = await computeLocator(game, account.uid)
+  let kek: CryptoKey
+  let authKey: Uint8Array | null = null
+  if (mode === 'password') {
+    const password = options.password ?? ''
+    const check = checkPassword(password, { uid: account.uid, nickName: account.nickName })
+    if (!check.ok) throw new CloudSyncError('weak_password', '密码不符合规则。')
+    if (!options.overwrite && (await cloudStatus(account, options.oauthToken)).exists) throw alreadyEnabled()
+    const keys = await passwordKeys(game, account.uid, password, { onProgress: options.onProgress })
+    kek = keys.kek
+    authKey = keys.authKey
+  } else {
+    // 先查状态，顺便取回 KEK_hg 来包裹新的 DEK
+    const status = await apiStatus(hg, { kek: true })
+    if (!options.overwrite && status.exists) throw alreadyEnabled()
+    const raw = fromBase64Url(status.hgKek, HG_KEK_BYTES)
+    if (!raw) throw new CloudSyncError('corrupt', '服务器给的钥匙格式不对。')
+    kek = await hgKekKey(raw)
+  }
   const dek = await generateDek()
   const kid = randomKid()
-  const wrapped = await wrapDek(dek, keys.kek, locator, kid)
+  const wrapped = await wrapDek(dek, kek, locator, kid)
   const ds = await readLocalDataset(account)
   const envelope = await sealDataset(dek, locator, kid, 'snapshot', ds)
+  const requireHg = mode === 'hg' || Boolean(options.requireHg)
   const { seq } = await apiClaim(
-    { hg: hgOf(game, account.uid, options.oauthToken) },
-    { authKey: b64(keys.authKey), wrappedDek: b64(wrapped), kid, requireHg: options.requireHg },
+    { hg },
+    authKey
+      ? { authKey: b64(authKey), wrappedDek: b64(wrapped), kid, requireHg }
+      : { mode: 'hg', wrappedDek: b64(wrapped), kid },
     envelope,
   )
-  // 存下来的是不可导出的副本
-  const stored = await unwrapDek(wrapped, keys.kek, locator, kid)
   const state: CloudState = {
     accountId: account.id,
     game,
     uid: account.uid,
     locator,
-    mode: 'password',
-    remember: options.remember,
+    mode,
+    // 无密码模式不保存钥匙，这个选项没有意义
+    remember: mode === 'hg' ? true : (options.remember ?? true),
     kid,
-    requireHg: options.requireHg,
+    requireHg,
     lastSeq: seq,
     remote: Object.fromEntries(recordHashes(ds)),
     lastSyncAt: Date.now(),
     fingerprint: await fingerprint(ds),
   }
-  await saveState(state, { authKey: keys.authKey, dek: stored })
+  if (authKey) {
+    // 存下来的是不可导出的副本
+    await saveState(state, { authKey, dek: await unwrapDek(wrapped, kek, locator, kid) })
+  } else {
+    // 无密码模式：这台设备上不保存任何钥匙（也清掉以前密码模式留下的）
+    await saveState({ ...state, authKey: undefined, dek: undefined })
+    await dropKeys(account.id)
+  }
   return state
+}
+
+/** 无密码模式：在新设备上（或云端被覆盖之后）连接，下载并合并云端数据，再上传本地多出来的。不需要密码 */
+export async function unlockHgCloud(target: { game: CloudGame; uid: string }, options: { oauthToken: string }): Promise<SyncSummary> {
+  const { game, uid } = target
+  const locator = await computeLocator(game, uid)
+  const hg = hgOf(game, uid, options.oauthToken)!
+  let pulled: { meta: PullMeta; envelopes: Uint8Array[] }
+  try {
+    pulled = await apiPull({ locator, hg }, 0)
+  } catch (error) {
+    if (error instanceof CloudApiError && error.status === 401) {
+      throw new CloudSyncError('not_enabled', '云端没有这个账号的无密码模式数据：可能还没开通，或者用的是密码模式（请输入密码）。')
+    }
+    throw error
+  }
+  const dek = await hgDek(pulled.meta, locator)
+  const accountId = makeAccountId(game, uid)
+  const previous = await loadState(accountId)
+  const state: CloudState = {
+    accountId,
+    game,
+    uid,
+    locator,
+    mode: 'hg',
+    remember: true,
+    kid: pulled.meta.kid,
+    requireHg: true,
+    lastSeq: 0,
+    remote: previous?.kid === pulled.meta.kid ? previous.remote : {},
+  }
+  await dropKeys(accountId)
+  await saveState(state)
+  return runSync(state, { dek }, hg, pulled)
+}
+
+export interface SwitchResult {
+  state: CloudState
+  /** 覆盖之前是否先把云端的记录合并进了本地 */
+  merged: boolean
+  /** 云端原来还没有开通：直接按新模式开通 */
+  created: boolean
+}
+
+/**
+ * 切换模式（cloud-sync.md 8.4）：先把云端的记录合并进本地（覆盖时不会丢掉别的设备上传的），
+ * 再用新的方式、新的 DEK 覆盖云端。从无密码模式切回密码模式时必须换新 DEK，因为旧的服务器能算出来。
+ *
+ * 先合并云端数据的办法：
+ *   - 这台设备上已经能云同步这个账号：云同步一次；
+ *   - 云端是无密码模式：用鹰角 token 连接一次；
+ *   - 云端是密码模式、这台设备上没有钥匙：用 currentPassword（现在的云同步密码）解锁一次；
+ *     不知道密码时，只有明确选择 overwriteWithoutMerge 才直接覆盖（云端独有的记录会丢失）。
+ */
+export async function switchCloudMode(
+  account: Account,
+  options: {
+    to: CloudMode
+    password?: string
+    currentPassword?: string
+    overwriteWithoutMerge?: boolean
+    oauthToken: string
+    requireHg?: boolean
+    remember?: boolean
+    onProgress?: (fraction: number) => void
+  },
+): Promise<SwitchResult> {
+  if (options.to === 'password') {
+    const check = checkPassword(options.password ?? '', { uid: account.uid, nickName: account.nickName })
+    if (!check.ok) throw new CloudSyncError('weak_password', '密码不符合规则。')
+  }
+  const status = await cloudStatus(account, options.oauthToken)
+  const enable = (overwrite: boolean) => enableCloud(account, { ...options, mode: options.to, overwrite })
+  if (!status.exists) return { state: await enable(false), merged: false, created: true }
+  if (status.mode === options.to) throw new CloudSyncError('wrong_mode', options.to === 'hg' ? '这个账号已经是无密码模式。' : '这个账号已经是密码模式。')
+  // ── 1. 先合并云端的数据 ──
+  const state = await loadState(account.id)
+  let merged = true
+  if (state && state.mode === status.mode && isReady(state)) {
+    await syncCloud(account.id, { oauthToken: options.oauthToken })
+  } else if (status.mode === 'hg') {
+    await unlockHgCloud(account, { oauthToken: options.oauthToken })
+  } else if (options.currentPassword) {
+    await unlockCloud(account, {
+      password: options.currentPassword,
+      remember: true,
+      oauthToken: status.requireHg ? options.oauthToken : undefined,
+      onProgress: options.onProgress,
+    })
+  } else if (options.overwriteWithoutMerge) {
+    merged = false
+  } else {
+    throw new CloudSyncError('need_password', '切换前要先合并云端的数据：请输入现在的云同步密码；不知道密码时，可以选择不合并、直接覆盖。')
+  }
+  // ── 2. 用新的方式覆盖云端 ──
+  return { state: await enable(true), merged, created: false }
 }
 
 /** 输入密码，下载并合并云端数据（新设备上会按云端的账号信息新建账号），再上传本地多出来的 */
@@ -216,6 +358,22 @@ export async function unlockCloud(
 export async function syncCloud(accountId: string, options: { oauthToken?: string } = {}): Promise<SyncSummary> {
   const state = await loadState(accountId)
   if (!state) throw new CloudSyncError('not_enabled', '这个账号还没有开通云同步。')
+  if (state.mode === 'hg') {
+    if (!options.oauthToken) throw new CloudSyncError('need_hg', '这个账号用的是无密码模式，每次云同步都需要鹰角 token。')
+    const hg = hgOf(state.game, state.uid, options.oauthToken)
+    let pulled: { meta: PullMeta; envelopes: Uint8Array[] }
+    try {
+      pulled = await apiPull({ locator: state.locator, hg }, state.lastSeq)
+    } catch (error) {
+      if (error instanceof CloudApiError && error.status === 401) {
+        throw new CloudSyncError('auth_changed', '云端已经改成了密码模式（或者被删除），请重新启用：输入云同步密码，或者重新开通。')
+      }
+      throw error
+    }
+    // 云端被覆盖、换了钥匙：从头下载
+    if (pulled.meta.kid !== state.kid) return unlockHgCloud(state, { oauthToken: options.oauthToken })
+    return runSync(state, { dek: await hgDek(pulled.meta, state.locator) }, hg, pulled)
+  }
   const keys = keysOf(state)
   if (!keys) throw new CloudSyncError('need_password', '请输入云同步密码。')
   if (state.requireHg && !options.oauthToken) throw new CloudSyncError('need_hg', '这个账号开启了双重验证，需要鹰角 token。')
@@ -224,14 +382,18 @@ export async function syncCloud(accountId: string, options: { oauthToken?: strin
 
 async function runSync(
   state: CloudState,
-  keys: { authKey: Uint8Array; dek: CryptoKey },
+  keys: { authKey?: Uint8Array; dek: CryptoKey },
   hg: Proof['hg'],
   prefetched?: { meta: PullMeta; envelopes: Uint8Array[] },
 ): Promise<SyncSummary> {
-  const proof: Proof = { locator: state.locator, authKey: b64(keys.authKey), hg }
+  // 无密码模式没有 authKey，证明是鹰角 token
+  const proof: Proof = { locator: state.locator, ...(keys.authKey ? { authKey: b64(keys.authKey) } : {}), hg }
   const authChanged = async () => {
     await dropKeys(state.accountId)
-    return new CloudSyncError('auth_changed', '云同步密码已在别处修改，或者云端已被覆盖，请重新输入密码。')
+    return new CloudSyncError(
+      'auth_changed',
+      state.mode === 'hg' ? '云端已被覆盖或者改成了密码模式，请重新启用。' : '云同步密码已在别处修改，或者云端已被覆盖、改成了无密码模式，请重新启用。',
+    )
   }
 
   // ── 1. 下载并合并 ──
@@ -316,8 +478,8 @@ async function runSync(
   }
 
   const print = await fingerprint(local)
-  // 带上钥匙一起保存：state 可能是刚解锁时新建的，里面没有钥匙
-  await saveState({ ...state, lastSeq, remote, lastSyncAt: Date.now(), fingerprint: print }, keys)
+  // 带上钥匙一起保存：state 可能是刚解锁时新建的，里面没有钥匙。无密码模式不保存钥匙
+  await saveState({ ...state, lastSeq, remote, lastSyncAt: Date.now(), fingerprint: print }, keys.authKey ? { authKey: keys.authKey, dek: keys.dek } : undefined)
   return { downloaded, uploaded, compacted, fingerprint: print }
 }
 
@@ -328,6 +490,7 @@ export async function changePassword(
 ): Promise<void> {
   const state = await loadState(accountId)
   if (!state) throw new CloudSyncError('not_enabled', '这个账号还没有开通云同步。')
+  if (state.mode !== 'password') throw new CloudSyncError('wrong_mode', '这个账号用的是无密码模式，没有密码可改。')
   const account = await db.accounts.get(accountId)
   if (!checkPassword(options.newPassword, { uid: state.uid, nickName: account?.nickName }).ok) throw new CloudSyncError('weak_password', '新密码不符合规则。')
   if (state.requireHg && !options.oauthToken) throw new CloudSyncError('need_hg', '这个账号开启了双重验证，需要鹰角 token。')
@@ -356,6 +519,7 @@ export async function changePassword(
 export async function setTwoFactor(accountId: string, enabled: boolean, oauthToken: string): Promise<void> {
   const state = await loadState(accountId)
   if (!state) throw new CloudSyncError('not_enabled', '这个账号还没有开通云同步。')
+  if (state.mode !== 'password') throw new CloudSyncError('wrong_mode', '无密码模式本来就是每次都用鹰角 token 验证。')
   const keys = keysOf(state)
   if (!keys) throw new CloudSyncError('need_password', '请先输入云同步密码。')
   await apiTwoFactor({ locator: state.locator, authKey: b64(keys.authKey), hg: hgOf(state.game, state.uid, oauthToken) }, enabled)

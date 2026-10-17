@@ -6,6 +6,7 @@
  *   2. 解析二进制分帧，头部 JSON 不超过 1 KiB；
  *   3. 鹰角 token（如果有）交给 hg-verify.ts 核实，token 读出后立即从头部删除；
  *      需要鹰角证明的操作（查询状态、开通 / 覆盖、开关双重验证）没有核实通过就拒绝；
+ *      无密码模式的账号，每个请求都要核实通过（由 Durable Object 按账号的模式检查）；
  *   4. locator：核实过鹰角 token 的请求由 Worker 用核实过的 UID 自己计算，忽略客户端传来的值；
  *      其他请求只把它当查找键，授权取决于 Durable Object 里对 authKey 的核对；
  *   5. 按操作的字段白名单逐个校验，重新组装成内部请求交给这个账号的 Durable Object（cloud-vault.ts），
@@ -34,6 +35,8 @@ export interface CloudEnv {
   CLOUD?: DurableObjectNamespace
   RL_CLOUD?: RateLimit
   SYNC_PEPPER?: string
+  /** 无密码模式用来派生 KEK_hg 的 secret；没有配置时无密码模式不可用 */
+  SYNC_HG_SECRET?: string
 }
 
 /** 线上部署的 commit（构建时由 GITHUB_SHA 写入，本地开发为 dev），任何人都可以和仓库对照 */
@@ -50,6 +53,7 @@ function cloudError(status: number, code: string, extra: Record<string, string> 
 
 const isSeq = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0
 const isKey = (v: unknown, length: number) => fromBase64Url(v, length) !== null
+const isKid = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 255
 
 /** 每个操作允许的头部字段（核实鹰角 token 用到的 game、uid 另外处理）；返回整理过的内部头部，或 null */
 function internalHeader(op: CloudOp, h: Record<string, unknown>, hasPayload: boolean, hgVerified: boolean): Record<string, unknown> | null {
@@ -57,20 +61,26 @@ function internalHeader(op: CloudOp, h: Record<string, unknown>, hasPayload: boo
   if (authKey === null) return null
   switch (op) {
     case 'status':
-      // 只回答“这个账号开通了没有、是哪种方式”，不需要也不接受其他字段
-      return h.authKey === undefined && !hasPayload ? {} : null
+      // 只回答“这个账号开通了没有、是哪种方式”；准备开通无密码模式时可以要 KEK_hg（kek: true）
+      if (h.authKey !== undefined || hasPayload || (h.kek !== undefined && h.kek !== true)) return null
+      return h.kek ? { kek: true } : {}
     case 'pull':
-      return authKey && isSeq(h.afterSeq) && !hasPayload ? { authKey, afterSeq: h.afterSeq } : null
+      // 无密码模式没有 authKey，证明是核实过的鹰角 token
+      return (authKey || hgVerified) && isSeq(h.afterSeq) && !hasPayload ? { ...(authKey ? { authKey } : {}), afterSeq: h.afterSeq } : null
     case 'push':
-      if (!authKey || !hasPayload) return null
+      if (!(authKey || hgVerified) || !hasPayload) return null
       if (h.upToSeq !== undefined && !isSeq(h.upToSeq)) return null
-      return { authKey, ...(h.upToSeq === undefined ? {} : { upToSeq: h.upToSeq }) }
+      return { ...(authKey ? { authKey } : {}), ...(h.upToSeq === undefined ? {} : { upToSeq: h.upToSeq }) }
     case 'claim':
+      if (h.mode === 'hg') {
+        return h.authKey === undefined && isKey(h.wrappedDek, WRAPPED_DEK_BYTES) && isKid(h.kid) && h.requireHg === undefined && hasPayload
+          ? { mode: 'hg', wrappedDek: h.wrappedDek, kid: h.kid }
+          : null
+      }
+      if (h.mode !== undefined && h.mode !== 'password') return null
       return authKey &&
         isKey(h.wrappedDek, WRAPPED_DEK_BYTES) &&
-        Number.isInteger(h.kid) &&
-        (h.kid as number) >= 1 &&
-        (h.kid as number) <= 255 &&
+        isKid(h.kid) &&
         typeof h.requireHg === 'boolean' &&
         hasPayload
         ? { authKey, wrappedDek: h.wrappedDek, kid: h.kid, requireHg: h.requireHg }
@@ -100,7 +110,13 @@ export async function handleCloud(request: Request, env: CloudEnv, url: URL, dep
   if (op === 'info') {
     if (request.method !== 'GET') return cloudError(405, 'method_not_allowed')
     return Response.json(
-      { protocol: PROTOCOL_VERSION, commit: BUILD_COMMIT, available: Boolean(env.CLOUD && env.SYNC_PEPPER) },
+      {
+        protocol: PROTOCOL_VERSION,
+        commit: BUILD_COMMIT,
+        available: Boolean(env.CLOUD && env.SYNC_PEPPER),
+        // 无密码模式还需要 SYNC_HG_SECRET
+        hgAvailable: Boolean(env.CLOUD && env.SYNC_PEPPER && env.SYNC_HG_SECRET),
+      },
       { headers: { 'cache-control': 'no-store' } },
     )
   }

@@ -2,8 +2,8 @@
  * 明日方舟：森空岛“干员资产”页的卡片（实验）。
  *
  * 每张卡片：左上职业图标，右边一排黄色星星（稀有度），立绘，精英化图标、等级圈、潜能和技能图标，最下面是名字。
- *   - 稀有度：在卡片顶部找黄色星星所在的那一行，量出这一排的长度，除以一颗星的间距（与卡片宽度成正比）；
- *     截图分辨率高时星星彼此分开，再用连通块的个数核对；
+ *   - 稀有度：在卡片顶部找黄色星星所在的那一行；星星左对齐、间距固定（与卡片宽度成正比），
+ *     以第一颗星为参照逐个星位判断有没有星；再用这一排的长度核对，不一致时标为请确认；
  *   - 名字的位置交给 OCR。
  * 坐标都是相对卡片宽高的比例，在 271 宽的截图上标定。
  */
@@ -87,14 +87,31 @@ export function readStars(img: RgbaImage, card: Rect): AkStarRow | null {
   }
   // 一排 n 颗星的长度约为 (n - 1) 个间距 + 一颗星的宽度（约 0.9 个间距）
   const estimate = (ex - sx) / pitch + 0.1
-  // 最多 6 颗星：比 6 颗略长通常是旁边立绘的黄色连了进来
-  const count = Math.min(6, Math.round(estimate))
-  const ok = count >= 1 && estimate < 7
-  return { y0, y1, x0: sx, x1: ex, estimate, blobs, count: ok ? count : null }
+  // 逐个“星位”检查：星星左对齐、间距固定，以第一颗星为参照，每个星位单独判断有没有星。
+  // 背景颜色和星星接近时某一颗会变淡，长度会量短，但这颗星的星位仍然明显比空位黄
+  const colSum = (from: number, to: number) => {
+    let v = 0
+    let n = 0
+    for (let x = Math.max(x0, Math.round(from)); x < Math.min(x1, Math.round(to)); x++) {
+      v += cols[x - x0]!
+      n++
+    }
+    return n ? v / n : 0
+  }
+  const reference = colSum(sx, sx + pitch * 0.85)
+  let slots = 0
+  for (let k = 0; k < 6; k++) {
+    const a = sx + k * pitch
+    if (reference <= 0 || colSum(a, a + pitch * 0.85) < reference * 0.3) break
+    slots++
+  }
+  const count = slots >= 1 ? slots : null
+  return { y0, y1, x0: sx, x1: ex, estimate, blobs, count }
 }
 
 export function readCard(img: RgbaImage, card: Rect): AkCard {
   const stars = readStars(img, card)
+  // 星位数和量出的长度一致、卡片够大时才有把握
   const sure = stars?.count != null && Math.abs(stars.estimate - stars.count) <= 0.3 && card.width >= 90
   return {
     rect: card,

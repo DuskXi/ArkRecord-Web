@@ -17,17 +17,20 @@ interface FakeCloud {
   storages: Map<string, { sql: { exec(query: string): { toArray(): Record<string, unknown>[] } } }>
 }
 let workerFetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response>
-let makeCloud: (pepper: string) => FakeCloud
+let makeCloud: (pepper: string, hgSecret?: string) => FakeCloud
 let cloud: FakeCloud
 
 const SELF = 'https://ark-next.kaltsit.dev'
 const PEPPER = 'test-pepper-0123456789abcdef0123456789abcdef'
+const HG_SECRET = 'test-hg-secret-0123456789abcdef0123456789'
+/** 服务器是否配置了无密码模式 */
+let hgSecret: string | undefined = HG_SECRET
 const UID = '12345678'
 const PASSWORD = 'Kx7mP2qL9vRtWz4n'
 const VALID_OAUTH = 'valid-oauth-token-for-test'
 const ctx = { waitUntil: () => {}, passThroughOnException: () => {} }
 
-const env = () => ({ CLOUD: cloud.namespace, SYNC_PEPPER: PEPPER })
+const env = () => ({ CLOUD: cloud.namespace, SYNC_PEPPER: PEPPER, ...(hgSecret ? { SYNC_HG_SECRET: hgSecret } : {}) })
 
 /** 把浏览器发出的请求交给真实的 Worker；Worker 核实鹰角 token 时请求的绑定列表也在这里模拟 */
 async function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -66,11 +69,13 @@ async function device(factory = new IDBFactory()) {
   const { mergeLedger } = await import('../ledger')
   const { readLocalDataset } = await import('./dataset')
   const { fingerprint } = await import('./codec')
+  const { mergeRoster } = await import('../roster')
   const accountId = `arknights:${UID}`
   return {
     factory,
     engine,
     db,
+    mergeRoster,
     accountId,
     async createAccount(nickName = '博士') {
       await db.accounts.put({ id: accountId, game: 'arknights', uid: UID, nickName, createdAt: 1, metaAt: 1 })
@@ -117,6 +122,7 @@ async function device(factory = new IDBFactory()) {
 }
 
 const target = { game: 'arknights' as const, uid: UID }
+const shot = (itemId: string, observedAt: number) => ({ itemId, name: itemId, copies: null, potential: null, observedAt, source: 'screenshot' as const })
 
 describe('云同步端到端', () => {
   it('开通 → 新设备恢复 → 双向合并 → 并发 → 收敛到同一个指纹', async () => {
@@ -307,5 +313,145 @@ describe('云同步端到端', () => {
     expect(await fingerprint(await readLocalDataset((await b.db.accounts.get(id))!))).toBe(
       (await a.db.cloud.get(id))!.fingerprint,
     )
+  })
+
+  it('无密码模式：开通不需要密码；新设备只用鹰角 token 连接；每次云同步都要 token；和密码模式互相切换，数据不丢', async () => {
+    hgSecret = HG_SECRET
+    cloud = makeCloud(PEPPER, HG_SECRET)
+    const a = await device()
+    const account = await a.createAccount()
+    await a.addPulls(0, 10)
+    await expect(a.engine.enableCloud(account, { mode: 'hg', oauthToken: 'wrong', overwrite: false })).rejects.toMatchObject({ code: 'hg_verify_failed' })
+    await a.engine.enableCloud(account, { mode: 'hg', oauthToken: VALID_OAUTH, overwrite: false })
+    expect(await a.engine.cloudStatus(target, VALID_OAUTH)).toEqual({ exists: true, mode: 'hg', requireHg: true })
+    // 这台设备上不保存任何钥匙
+    const stored = (await a.db.cloud.get(a.accountId))!
+    expect(stored).toMatchObject({ mode: 'hg', requireHg: true })
+    expect(stored.authKey).toBeUndefined()
+    expect(stored.dek).toBeUndefined()
+    await expect(a.engine.syncCloud(a.accountId)).rejects.toMatchObject({ code: 'need_hg' })
+    await expect(a.engine.enableCloud(account, { mode: 'hg', oauthToken: VALID_OAUTH, overwrite: false })).rejects.toMatchObject({ code: 'already_enabled' })
+
+    // 新设备：密码解不开；只用鹰角 token 连接
+    const b = await device()
+    await expect(b.engine.unlockCloud(target, { password: PASSWORD, remember: true })).rejects.toMatchObject({ code: 'wrong_password' })
+    await expect(b.engine.unlockHgCloud(target, { oauthToken: 'wrong' })).rejects.toMatchObject({ code: 'hg_verify_failed' })
+    expect((await b.engine.unlockHgCloud(target, { oauthToken: VALID_OAUTH })).downloaded).toBe(100)
+    await b.addPulls(10, 12)
+    expect((await b.engine.syncCloud(b.accountId, { oauthToken: VALID_OAUTH })).uploaded).toBe(20)
+    expect((await a.engine.syncCloud(a.accountId, { oauthToken: VALID_OAUTH })).downloaded).toBe(20)
+    expect(await a.print()).toBe(await b.print())
+    // 没有密码可改，也不能关掉鹰角验证
+    await expect(a.engine.changePassword(a.accountId, { oldPassword: PASSWORD, newPassword: 'Tz4kWq8nRb2mHs6v' })).rejects.toMatchObject({ code: 'wrong_mode' })
+    await expect(a.engine.setTwoFactor(a.accountId, false, VALID_OAUTH)).rejects.toMatchObject({ code: 'wrong_mode' })
+
+    // 切换为密码模式：B 有还没上传的记录，切换后用密码重新解锁时补传
+    await b.addPulls(12, 13)
+    await a.engine.switchCloudMode(account, { to: 'password', password: PASSWORD, oauthToken: VALID_OAUTH, remember: true })
+    expect(await a.engine.cloudStatus(target, VALID_OAUTH)).toEqual({ exists: true, mode: 'password', requireHg: false })
+    await expect(b.engine.syncCloud(b.accountId, { oauthToken: VALID_OAUTH })).rejects.toMatchObject({ code: 'auth_changed' })
+    await expect(b.engine.unlockHgCloud(target, { oauthToken: VALID_OAUTH })).rejects.toMatchObject({ code: 'not_enabled' })
+    expect((await b.engine.unlockCloud(target, { password: PASSWORD, remember: true })).uploaded).toBe(10)
+    await a.engine.syncCloud(a.accountId)
+    expect(await a.count()).toBe(130)
+    expect(await a.print()).toBe(await b.print())
+
+    // 再切回无密码模式：B 的密码钥匙失效，用鹰角 token 重新连接
+    await a.engine.switchCloudMode(account, { to: 'hg', oauthToken: VALID_OAUTH })
+    await expect(b.engine.syncCloud(b.accountId)).rejects.toMatchObject({ code: 'auth_changed' })
+    await b.engine.unlockHgCloud(target, { oauthToken: VALID_OAUTH })
+    expect(await b.print()).toBe(await a.print())
+    // 切换前必须能先合并云端：已经是这个模式时拒绝
+    await expect(a.engine.switchCloudMode(account, { to: 'hg', oauthToken: VALID_OAUTH })).rejects.toMatchObject({ code: 'wrong_mode' })
+  })
+
+  it('服务器没有配置无密码模式：开通无密码模式失败，密码模式不受影响', async () => {
+    hgSecret = undefined
+    cloud = makeCloud(PEPPER)
+    try {
+      const a = await device()
+      const account = await a.createAccount()
+      await a.addPulls(0, 2)
+      await expect(a.engine.enableCloud(account, { mode: 'hg', oauthToken: VALID_OAUTH, overwrite: false })).rejects.toMatchObject({ code: 'hg_mode_unavailable' })
+      await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+    } finally {
+      hgSecret = HG_SECRET
+    }
+  })
+
+  it('截图识别的已拥有干员也会云同步：新设备取回；更新的截图覆盖旧的；重复导入不重复上传', async () => {
+    hgSecret = HG_SECRET
+    cloud = makeCloud(PEPPER, HG_SECRET)
+    const a = await device()
+    const account = await a.createAccount()
+    await a.addPulls(0, 2)
+    await a.mergeRoster(a.accountId, [shot('char_103_angel', 1000), shot('char_123_fang', 1000)])
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+
+    const b = await device()
+    await b.engine.unlockCloud(target, { password: PASSWORD, remember: true })
+    expect((await b.db.roster.toArray()).map((r) => r.itemId).toSorted()).toEqual(['char_103_angel', 'char_123_fang'])
+    expect(await b.print()).toBe(await a.print())
+
+    // B 导入一张更新的截图（多了一名干员、芬的截图时间更新）
+    await b.mergeRoster(b.accountId, [shot('char_123_fang', 2000), shot('char_124_kroos', 2000)])
+    expect((await b.engine.syncCloud(b.accountId)).uploaded).toBe(2)
+    expect((await a.engine.syncCloud(a.accountId)).uploaded).toBe(0)
+    expect((await a.db.roster.get([a.accountId, 'char_123_fang']))!.observedAt).toBe(2000)
+    expect(await a.db.roster.count()).toBe(3)
+    expect(await a.print()).toBe(await b.print())
+
+    // A 重复导入旧截图：不变，也不上传
+    await a.mergeRoster(a.accountId, [shot('char_123_fang', 1000)])
+    expect((await a.engine.syncCloud(a.accountId)).uploaded).toBe(0)
+    expect(await a.print()).toBe(await b.print())
+  })
+
+  it('切换模式：这台设备上没有钥匙时，要先输入现在的密码合并；不知道密码只能明确选择直接覆盖；云端没开通就直接开通', async () => {
+    hgSecret = HG_SECRET
+    cloud = makeCloud(PEPPER, HG_SECRET)
+    // A 用密码模式开通，并且有一些 C 没有的记录
+    const a = await device()
+    const account = await a.createAccount()
+    await a.addPulls(0, 5)
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+
+    // C：同一个账号，本地有自己的记录，但这台设备上没有云同步的钥匙
+    const c = await device()
+    const cAccount = await c.createAccount()
+    await c.addPulls(5, 7)
+    await expect(c.engine.switchCloudMode(cAccount, { to: 'hg', oauthToken: VALID_OAUTH })).rejects.toMatchObject({ code: 'need_password' })
+    await expect(c.engine.switchCloudMode(cAccount, { to: 'hg', currentPassword: `${PASSWORD}x`, oauthToken: VALID_OAUTH })).rejects.toMatchObject({
+      code: 'wrong_password',
+    })
+    // 输入现在的密码：先合并云端（A 的 50 条），再覆盖为无密码模式
+    const result = await c.engine.switchCloudMode(cAccount, { to: 'hg', currentPassword: PASSWORD, oauthToken: VALID_OAUTH })
+    expect(result).toMatchObject({ merged: true, created: false })
+    expect(await c.count()).toBe(70)
+    expect(await c.engine.cloudStatus(target, VALID_OAUTH)).toMatchObject({ exists: true, mode: 'hg' })
+    // A 的密码钥匙失效；用鹰角 token 连接后数据一致
+    await expect(a.engine.syncCloud(a.accountId)).rejects.toMatchObject({ code: 'auth_changed' })
+    await a.engine.unlockHgCloud(target, { oauthToken: VALID_OAUTH })
+    expect(await a.print()).toBe(await c.print())
+
+    // D：不知道密码（这里云端是无密码模式，切回密码模式时用鹰角 token 合并，不需要密码）
+    const d = await device()
+    const dAccount = await d.createAccount()
+    expect(await d.engine.switchCloudMode(dAccount, { to: 'password', password: PASSWORD, oauthToken: VALID_OAUTH })).toMatchObject({ merged: true })
+    expect(await d.count()).toBe(70)
+    // E：云端是密码模式、没有钥匙、选择不合并直接覆盖：云端只剩 E 的数据
+    const e = await device()
+    const eAccount = await e.createAccount()
+    await e.addPulls(9, 10)
+    expect(await e.engine.switchCloudMode(eAccount, { to: 'hg', overwriteWithoutMerge: true, oauthToken: VALID_OAUTH })).toMatchObject({ merged: false })
+    const f = await device()
+    expect((await f.engine.unlockHgCloud(target, { oauthToken: VALID_OAUTH })).downloaded).toBe(10)
+
+    // 云端还没开通：直接按新模式开通
+    cloud = makeCloud(PEPPER, HG_SECRET)
+    const g = await device()
+    const gAccount = await g.createAccount()
+    await g.addPulls(0, 1)
+    expect(await g.engine.switchCloudMode(gAccount, { to: 'hg', oauthToken: VALID_OAUTH })).toMatchObject({ created: true })
   })
 })

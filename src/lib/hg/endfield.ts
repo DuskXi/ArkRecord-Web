@@ -28,6 +28,8 @@ export interface EfRawRecord {
   seqId: string
   kind?: string
   poolType?: string | null
+  /** 赠送条目显示的名字（官方页面优先显示它；赠送条目一般没有 charName / weaponName） */
+  nameText?: string
 }
 
 export interface EfPage {

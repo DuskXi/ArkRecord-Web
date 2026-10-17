@@ -4,9 +4,11 @@ import { useLiveQuery } from '@/composables/useLiveQuery'
 import { db } from '@/lib/db'
 import { analyze, type PityModel } from '@/lib/stats/analyze'
 import { normalizeArknights, normalizeEndfield } from '@/lib/stats/events'
+import { arknightsGifts, endfieldGifts, type GiftEvent } from '@/lib/stats/gifts'
 import { arknightsGuarantees, endfieldGuarantees } from '@/lib/stats/guarantees'
 import { computeInsights } from '@/lib/stats/insights'
 import { arknightsRate, distribution, endfieldRate } from '@/lib/stats/pity'
+import type { RosterEntry } from '@/lib/roster'
 import type { AkPull, EfPoolInfo, EfPull } from '@/lib/types'
 import { useAppStore } from './app'
 
@@ -35,6 +37,12 @@ export const useRecordsStore = defineStore('records', () => {
     [accountId],
     [] as EfPull[],
   )
+  /** 截图识别的已拥有干员（见 roster.ts） */
+  const roster = useLiveQuery(
+    () => (accountId.value ? db.roster.where('accountId').equals(accountId.value).toArray() : []),
+    [accountId],
+    [] as RosterEntry[],
+  )
   const efPoolList = useLiveQuery(() => db.efPools.toArray(), [], [] as EfPoolInfo[])
   const efPools = computed(() => new Map(efPoolList.value.map((p) => [p.poolId, p])))
 
@@ -52,6 +60,15 @@ export const useRecordsStore = defineStore('records', () => {
     if (!weaponScope.value) return allEvents.value.filter((e) => !e.weapon)
     return allEvents.value.filter((e) => e.weapon).map((e) => ({ ...e, mainModel: true }))
   })
+  /**
+   * 累计寻访赠送（终末地的信物赠礼、武器赠礼，明日方舟限定池的 300 抽赠送；含按规则推算的）：
+   * 不是抽出来的，不进任何寻访统计，只在记录、图鉴里单独列出。和 events 一样按角色 / 武器范围筛选。
+   */
+  const allGifts = computed<GiftEvent[]>(() => {
+    if (game.value === 'endfield') return endfieldGifts(efPulls.value, efPools.value, app.efMeta ?? undefined)
+    return app.meta ? arknightsGifts(akPulls.value, app.meta) : []
+  })
+  const gifts = computed(() => allGifts.value.filter((g) => g.weapon === weaponScope.value))
   const model = computed(() => (weaponScope.value ? MODELS.endfieldWeapon : MODELS[game.value]))
   const analysis = computed(() => analyze(events.value, model.value))
   const guarantees = computed(() =>
@@ -65,5 +82,5 @@ export const useRecordsStore = defineStore('records', () => {
   /** 高级统计用的数据（计算较多，只有页面用到时才计算） */
   const insights = computed(() => computeInsights(events.value, analysis.value))
 
-  return { game, efScope, weaponScope, events, model, analysis, guarantees, insights, efPools }
+  return { accountId, game, efScope, weaponScope, events, gifts, roster, model, analysis, guarantees, insights, efPools }
 })

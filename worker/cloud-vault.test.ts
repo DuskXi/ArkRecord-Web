@@ -3,10 +3,11 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ENVELOPE_HEADER_BYTES, toBase64Url, unframe } from '../shared/cloud-protocol'
-import { PepperKeys, Vault, type VaultResult } from './cloud-vault'
+import { HgKeys, PepperKeys, Vault, type VaultResult } from './cloud-vault'
 import { memoryStorage } from './testing/fake-cloud'
 
 const PEPPER = 'test-pepper-0123456789abcdef0123456789abcdef'
+const HG_SECRET = 'test-hg-secret-0123456789abcdef0123456789'
 const LOCATOR = 'L'.repeat(43)
 
 function key(fill: number): string {
@@ -27,7 +28,7 @@ function envelope(kind: 'delta' | 'snapshot', kid: number, id: number, size = 0)
   return e
 }
 
-async function setup() {
+async function setup(options: { hg?: boolean } = {}) {
   const storage = memoryStorage()
   let now = Date.parse('2026-10-17T00:00:00Z')
   const keys = await PepperKeys.create(PEPPER)
@@ -36,6 +37,7 @@ async function setup() {
     transaction: (fn) => storage.transactionSync(fn),
     wipe: () => storage.deleteAll(),
     keys,
+    hgKeys: options.hg === false ? undefined : await HgKeys.create(HG_SECRET),
     locator: LOCATOR,
     now: () => now,
   })
@@ -89,14 +91,14 @@ describe('开通与核对', () => {
 describe('查询状态', () => {
   it('只有核实过鹰角 token 才回答；只读，不计失败次数，不写入任何东西', async () => {
     const { vault, storage, claim } = await setup()
-    expect(vault.status(false).status).toBe(403)
-    expect(bodyJson(vault.status(true))).toEqual({ exists: false })
+    expect((await vault.status({}, false)).status).toBe(403)
+    expect(bodyJson(await vault.status({}, true))).toEqual({ exists: false })
     // 查询不存在的账号不会建表
     expect(storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").toArray()).toEqual([])
     await claim({ requireHg: true })
     const before = JSON.stringify(storage.sql.exec('SELECT * FROM meta').toArray())
-    expect(bodyJson(vault.status(true))).toEqual({ exists: true, mode: 'password', requireHg: true })
-    expect(vault.status(false).status).toBe(403)
+    expect(bodyJson(await vault.status({}, true))).toEqual({ exists: true, mode: 'password', requireHg: true })
+    expect((await vault.status({}, false)).status).toBe(403)
     expect(JSON.stringify(storage.sql.exec('SELECT * FROM meta').toArray())).toBe(before)
   })
 })
@@ -240,5 +242,81 @@ describe('改密码、覆盖、双重验证、删除', () => {
     expect((await b.vault.remove({}, true)).status).toBe(204)
     // 删除后连表都不剩
     expect(b.storage.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").toArray()).toEqual([])
+  })
+})
+
+const hgClaim = (vault: Vault, verified = true, kid = 9, id = 2) => vault.claim({ mode: 'hg', wrappedDek: WRAPPED, kid }, envelope('snapshot', kid, id), verified)
+
+describe('无密码模式（鹰角 token 验证）', () => {
+
+  it('KEK_hg 只给核实过鹰角 token 的请求；对同一个 locator 是固定的', async () => {
+    const { vault } = await setup()
+    expect((await vault.status({ kek: true }, false)).status).toBe(403)
+    const a = bodyJson(await vault.status({ kek: true }, true))
+    const b = bodyJson(await vault.status({ kek: true }, true))
+    expect(a.exists).toBe(false)
+    expect(typeof a.hgKek).toBe('string')
+    expect(a.hgKek).toBe(b.hgKek)
+    // 不要的时候不给
+    expect(bodyJson(await vault.status({}, true)).hgKek).toBeUndefined()
+    // 和 SYNC_HG_SECRET、locator 都有关
+    const other = await HgKeys.create(`${HG_SECRET}x`)
+    expect(toBase64Url(await other.kek(LOCATOR))).not.toBe(a.hgKek)
+    expect(toBase64Url(await (await HgKeys.create(HG_SECRET)).kek('M'.repeat(43)))).not.toBe(a.hgKek)
+  })
+
+  it('开通：不需要 authKey；每个请求都要核实过鹰角 token，下载时带上 KEK_hg', async () => {
+    const { vault, storage } = await setup()
+    expect((await hgClaim(vault, false)).status).toBe(403)
+    expect((await hgClaim(vault)).status).toBe(200)
+    expect(bodyJson(await vault.status({}, true))).toEqual({ exists: true, mode: 'hg', requireHg: true })
+    // 没有鹰角核实：和密码错误一样的 401，不计失败次数
+    for (let i = 0; i < 8; i++) expect((await vault.pull({ authKey: GOOD, afterSeq: 0 }, false)).status).toBe(401)
+    expect(storage.sql.exec('SELECT fail_count FROM meta').toArray()[0]!.fail_count).toBe(0)
+    expect((await vault.push({}, envelope('delta', 9, 3), false)).status).toBe(401)
+    const r = await vault.pull({ afterSeq: 0 }, true)
+    expect(r.status).toBe(200)
+    const meta = unframe(r.body as Uint8Array)!.header
+    expect(meta).toMatchObject({ mode: 'hg', kid: 9, requireHg: true, wrappedDek: WRAPPED, headSeq: 1 })
+    expect(meta.hgKek).toBe(bodyJson(await vault.status({ kek: true }, true)).hgKek)
+    // 存储里没有 KEK_hg
+    expect(JSON.stringify(storage.sql.exec('SELECT * FROM meta').toArray())).not.toContain(String(meta.hgKek))
+    expect((await vault.push({}, envelope('delta', 9, 3), true)).status).toBe(200)
+  })
+
+  it('无密码模式不能改密码、不能关双重验证；可以用鹰角 token 删除', async () => {
+    const { vault } = await setup()
+    await hgClaim(vault)
+    expect(code(await vault.rekey({ authKey: GOOD, newAuthKey: BAD, wrappedDek: WRAPPED }, true))).toBe('wrong_mode')
+    expect(code(await vault.twoFactor({ requireHg: false }, true))).toBe('wrong_mode')
+    expect((await vault.remove({}, true)).status).toBe(204)
+  })
+
+  it('切换模式就是覆盖：密码 → 无密码 → 密码，每次换新钥匙，旧的证明失效', async () => {
+    const { vault, claim } = await setup()
+    await claim()
+    expect((await hgClaim(vault, true, 9, 2)).status).toBe(200)
+    // 旧密码的 authKey 不再有效（没有鹰角核实时）
+    expect((await vault.pull({ authKey: GOOD, afterSeq: 0 }, false)).status).toBe(401)
+    expect(bodyJson(await vault.status({}, true)).mode).toBe('hg')
+    expect((await vault.claim({ authKey: BAD, wrappedDek: WRAPPED, kid: 11, requireHg: false }, envelope('snapshot', 11, 3), true)).status).toBe(200)
+    expect(bodyJson(await vault.status({}, true))).toEqual({ exists: true, mode: 'password', requireHg: false })
+    // 回到密码模式后，只有鹰角 token 没有密码不够
+    expect((await vault.pull({ afterSeq: 0 }, true)).status).toBe(401)
+    const ok = await vault.pull({ authKey: BAD, afterSeq: 0 }, false)
+    expect(unframe(ok.body as Uint8Array)!.header.hgKek).toBeUndefined()
+  })
+
+  it('密码模式的账号只带鹰角 token、不带 authKey：拒绝，但不算猜错密码', async () => {
+    const { vault, storage, claim } = await setup()
+    await claim()
+    for (let i = 0; i < 8; i++) expect((await vault.pull({ afterSeq: 0 }, true)).status).toBe(401)
+    expect(storage.sql.exec('SELECT fail_count FROM meta').toArray()[0]!.fail_count).toBe(0)
+  })
+
+  it('没有配置 SYNC_HG_SECRET 时无密码模式不可用', async () => {
+    const { vault } = await setup({ hg: false })
+    expect(code(await hgClaim(vault))).toBe('hg_mode_unavailable')
+    expect(code(await vault.status({ kek: true }, true))).toBe('hg_mode_unavailable')
   })
 })

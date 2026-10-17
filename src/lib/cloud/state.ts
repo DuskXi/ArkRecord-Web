@@ -6,7 +6,7 @@
  *   - DEK 是不可导出的 CryptoKey，页面脚本可以用它加解密，但读不出它的原始字节；
  *   - 选择“不在这台设备保存”时，两者只放在内存里，刷新网页后需要重新输入密码。
  */
-import type { CloudGame } from '../../../shared/cloud-protocol'
+import type { CloudGame, CloudMode } from '../../../shared/cloud-protocol'
 import { db } from '../db'
 
 export interface CloudState {
@@ -14,7 +14,8 @@ export interface CloudState {
   game: CloudGame
   uid: string
   locator: string
-  mode: 'password'
+  /** password：密码模式；hg：无密码模式（不保存任何钥匙，每次云同步都用鹰角 token 向服务器取） */
+  mode: CloudMode
   /** 是否把钥匙保存在这台设备上 */
   remember: boolean
   /** 只在 remember 时保存 */
@@ -55,6 +56,11 @@ export async function saveState(state: CloudState, keys?: { authKey: Uint8Array;
     }
   }
   await db.cloud.put(state)
+}
+
+/** 这个账号在这台设备上能不能直接云同步：无密码模式不需要钥匙（每次用鹰角 token），密码模式要有钥匙 */
+export function isReady(state: CloudState): boolean {
+  return state.mode === 'hg' || keysOf(state) !== null
 }
 
 /** 取出钥匙：保存在设备上的，或者这个页面内存里的；都没有时返回 null（需要重新输入密码） */

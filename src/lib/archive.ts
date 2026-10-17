@@ -11,6 +11,7 @@ import { legacyLedger, legacyToAkPulls } from './legacy'
 import { type AkMeta, loadEfMeta } from './meta'
 import { dedupeBy, pickAkPull, planWrites } from './merge'
 import { coveredByModern, groupBySecond, LEGACY_MATCH_SECONDS, mergeAkPulls } from './sync/arknights'
+import { mergeRoster, type RosterInput } from './roster'
 import { efRarity, mergeEfPulls } from './sync/endfield'
 import type { Account, AkLedgerEntry, AkPull, EfPull, Game } from './types'
 
@@ -38,6 +39,8 @@ export interface ExportFile {
       source: AkPull['source']
     }[]
     ledger?: { kind: 'stone' | 'recharge'; raw: unknown }[]
+    /** 截图识别的已拥有干员（见 roster.ts） */
+    roster?: ExportRoster[]
   }[]
   endfield: {
     uid: string
@@ -46,8 +49,11 @@ export interface ExportFile {
     timezone: 8
     lang: 'zh-cn'
     list: Record<string, unknown>[]
+    roster?: ExportRoster[]
   }[]
 }
+
+export type ExportRoster = RosterInput
 
 export function makeAccountId(game: Game, uid: string): string {
   return `${game}:${uid}`
@@ -168,6 +174,7 @@ export async function buildExport(version: string, accountIds?: string[]): Promi
           source: p.source,
         })),
         ledger: ledger.length ? ledger.map((l) => ({ kind: l.kind, raw: l.raw })) : undefined,
+        roster: await exportRoster(account.id),
       })
     } else {
       const pulls = await db.efPulls.where('accountId').equals(account.id).toArray()
@@ -192,10 +199,39 @@ export async function buildExport(version: string, accountIds?: string[]): Promi
           seqId: p.seqId,
           source: p.source,
         })),
+        roster: await exportRoster(account.id),
       })
     }
   }
   return file
+}
+
+async function exportRoster(accountId: string): Promise<ExportRoster[] | undefined> {
+  const rows = await db.roster.where('accountId').equals(accountId).toArray()
+  return rows.length
+    ? rows.map(({ itemId, name, copies, potential, observedAt, importedAt, source }) => ({ itemId, name, copies, potential, observedAt, importedAt, source }))
+    : undefined
+}
+
+const countOrNull = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null)
+
+function importRoster(rows: unknown): RosterInput[] {
+  if (!Array.isArray(rows)) return []
+  const out: RosterInput[] = []
+  for (const raw of rows) {
+    const r = raw as Partial<RosterInput>
+    if (typeof r.itemId !== 'string' || !r.itemId || typeof r.observedAt !== 'number' || !Number.isFinite(r.observedAt)) continue
+    out.push({
+      itemId: r.itemId,
+      name: typeof r.name === 'string' ? r.name : r.itemId,
+      copies: countOrNull(r.copies),
+      potential: countOrNull(r.potential),
+      observedAt: r.observedAt,
+      ...(typeof r.importedAt === 'number' && Number.isSafeInteger(r.importedAt) ? { importedAt: r.importedAt } : {}),
+      source: r.source === 'manual' ? 'manual' : 'screenshot',
+    })
+  }
+  return out
 }
 
 export function isExportFile(json: unknown): json is ExportFile {
@@ -237,6 +273,7 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
       if (l.kind === 'stone' || l.kind === 'recharge') ledger.push(...toLedgerEntries(account.id, l.kind, [l.raw]))
     }
     summary.ledger += await mergeLedger(ledger)
+    await mergeRoster(account.id, importRoster(entry.roster))
   }
   const efMeta = file.endfield.length ? await loadEfMeta() : undefined
   for (const entry of file.endfield) {
@@ -265,6 +302,7 @@ export async function importExportFile(file: ExportFile): Promise<ImportSummary>
       }
     })
     summary.pulls += await mergeEfPulls(account.id, pulls)
+    await mergeRoster(account.id, importRoster(entry.roster))
   }
   return summary
 }
@@ -279,8 +317,9 @@ export async function createSnapshot(reason: string, version: string): Promise<v
 
 /** 删除本地账号及其记录；云同步只删除这台设备上的状态和钥匙，不动云端（云端要在“云同步”里单独删除） */
 export async function deleteAccountData(accountId: string): Promise<void> {
-  await db.transaction('rw', [db.accounts, db.akPulls, db.efPulls, db.akLedger, db.cloud], async () => {
+  await db.transaction('rw', [db.accounts, db.akPulls, db.efPulls, db.akLedger, db.cloud, db.roster], async () => {
     await db.akPulls.where('accountId').equals(accountId).delete()
+    await db.roster.where('accountId').equals(accountId).delete()
     await db.efPulls.where('accountId').equals(accountId).delete()
     await db.akLedger.where('accountId').equals(accountId).delete()
     await db.cloud.delete(accountId)
