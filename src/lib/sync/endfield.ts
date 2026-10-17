@@ -13,13 +13,36 @@ import {
   fetchWeaponPools,
 } from '../hg/endfield'
 import { dedupeBy, pickEfPool, pickEfPull, planWrites } from '../merge'
+import { type EfMeta, loadEfMeta } from '../meta'
 import type { Account, EfPoolInfo, EfPull } from '../types'
 import type { SyncProgress, SyncResult } from './arknights'
 
 /** 卡池信息缓存一天；进行中的卡池可能更新 UP 信息 */
 const POOL_INFO_TTL = 24 * 3600 * 1000
 
-export function toEfPull(accountId: string, type: 'char' | 'weapon', poolType: string, raw: EfRawRecord): EfPull {
+/**
+ * 终末地记录的星级。接口个别条目（例如赠送）给的不是整数（字符串、null 或者没有），
+ * 按游戏数据表用物品 ID 补上；都没有时记为 0（未知）。
+ */
+export function efRarity(value: unknown, itemId: string, meta?: Pick<EfMeta, 'items'>): number {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value === 0 ? 0 : value
+  if (typeof value === 'string' && /^\d{1,2}$/.test(value.trim())) return Number(value.trim())
+  const known = itemId ? meta?.items[itemId]?.r : undefined
+  return typeof known === 'number' && Number.isSafeInteger(known) && known >= 0 ? known : 0
+}
+
+/** 修正本地已有记录里不是整数的星级（之前的版本原样保存了接口的值）；返回修正的条数 */
+export async function repairEfRarity(accountId: string): Promise<number> {
+  const pulls = await db.efPulls.where('accountId').equals(accountId).toArray()
+  const bad = pulls.filter((p) => !(typeof p.rarity === 'number' && Number.isSafeInteger(p.rarity) && p.rarity >= 0) || Object.is(p.rarity, -0))
+  if (!bad.length) return 0
+  const meta = await loadEfMeta()
+  await db.efPulls.bulkPut(bad.map((p) => ({ ...p, rarity: efRarity(p.rarity, p.itemId, meta) })))
+  return bad.length
+}
+
+export function toEfPull(accountId: string, type: 'char' | 'weapon', poolType: string, raw: EfRawRecord, meta?: Pick<EfMeta, 'items'>): EfPull {
+  const itemId = (type === 'char' ? raw.charId : raw.weaponId) ?? ''
   return {
     accountId,
     key: `${type}:${raw.poolId}:${raw.seqId}`,
@@ -27,9 +50,9 @@ export function toEfPull(accountId: string, type: 'char' | 'weapon', poolType: s
     poolId: raw.poolId,
     poolName: raw.poolName,
     poolType: type === 'char' ? poolType : (raw.poolType ?? poolType),
-    itemId: (type === 'char' ? raw.charId : raw.weaponId) ?? '',
+    itemId,
     itemName: (type === 'char' ? raw.charName : raw.weaponName) ?? '',
-    rarity: raw.rarity,
+    rarity: efRarity(raw.rarity, itemId, meta),
     isNew: Boolean(raw.isNew),
     isFree: Boolean(raw.isFree),
     kind: raw.kind ?? 'draw',
@@ -50,6 +73,7 @@ export async function syncEndfield(
   let fetched = 0
 
   report('正在登录')
+  const meta = await loadEfMeta()
   const oauth = await grantOAuthToken(accountToken)
   const token = await getU8Token(oauth, account.uid)
 
@@ -68,7 +92,7 @@ export async function syncEndfield(
       report(label, `第 ${page} 页`)
       const result = await fetchPage(seqId)
       fetched += result.list.length
-      const records = result.list.map((raw) => toEfPull(account.id, type, poolType, raw))
+      const records = result.list.map((raw) => toEfPull(account.id, type, poolType, raw, meta))
       const fresh = records.filter((r) => !existing.has(r.key))
       for (const r of fresh) existing.add(r.key)
       freshCount += fresh.length

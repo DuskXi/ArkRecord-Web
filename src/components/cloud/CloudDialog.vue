@@ -184,7 +184,7 @@ const submitLabel = computed(() => {
     case 'delete':
       return '删除云端数据'
     case 'profile':
-      return mismatch.value ? '仍然保存' : '保存同步配置'
+      return mismatch.value ? '仍然保存' : cloud.dialog?.continueWith ? '保存并启用' : '保存同步配置'
     default:
       return '确定'
   }
@@ -285,6 +285,15 @@ async function submit() {
         }
         await saveProfile({ password: password.value, requireHg: requireHg.value, remember: remember.value })
         await cloud.refreshProfile()
+        const next = app.accounts.find((x) => x.id === cloud.dialog?.continueWith)
+        if (next) {
+          // 接着一键启用（需要发送鹰角 token 时会先弹出确认）
+          cloud.touchKeys()
+          working.value = false
+          cloud.dialog = null
+          void cloud.quickStart(next)
+          return
+        }
         toast.add({ title: '已保存同步配置', description: '其他账号现在可以一键开通或启用云同步。', color: 'success', icon: 'i-lucide-settings-2' })
         break
       }

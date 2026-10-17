@@ -25,6 +25,8 @@ export interface CloudDialog {
   game?: Game
   /** 打开时显示的提示（例如同步配置里的密码对这个账号不对） */
   note?: string
+  /** profile：保存同步配置之后接着一键启用这个账号 */
+  continueWith?: string
 }
 
 /** 发送鹰角 token 前的确认弹窗（TokenConsentDialog.vue） */
@@ -75,8 +77,8 @@ export const useCloudStore = defineStore('cloud', () => {
   }
   void refreshProfile()
 
-  function open(mode: CloudDialogMode, accountId?: string, game?: Game, note?: string) {
-    dialog.value = { mode, accountId, game, note }
+  function open(mode: CloudDialogMode, accountId?: string, game?: Game, note?: string, continueWith?: string) {
+    dialog.value = { mode, accountId, game, note, continueWith }
   }
 
   /** 弹出确认窗口；用户点“确认发送”返回 Consent，取消返回 null */
@@ -213,7 +215,14 @@ export const useCloudStore = defineStore('cloud', () => {
     const entry = byAccount.value.get(account.id)
     const config = await loadProfile()
     if (!config) {
-      open(entry ? 'unlock' : 'enable', account.id)
+      // 还没有同步配置：先设置（只保存在这台设备上），保存后接着为这个账号启用
+      open(
+        'profile',
+        undefined,
+        undefined,
+        `一键启用要先在这台设备上保存同步配置（云同步密码和选项）。保存后接着为「${account.nickName}」启用：云端还没开通就开通，已经开通就用这个密码解锁。`,
+        account.id,
+      )
       return
     }
     let status: CloudStatus | null = entry ? { exists: true, mode: 'password', requireHg: entry.state.requireHg } : (detected.value.get(account.id)?.status ?? null)
