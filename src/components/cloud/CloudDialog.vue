@@ -150,8 +150,9 @@ const canSubmit = computed(() => {
   switch (mode.value) {
     case 'enable':
     case 'overwrite':
-    case 'profile':
       return passwordValid.value
+    case 'profile':
+      return quickProfile.value ? password.value.length > 0 : passwordValid.value
     case 'unlock':
       return password.value.length > 0
     case 'restore':
@@ -184,7 +185,7 @@ const submitLabel = computed(() => {
     case 'delete':
       return '删除云端数据'
     case 'profile':
-      return mismatch.value ? '仍然保存' : cloud.dialog?.continueWith ? '保存并启用' : '保存同步配置'
+      return quickProfile.value ? '核对并启用' : mismatch.value ? '仍然保存' : cloud.dialog?.continueWith ? '保存并启用' : '保存同步配置'
     default:
       return '确定'
   }
@@ -195,6 +196,17 @@ watch(password, () => (mismatch.value = ''))
 
 /** 这次操作涉及的账号（恢复时还没有账号，用游戏和 UID） */
 const targetId = computed(() => (mode.value === 'restore' ? makeAccountId(restoreGame.value, restoreUid.value.trim()) : (cloud.dialog?.accountId ?? '')))
+
+/** 这台设备上已经开通、而且记着钥匙的账号（用来在本地核对密码） */
+const knownState = computed(() => [...cloud.byAccount.values()].find((e) => e.hasKeys)?.state)
+const knownName = computed(() => app.accounts.find((a) => a.id === knownState.value?.accountId)?.nickName ?? knownState.value?.uid ?? '')
+/**
+ * 一键启用时这个浏览器还没有同步配置，但已经有开通了的账号：只需要输入一次它的云同步密码，
+ * 在本地核对后保存为同步配置，不用重新设置（输两遍、密码规则）
+ */
+const quickProfile = computed(() => mode.value === 'profile' && Boolean(cloud.dialog?.continueWith) && Boolean(knownState.value))
+
+const dialogTitle = computed(() => (quickProfile.value ? '输入云同步密码' : mode.value ? TITLES[mode.value] : ''))
 
 /** 同步配置：用一个已开通账号的钥匙在本地核对密码（不联网） */
 async function checkAgainstEnabled(candidate: string): Promise<string> {
@@ -276,7 +288,14 @@ async function submit() {
         toast.add({ title: '已删除云端数据', description: '本地数据不受影响。', color: 'success', icon: 'i-lucide-trash-2' })
         break
       case 'profile': {
-        if (!mismatch.value) {
+        if (quickProfile.value) {
+          // 只输入一次：必须和已开通账号的密码一致（一键启用就是用同一个密码）
+          if (await checkAgainstEnabled(password.value)) {
+            error.value = `密码和「${knownName.value}」的云同步密码不一致。一键启用要用同一个密码；如果这个账号想用别的密码，请在“…”菜单里选择手动开通。`
+            working.value = false
+            return
+          }
+        } else if (!mismatch.value) {
           mismatch.value = await checkAgainstEnabled(password.value)
           if (mismatch.value) {
             working.value = false
@@ -320,11 +339,13 @@ async function submit() {
 <template>
   <UModal
     :open="Boolean(mode)"
-    :title="mode ? TITLES[mode] : ''"
+    :title="dialogTitle"
     :description="
       account
         ? `${GAME_LABEL[account.game]} · ${account.nickName} · UID ${account.uid}`
-        : mode === 'profile'
+        : quickProfile
+          ? '这个浏览器第一次使用一键启用'
+          : mode === 'profile'
           ? '只保存在这台设备上，之后其他账号一键开通、一键启用'
           : '用 UID 和云同步密码，把云端的记录取回到这个浏览器'
     "
@@ -334,7 +355,7 @@ async function submit() {
   >
     <template #body>
       <div class="space-y-4 text-sm">
-        <UAlert v-if="cloud.dialog?.note && !confirming" color="warning" variant="subtle" icon="i-lucide-info" :description="cloud.dialog.note" />
+        <UAlert v-if="cloud.dialog?.note && !confirming && !quickProfile" color="warning" variant="subtle" icon="i-lucide-info" :description="cloud.dialog.note" />
 
         <!-- 发送鹰角 token 前的确认 -->
         <TokenDisclosure v-if="confirming" :steps="tokenSteps" />
@@ -441,6 +462,20 @@ async function submit() {
             title="删除云端保存的这个账号的全部数据"
             description="本地数据不受影响。删除后其他设备无法再云同步这个账号，除非重新开通。"
           />
+        </template>
+
+        <!-- 同步配置：一键启用时只输入一次已开通账号的密码 -->
+        <template v-else-if="quickProfile">
+          <p class="leading-relaxed text-muted">
+            这个浏览器里还没有同步配置。已开通的「{{ knownName }}」在这里记住的是它自己的钥匙（由密码算出来，反推不出密码），所以一键启用需要你输入一次它的云同步密码。
+          </p>
+          <p class="text-xs leading-relaxed text-muted">
+            输入后先在本地核对（不联网），再保存为这个浏览器的同步配置：之后这个浏览器里的其他账号点一下就能启用。同步配置按浏览器保存，换浏览器、换设备，或者测试站和正式站之间，都需要再输入一次。
+          </p>
+          <UFormField label="云同步密码" required>
+            <UInput v-model="password" type="password" autocomplete="current-password" class="w-full font-mono" @keydown.enter="submit" />
+          </UFormField>
+          <USwitch v-model="remember" label="在这台设备上记住（推荐）" :description="PROFILE_HINT" />
         </template>
 
         <!-- 同步配置 -->
