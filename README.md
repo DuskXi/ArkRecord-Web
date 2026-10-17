@@ -150,7 +150,7 @@ npm run build        # 拉取数据 + 类型检查 + 构建
 - `ci.yml`：每次推送和 PR 运行 lint、类型检查、测试、构建。
 - 仓库级 Actions Secrets：`CLOUDFLARE_API_TOKEN`（Edit Cloudflare Workers 模板，限定账号和 `kaltsit.dev` 区域）、`CLOUDFLARE_ACCOUNT_ID`。详见 [docs/rewrite/README.md](docs/rewrite/README.md)。
 - 云同步需要在 Cloudflare 后台给两个 Worker 各设置一个 Secret `SYNC_PEPPER`（不进仓库、不经过 GitHub），并另外离线备份；丢失后所有云端数据都无法解开。见 [docs/rewrite/README.md](docs/rewrite/README.md)。
-- 公开核对线上代码：每次部署生成构建清单 `/build-manifest.json` 并签发构建证明；`audit-deployment.yml` 每小时核对网站文件和 Cloudflare 上运行的 Worker 代码。任何人都可以运行 `node scripts/audit/verify-site.mjs` 自己核对，见 [SECURITY.md](SECURITY.md) 的“对照线上代码”。
+- 公开核对线上代码：每次部署生成构建清单 `/build-manifest.json` 并签发构建证明；`audit-deployment.yml` 每天核对网站文件和 Cloudflare 上运行的 Worker 代码。任何人都可以运行 `node scripts/audit/verify-site.mjs` 自己核对，见 [SECURITY.md](SECURITY.md) 的“对照线上代码”。
 - 发布新版本时，在 `src/lib/announcements/content.ts` 最前面加一篇更新公告（测试会检查），老用户更新后第一次打开网站时弹出。见 [docs/rewrite/README.md](docs/rewrite/README.md)。
 - 旧版网页在 `public/legacy/`，由 [`scripts/build-legacy.sh`](scripts/build-legacy.sh) 从 [`legacy-v0.1`](https://github.com/DuskXi/ArkRecord-Web/tree/legacy-v0.1) 分支上的旧代码构建，一般不需要重新生成。
 

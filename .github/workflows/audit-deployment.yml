@@ -1,6 +1,6 @@
 # 线上部署核对（说明见 SECURITY.md 的“对照线上代码”）：
-#   - 每小时一次，核对正式环境和测试环境（网站只核对代码文件）；
-#   - 每次部署之后由部署流程调用，核对刚部署的环境（网站的全部文件）；
+#   - 每天一次，核对正式环境和测试环境；
+#   - 每次部署之后由部署流程调用，核对刚部署的环境；
 #   - 也可以在 Actions 页面手动运行。
 # 运行记录和摘要公开；每次的核对报告都签发构建证明，记录在 Sigstore 的公开透明日志里，删不掉、改不了时间。
 #
@@ -10,7 +10,7 @@ name: Audit deployment
 
 on:
   schedule:
-    - cron: '41 * * * *'
+    - cron: '41 3 * * *'
   workflow_dispatch:
     inputs:
       environment:
@@ -65,7 +65,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           AUDIT_ENV: ${{ matrix.environment }}
           EXPECT_COMMIT: ${{ inputs.expect-commit }}
-          SCOPE: ${{ (github.event_name == 'schedule' || inputs.scope == 'code') && 'code' || 'all' }}
+          SCOPE: ${{ inputs.scope == 'code' && 'code' || 'all' }}
         run: |
           args=(--env "$AUDIT_ENV" --report site.json --manifest-out build-manifest.json)
           if [ "$SCOPE" = all ]; then args+=(--all); fi

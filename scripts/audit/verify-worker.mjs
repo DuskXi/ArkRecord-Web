@@ -5,8 +5,8 @@
  *   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… node scripts/audit/verify-worker.mjs --env production --manifest build-manifest.json
  *
  * 规则：
- *   1. 最近 48 小时内上传的每一个 Worker 版本（不论谁上传、是否部署过），每个模块都必须有本仓库对应环境的部署流程签发的构建证明。
- *      按时间而不是按个数取版本，连续上传再多版本也挤不出核对范围；定时任务每小时运行，每个版本会被核对很多次。
+ *   1. 最近 72 小时内上传的每一个 Worker 版本（不论谁上传、是否部署过），每个模块都必须有本仓库对应环境的部署流程签发的构建证明。
+ *      按时间而不是按个数取版本，连续上传再多版本也挤不出核对范围；定时任务每天运行（部署后也会运行），每个版本至少被核对两次。
  *      在网页后台改密钥也会产生新版本，但代码不变，所以同样有构建证明。
  *      开始签发构建证明之前的版本（版本号小于 lib.mjs 里固定的起点）记为“核对开始之前”。
  *   2. 正在运行的版本，模块必须和网站上公开的构建清单完全一致（清单本身已由 verify-site.mjs 验证过构建证明）。
@@ -36,7 +36,7 @@ const { values } = parseArgs({
   options: {
     env: { type: 'string' },
     manifest: { type: 'string' },
-    hours: { type: 'string', default: '48' },
+    hours: { type: 'string', default: '72' },
     report: { type: 'string' },
   },
 })
@@ -46,7 +46,7 @@ if (!config) throw new Error('--env 应为 production 或 preview')
 const token = process.env.CLOUDFLARE_API_TOKEN ?? ''
 const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? ''
 if (!token || !/^[0-9a-f]{32}$/.test(account)) throw new Error('需要环境变量 CLOUDFLARE_API_TOKEN 和 CLOUDFLARE_ACCOUNT_ID')
-const hours = Math.min(24 * 30, Math.max(1, Number(values.hours) || 48))
+const hours = Math.min(24 * 30, Math.max(1, Number(values.hours) || 72))
 const since = Date.now() - hours * 3600_000
 
 const report = {

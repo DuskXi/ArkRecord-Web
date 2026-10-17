@@ -22,6 +22,10 @@ export const ANNOUNCEMENTS: Announcement[] = [
         ],
       },
       {
+        title: '在网站里查看',
+        items: ['在[关于](/about#audit)页顶部点“线上代码审计”，可以直接在网站里阅读这些说明，看到现在运行的是哪个版本，以及自己核对的方法。'],
+      },
+      {
         title: '任何人都能核对网站',
         items: [
           '网站上的文件（包括在浏览器里加密数据的代码）谁都能下载。仓库里的核对脚本会验证构建证明，再逐个对比线上的文件和安全响应头；也可以自己从源码构建再对比。用法见[安全说明](https://github.com/DuskXi/ArkRecord-Web/blob/master/SECURITY.md)的“对照线上代码”。',
@@ -30,7 +34,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
       {
         title: '服务器代码：公开的定时核对',
         items: [
-          '服务器代码只有 Cloudflare 账号持有者能取回，所以由仓库里公开的定时任务代为核对：每小时一次，每次部署后也立即核对。最近 48 小时上传到 Cloudflare 的**每一个版本**，都必须有本仓库部署流程签发的构建证明。',
+          '服务器代码只有 Cloudflare 账号持有者能取回，所以由仓库里公开的定时任务代为核对：每天一次，每次部署后也立即核对。最近 72 小时上传到 Cloudflare 的**每一个版本**，都必须有本仓库部署流程签发的构建证明。',
           '核对结果在 GitHub 的 [Actions 页面](https://github.com/DuskXi/ArkRecord-Web/actions/workflows/audit-deployment.yml)公开，每次的报告也签发了构建证明。核对只读取代码和部署记录，报告里没有账号信息。',
         ],
       },
