@@ -2,7 +2,7 @@
 
 明日方舟 / 明日方舟：终末地 寻访记录的本地存档与分析工具。
 
-**网站：<https://ark.kaltsit.dev>** · 当前版本 1.1.3 · 旧版：<https://ark.kaltsit.dev/legacy/>
+**网站：<https://ark.kaltsit.dev>** · 当前版本 1.1.4 · 旧版：<https://ark.kaltsit.dev/legacy/>
 
 鹰角官方只能查询最近 90 天的寻访记录（源石、充值记录只有 30 天）。ArkRecord 把每次同步到的记录追加保存在你自己的浏览器里，越攒越全，所有统计分析也都在浏览器本地完成。
 
