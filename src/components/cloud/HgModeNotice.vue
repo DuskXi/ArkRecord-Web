@@ -37,7 +37,7 @@ const ROWS: { who: string; ok: boolean; result: string }[] = [
       </tbody>
     </table>
     <p class="leading-relaxed text-muted">
-      服务器平时只保存密文，钥匙只在核实通过的请求里给出，不保存、不记录。随时可以切回密码模式（会换一把新钥匙）。
+      在当前实现中，鹰角 token 只在服务器核实请求时存在于内存里，核实完立即丢弃，不会出现在日志和硬盘里，也不会放进返回结果和错误信息。服务器平时只保存密文，钥匙只在核实通过的请求里算出来给你，同样不保存、不记录。相关代码公开，接受审计（下面的链接指向线上正在运行的版本）。随时可以切回密码模式（会换一把新钥匙）。
     </p>
     <p class="flex flex-wrap gap-x-3 gap-y-1">
       <ULink :to="HG_VERIFY_URL" target="_blank" class="text-primary">审计：线上运行的 hg-verify.ts</ULink>

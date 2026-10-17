@@ -304,7 +304,7 @@ const modeItems = computed(() => [
     description:
       cloud.hgAvailable === false
         ? '服务器还没有配置无密码模式。'
-        : '不用记密码：每次云同步都用鹰角 token 验证。本站运营者和拿到你有效鹰角 token 的人技术上能读取你的云端记录。',
+        : '不用记密码：每次云同步都用鹰角 token 验证。token 只在服务器核实请求时存在于内存里，不会出现在日志和硬盘里，代码接受审计；但本站运营者和拿到你有效鹰角 token 的人技术上能读取你的云端记录。',
     value: 'hg',
     disabled: cloud.hgAvailable === false,
   },

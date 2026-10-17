@@ -73,6 +73,7 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 鹰角账号里没有“只有你知道”的东西（token 会变，UID 不是秘密），所以由它派生的钥匙服务器一定也能算出来。这是它“不推荐”的根本原因。
 
 - **钥匙**：`KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ locator)`，`SYNC_HG_SECRET` 是只写的 Worker secret。服务器不保存 `KEK_hg`，只在核实过鹰角 token 的请求里算出来交给浏览器（[`worker/cloud-vault.ts`](worker/cloud-vault.ts) 的 `HgKeys`）；加解密仍然在浏览器里进行，浏览器也不保存钥匙。
+- **鹰角 token 的处理和密码模式一样**：只在服务器核实请求时存在于内存里，核实完立即丢弃，不写日志、不写入存储（见上面“token 只存在于 Worker 处理请求时的内存里”）。代码公开，接受审计。
 - **每个请求都要核实鹰角 token**，没有会话、票据。没有核实通过的请求和密码错误返回同样的结果，不返回任何数据。
 - **保护范围**：
 
