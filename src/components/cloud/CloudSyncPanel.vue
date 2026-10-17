@@ -93,13 +93,13 @@ function menu(a: Account): DropdownMenuItem[][] {
   ].filter((group) => group.length)
 }
 
-/** 还没开通的账号：有同步配置时的其他操作 */
+/** 还没开通的账号：一键启用以外的操作 */
 function startMenu(a: Account): DropdownMenuItem[][] {
   const d = cloud.detected.get(a.id)
   return [
     d ? [] : [{ label: '只检测云端状态', icon: 'i-lucide-search-check', onSelect: () => void cloud.detect([a]) }],
     [
-      { label: '手动开通（不用同步配置）', icon: 'i-lucide-cloud-upload', onSelect: () => cloud.open('enable', a.id) },
+      { label: '手动开通', icon: 'i-lucide-cloud-upload', onSelect: () => cloud.open('enable', a.id) },
       { label: '已在别处开通：手动输入密码', icon: 'i-lucide-key-round', onSelect: () => cloud.open('unlock', a.id) },
       { label: '忘记密码：用这个浏览器的数据覆盖云端', icon: 'i-lucide-cloud-upload', onSelect: () => cloud.open('overwrite', a.id) },
     ],
@@ -157,7 +157,7 @@ function startMenu(a: Account): DropdownMenuItem[][] {
           {{ cloud.profile.remember ? '记在这台设备上' : '只保存到关闭网页' }} · {{ formatDateTime(cloud.profile.savedAt) }}
         </p>
         <p v-else class="text-xs text-muted">
-          没有保存。保存后，这台设备上的其他账号开通或启用云同步时点一下就完成，不用再输入密码。只存在这台设备上，不上传，不包含鹰角登录。
+          没有保存。保存后，账号点“一键启用”就能开通或解锁，不用再输入密码。只存在这台设备的这个浏览器里，不上传，不包含鹰角登录。
         </p>
       </div>
       <div class="flex gap-1.5">
@@ -219,8 +219,8 @@ function startMenu(a: Account): DropdownMenuItem[][] {
               </UDropdownMenu>
             </template>
 
-            <!-- 还没开通，有同步配置：一键启用 -->
-            <template v-else-if="cloud.profile">
+            <!-- 还没开通：一键启用（没有同步配置时先设置），也可以按检测结果手动操作 -->
+            <template v-else>
               <UButton
                 label="一键启用"
                 icon="i-lucide-zap"
@@ -230,35 +230,22 @@ function startMenu(a: Account): DropdownMenuItem[][] {
                 :disabled="Boolean(cloud.busy)"
                 @click="cloud.quickStart(a)"
               />
-              <UDropdownMenu :items="startMenu(a)" :content="{ align: 'end' }">
-                <UButton icon="i-lucide-ellipsis" size="sm" color="neutral" variant="ghost" aria-label="更多操作" />
-              </UDropdownMenu>
-            </template>
-
-            <!-- 还没开通，没有同步配置 -->
-            <template v-else>
-              <template v-if="!cloud.detected.get(a.id)">
+              <template v-if="!cloud.profile">
                 <UButton
+                  v-if="!cloud.detected.get(a.id)"
                   label="检测云端状态"
-                  icon="i-lucide-search-check"
                   size="sm"
-                  variant="soft"
-                  :loading="cloud.busy === a.id"
+                  color="neutral"
+                  variant="ghost"
                   :disabled="Boolean(cloud.busy)"
                   @click="cloud.detect([a])"
                 />
-                <UButton label="开通" size="sm" color="neutral" variant="ghost" @click="cloud.open('enable', a.id)" />
-                <UButton label="已在别处开通" size="sm" color="neutral" variant="ghost" @click="cloud.open('unlock', a.id)" />
+                <UButton v-else-if="cloud.detected.get(a.id)!.status.exists" label="输入密码" size="sm" color="neutral" variant="ghost" @click="cloud.open('unlock', a.id)" />
+                <UButton v-else label="开通" size="sm" color="neutral" variant="ghost" @click="cloud.open('enable', a.id)" />
               </template>
-              <UButton
-                v-else-if="cloud.detected.get(a.id)!.status.exists"
-                label="输入密码"
-                icon="i-lucide-key-round"
-                size="sm"
-                variant="soft"
-                @click="cloud.open('unlock', a.id)"
-              />
-              <UButton v-else label="开通" icon="i-lucide-cloud-upload" size="sm" variant="soft" @click="cloud.open('enable', a.id)" />
+              <UDropdownMenu :items="startMenu(a)" :content="{ align: 'end' }">
+                <UButton icon="i-lucide-ellipsis" size="sm" color="neutral" variant="ghost" aria-label="更多操作" />
+              </UDropdownMenu>
             </template>
           </div>
         </div>
