@@ -153,10 +153,12 @@ function startMenu(a: Account): DropdownMenuItem[][] {
       <div class="min-w-0 flex-1">
         <p class="font-medium text-highlighted">同步配置</p>
         <p v-if="cloud.profile" class="text-xs text-muted">
-          已保存 · 新开通的账号{{ cloud.profile.requireHg ? '开启' : '不开启' }}双重验证 ·
+          已保存在这台设备上 · 新开通的账号{{ cloud.profile.requireHg ? '开启' : '不开启' }}双重验证 ·
           {{ cloud.profile.remember ? '记在这台设备上' : '只保存到关闭网页' }} · {{ formatDateTime(cloud.profile.savedAt) }}
         </p>
-        <p v-else class="text-xs text-muted">没有保存。保存后，其他账号开通或启用云同步时点一下就完成，不用再输入密码。</p>
+        <p v-else class="text-xs text-muted">
+          没有保存。保存后，这台设备上的其他账号开通或启用云同步时点一下就完成，不用再输入密码。只存在这台设备上，不上传，不包含鹰角登录。
+        </p>
       </div>
       <div class="flex gap-1.5">
         <UButton :label="cloud.profile ? '修改' : '设置'" size="sm" color="neutral" variant="outline" @click="cloud.open('profile')" />

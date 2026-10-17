@@ -138,8 +138,9 @@ const tokenSteps = computed(() => {
   }
 })
 
-const PROFILE_HINT = '之后其他账号开通或启用云同步时点一下就完成。密码会加密后保存在这台设备的浏览器里（加密钥匙不可导出），跟随“记住”的选择：不记住时只保存到关闭网页。公用电脑请不要保存。'
-const profileLabel = computed(() => (cloud.profile ? '用这次的密码和设置替换同步配置' : '保存为同步配置（推荐）'))
+const PROFILE_HINT =
+  '只记下云同步密码和选项，之后这台设备上的其他账号开通或启用云同步时点一下就完成。只存在这台设备上（加密保存），不上传，也不会同步到别的设备；不包含鹰角登录（token）。不记住时只保存到关闭网页；公用电脑请不要保存。'
+const profileLabel = computed(() => (cloud.profile ? '用这次的密码和设置替换这台设备上的同步配置' : '在这台设备上保存同步配置（推荐）'))
 
 const profileApplies = computed(() => mode.value === 'enable' || mode.value === 'overwrite' || mode.value === 'unlock' || mode.value === 'restore')
 
@@ -315,7 +316,7 @@ async function submit() {
       account
         ? `${GAME_LABEL[account.game]} · ${account.nickName} · UID ${account.uid}`
         : mode === 'profile'
-          ? '之后其他账号一键开通、一键启用'
+          ? '只保存在这台设备上，之后其他账号一键开通、一键启用'
           : '用 UID 和云同步密码，把云端的记录取回到这个浏览器'
     "
     :dismissible="!working"
@@ -367,6 +368,10 @@ async function submit() {
                 ? '这台设备上没有这个账号的云同步钥匙（新设备、清除过浏览器数据、选择了不记住，或者密码在别处改过、云端被覆盖）。'
                 : '在新设备上，不需要先添加账号：输入 UID 和云同步密码即可取回。'
             }}
+          </p>
+          <p v-if="mode === 'restore'" class="flex gap-1.5 text-xs leading-relaxed text-muted">
+            <UIcon name="i-lucide-info" class="mt-0.5 size-3.5 shrink-0" />
+            <span>取回的是记录和账号信息，不包括鹰角登录：token 从来不会上传到云端。要在这台设备上从鹰角同步新记录，需要重新登录一次。</span>
           </p>
           <div v-if="mode === 'restore'" class="grid gap-3 sm:grid-cols-[10rem_1fr]">
             <UFormField label="游戏">
@@ -432,7 +437,10 @@ async function submit() {
         <!-- 同步配置 -->
         <template v-else-if="mode === 'profile'">
           <p class="leading-relaxed text-muted">
-            保存一份云同步设置。之后其他账号（例如同一个鹰角账号下的另一个游戏、另一个服务器的角色）开通或启用云同步时，点一下就完成，不用再输入密码和选项。
+            在这台设备上记下云同步密码和选项。之后这台设备上的其他账号（例如同一个鹰角账号下的另一个游戏、另一个服务器的角色）开通或启用云同步时，点一下就完成，不用再输入密码和选项。
+          </p>
+          <p class="text-xs leading-relaxed text-muted">
+            同步配置只存在这台设备上，不上传，也不会同步到别的设备；不包含鹰角登录（token）。需要证明账号是你的时候，仍然用这台设备上保存的登录，或者临时粘贴 token。
           </p>
           <UAlert v-if="cloud.profile" color="neutral" variant="subtle" icon="i-lucide-info" description="保存后会替换现有的同步配置。" />
           <PasswordFields v-model="password" v-model:valid="passwordValid" label="云同步密码" />
