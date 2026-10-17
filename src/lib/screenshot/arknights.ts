@@ -7,7 +7,8 @@
  *   - 名字的位置交给 OCR。
  * 坐标都是相对卡片宽高的比例，在 271 宽的截图上标定。
  */
-import { hsv, type Rect, type RgbaImage, pixel, runs } from './image'
+import { pixel, type Rect, type RgbaImage, runs } from './image'
+import { yellowScore } from './pentagram'
 
 /** 一颗星的间距 / 卡片宽度 */
 export const STAR_PITCH = 0.0817
@@ -34,12 +35,9 @@ export interface AkCard {
   rect: Rect
   stars: AkStarRow | null
   rarity: number | null
+  /** low：量出的长度离整数颗星较远，或者卡片太小，界面上应该请用户确认（也可以用名字查游戏数据核对） */
+  rarityConfidence: 'high' | 'low'
   nameRect: Rect
-}
-
-function isStarYellow(img: RgbaImage, x: number, y: number): boolean {
-  const [h, s, v] = hsv(pixel(img, x, y))
-  return h >= 35 && h <= 70 && s >= 0.45 && v >= 0.55
 }
 
 export function readStars(img: RgbaImage, card: Rect): AkStarRow | null {
@@ -47,34 +45,40 @@ export function readStars(img: RgbaImage, card: Rect): AkStarRow | null {
   const x1 = Math.round(card.x + card.width)
   const top = Math.round(card.y + card.height * BAND.top)
   const bottom = Math.round(card.y + card.height * BAND.bottom)
-  // 1. 黄色像素最多的那几行就是星星那一行
+  const score = (x: number, y: number) => yellowScore(pixel(img, x, y))
+  // 1. 黄色最多的那几行就是星星那一行（门槛相对于最黄的一行，压缩、变暗后仍然成立）
   const rows: number[] = []
   for (let y = top; y < bottom; y++) {
     let n = 0
-    for (let x = x0; x < x1; x++) if (isStarYellow(img, x, y)) n++
+    for (let x = x0; x < x1; x++) n += score(x, y)
     rows.push(n)
   }
   const peak = Math.max(...rows)
-  if (peak < card.width * STAR_PITCH * 0.8) return null
+  // 一整排星星至少相当于一颗星宽、黄色程度 0.15 的总量
+  if (peak < card.width * STAR_PITCH * 0.15) return null
   const band = runs(rows, (n) => n >= peak * 0.35)
     .map(([a, b]) => [a + top, b + top] as [number, number])
     .toSorted((a, b) => rows.slice(b[0] - top, b[1] - top).reduce((s, v) => s + v, 0) - rows.slice(a[0] - top, a[1] - top).reduce((s, v) => s + v, 0))[0]!
   const [y0, y1] = band
-  // 2. 每一列在这一行里有没有黄色
+  // 2. 每一列在这一行里的黄色总量；门槛取这一排里较黄的列的 60%（边缘模糊时量出的长度最稳定）
   const cols: number[] = []
   for (let x = x0; x < x1; x++) {
     let n = 0
-    for (let y = y0; y < y1; y++) if (isStarYellow(img, x, y)) n++
+    for (let y = y0; y < y1; y++) n += score(x, y)
     cols.push(n)
   }
+  const sorted = cols.filter((v) => v > 0).toSorted((a, b) => a - b)
+  const high = sorted[Math.floor(sorted.length * 0.9)] ?? 0
+  const threshold = high * 0.6
   // 3. 从预计的起点开始，允许星星之间有小空隙，连成一段
   const pitch = card.width * STAR_PITCH
   const maxGap = Math.max(1, Math.round(pitch * 0.45))
-  const segments = runs(cols, (n) => n > 0).map(([a, b]) => [a + x0, b + x0] as [number, number])
+  const segments = runs(cols, (n) => n > threshold).map(([a, b]) => [a + x0, b + x0] as [number, number])
   const expected = card.x + card.width * ROW_START
   const first = segments.findIndex(([a, b]) => b > expected - pitch * 0.6 && a < expected + pitch * 0.8)
   if (first < 0) return null
-  let [sx, ex] = segments[first]!
+  const [sx] = segments[first]!
+  let ex = segments[first]![1]
   let blobs = 1
   for (const [a, b] of segments.slice(first + 1)) {
     if (a - ex > maxGap) break
@@ -83,17 +87,20 @@ export function readStars(img: RgbaImage, card: Rect): AkStarRow | null {
   }
   // 一排 n 颗星的长度约为 (n - 1) 个间距 + 一颗星的宽度（约 0.9 个间距）
   const estimate = (ex - sx) / pitch + 0.1
-  const count = Math.round(estimate)
-  const ok = count >= 1 && count <= 6 && Math.abs(estimate - count) <= 0.45
+  // 最多 6 颗星：比 6 颗略长通常是旁边立绘的黄色连了进来
+  const count = Math.min(6, Math.round(estimate))
+  const ok = count >= 1 && estimate < 7
   return { y0, y1, x0: sx, x1: ex, estimate, blobs, count: ok ? count : null }
 }
 
 export function readCard(img: RgbaImage, card: Rect): AkCard {
   const stars = readStars(img, card)
+  const sure = stars?.count != null && Math.abs(stars.estimate - stars.count) <= 0.3 && card.width >= 90
   return {
     rect: card,
     stars,
     rarity: stars?.count ?? null,
+    rarityConfidence: sure ? 'high' : 'low',
     nameRect: { x: card.x + card.width * 0.05, y: card.y + card.height * 0.9, width: card.width * 0.95, height: card.height * 0.1 },
   }
 }

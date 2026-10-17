@@ -10,7 +10,7 @@
  * 坐标都是相对卡片宽高的比例，在 594 宽的截图上标定。
  */
 import { hsv, type Rect, type RgbaImage, sample } from './image'
-import { type PentagramGeometry, type PentagramReading, fitPentagram, readStrokes } from './pentagram'
+import { fitPentagram, type PentagramGeometry, type PentagramReading, readStrokes } from './pentagram'
 
 /** 名字栏上沿在卡片里的相对高度 */
 const LABEL_TOP = 0.83
@@ -24,6 +24,7 @@ export interface EfCard {
   rarity: 4 | 5 | 6 | null
   /** 潜能 0–5；看不出来时为 null */
   potential: number | null
+  potentialConfidence: 'high' | 'low'
   star: PentagramReading
   /** 名字所在的区域，交给 OCR */
   nameRect: Rect
@@ -44,10 +45,12 @@ export function anchorCard(img: RgbaImage, card: Rect): Rect {
     return n / total > 0.9
   }
   const expected = card.y + card.height * LABEL_TOP
-  const slack = Math.round(card.height * 0.05)
-  for (let y = Math.round(expected - slack); y <= expected + slack; y++) {
-    if (isWhiteRow(y) && isWhiteRow(y + 1) && isWhiteRow(y + 2)) {
-      return { ...card, y: card.y + (y - expected) }
+  // 先在附近找；找不到时（例如页面背景和名字栏一样白，网格整体偏了）再扩大范围
+  for (const slack of [card.height * 0.05, card.height * 0.15]) {
+    for (let y = Math.round(expected - slack); y <= expected + slack; y++) {
+      if (isWhiteRow(y) && isWhiteRow(y + 1) && isWhiteRow(y + 2)) {
+        return { ...card, y: card.y + (y - expected) }
+      }
     }
   }
   return card
@@ -71,7 +74,7 @@ export function rarityOf(img: RgbaImage, card: Rect): 4 | 5 | 6 | null {
     }
     if (n && (!best || s / n > best[1])) best = [h / n, s / n, v / n]
   }
-  if (!best || best[1] < 0.3) return null
+  if (!best || best[1] < 0.15) return null
   const [h] = best
   if (h >= 15 && h < 38) return 6
   if (h >= 38 && h < 70) return 5
@@ -89,24 +92,62 @@ export function starGeometry(card: Rect): PentagramGeometry {
   }
 }
 
-/** 由五角星推出潜能：黄色那一笔在解锁顺序里的位置；没有黄色、而且大多数笔画是白色时为满潜能 5 */
-export function potentialOf(reading: PentagramReading): number | null {
-  const yellow = reading.detail.map((d, k) => ({ k, y: d.yellow })).filter((d) => d.y >= 0.5)
-  if (yellow.length === 1) return POTENTIAL_ORDER.indexOf(yellow[0]!.k)
-  if (yellow.length === 0 && reading.strokes.filter((s) => s === 'white').length >= 4) return 5
-  return null
+export interface PotentialReading {
+  value: number | null
+  /**
+   * high：找到了黄色那一笔（或者五笔全白、没有任何发黄的笔画）；
+   * low：颜色被压缩掉了，只能按亮的笔画是否连成解锁顺序的前几笔推断（P4 和满潜能分不开），界面上应该请用户确认
+   */
+  confidence: 'high' | 'low'
 }
 
+/** 由五角星推出潜能：黄色那一笔在解锁顺序里的位置；没有黄色、五笔都亮时为满潜能 5 */
+/** “明显亮”：真正的白色笔画对比度在 0.4 以上，没画出来的笔画下面的立绘最多到 0.25 左右 */
+const CLEARLY_LIT = 0.3
+
+export function readPotential(reading: PentagramReading): PotentialReading {
+  const yellow = reading.strokes.indexOf('yellow')
+  const lit = reading.strokes.map((s) => s !== 'none')
+  const clearlyLit = reading.detail.map((d, k) => k === yellow || d.white >= CLEARLY_LIT)
+  if (yellow >= 0) {
+    const p = POTENTIAL_ORDER.indexOf(yellow)
+    // 核对：解锁顺序里排在黄色后面的笔画不应该明显亮
+    const later = POTENTIAL_ORDER.slice(p + 1).some((k) => clearlyLit[k])
+    return { value: p, confidence: later ? 'low' : 'high' }
+  }
+  const maxYellow = Math.max(...reading.detail.map((d) => d.yellow))
+  if (lit.every(Boolean)) return { value: 5, confidence: maxYellow <= 0.1 ? 'high' : 'low' }
+  // 黄色认不出来：明显亮的笔画如果正好是解锁顺序的前 m 笔，推断为 m − 1（第 m 笔是变白了的黄色）
+  const m = clearlyLit.filter(Boolean).length
+  if (m >= 1 && POTENTIAL_ORDER.slice(0, m).every((k) => clearlyLit[k])) return { value: m - 1, confidence: 'low' }
+  return { value: null, confidence: 'low' }
+}
+
+export function potentialOf(reading: PentagramReading): number | null {
+  return readPotential(reading).value
+}
+
+/** 卡片宽度低于这个值时，潜能一律标为“请确认” */
+const MIN_CARD_WIDTH = 90
+
+/** 卡片的高宽比（白色名字栏和页面背景太接近时，网格量出来的高度会偏短，用它纠正） */
+const ASPECT = 1.656
+
 export function readCard(img: RgbaImage, rect: Rect): EfCard {
-  const card = anchorCard(img, rect)
+  const shaped = Math.abs(rect.height / rect.width - ASPECT) > ASPECT * 0.03 ? { ...rect, height: rect.width * ASPECT } : rect
+  const card = anchorCard(img, shaped)
   // 只在 1 像素内微调：笔画少、背景亮时大范围搜索会跑偏
   const geometry = fitPentagram(img, starGeometry(card), { shift: 1, scale: 0.04, rotate: Math.PI / 90, step: 0.5 })
   const star = readStrokes(img, geometry)
+  const potential = readPotential(star)
+  // 卡片太小（截图被压缩过）时笔画只有一两个像素宽，结果都请用户确认
+  if (card.width < MIN_CARD_WIDTH) potential.confidence = 'low'
   const labelTop = card.y + card.height * LABEL_TOP
   return {
     rect: card,
     rarity: rarityOf(img, card),
-    potential: potentialOf(star),
+    potential: potential.value,
+    potentialConfidence: potential.confidence,
     star,
     nameRect: { x: card.x + card.width * 0.04, y: labelTop + card.height * 0.01, width: card.width * 0.7, height: card.height * 0.13 },
   }
