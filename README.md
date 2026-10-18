@@ -178,6 +178,7 @@ worker/           Cloudflare Worker：转发、同源检查、限速、图片缓
 scripts/          构建时的游戏数据同步、旧版网页构建
 public/legacy/    旧版网页（构建产物）
 docs/rewrite/     重构调研与设计文档
+docs/research/    新方向调研：米哈游系站点、多站点数据互通、桌面版
 docs/archive/     旧版 README 留档
 ```
 
