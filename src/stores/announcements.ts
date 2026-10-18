@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { ANNOUNCEMENTS, popupPlan, readSeen, unreadOf, writeSeen } from '@/lib/announcements'
+import { ANNOUNCEMENTS, popupPlan, readSeen, unreadMajorOf, unreadOf, writeSeen } from '@/lib/announcements'
 import { useAppStore } from '@/stores/app'
 
 /** 更新公告：已读记录、未读数、这次要不要弹出（规则见 src/lib/announcements） */
@@ -16,7 +16,8 @@ export const useAnnouncementsStore = defineStore('announcements', () => {
   const dismissed = ref(plan === null)
 
   const unread = computed(() => unreadOf(seen.value))
-  const unreadCount = computed(() => (seen.value === null ? 1 : unread.value.length))
+  /** 侧边栏的未读数：只算正式更新（小更新只写进公告页） */
+  const unreadCount = computed(() => unreadMajorOf(seen.value).length)
 
   function markAllSeen() {
     if (!latest) return

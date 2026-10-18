@@ -2,12 +2,32 @@ import type { Announcement } from './index'
 
 /**
  * 全部更新公告，新的在前。发布新版本时在最前面加一篇（id 用 v + 版本号，测试会检查）。
+ * kind：正式更新（major，新功能、重要变化）更新后弹窗；小更新（minor，修复、小改进）只写进公告页，不弹窗。
  * 写给玩家看：说清楚改了什么、对自己有什么影响，不写实现细节。
  * 正文支持 **加粗** 和 [文字](/页面) 链接。日期用北京时间。
  */
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: 'v1.1.7',
+    kind: 'minor',
+    version: '1.1.7',
+    date: '2026-10-18',
+    title: '更新公告分为小更新和正式更新',
+    summary: '以后的修复和小改进只写在“更新公告”页，不再弹窗打扰；新功能、重要变化等正式更新才会弹出。',
+    sections: [
+      {
+        title: '更新公告',
+        items: [
+          '**小更新**（修复、小改进）只写进[更新公告](/announcements)页，不弹窗，也不在侧边栏显示未读数。下一次正式更新弹窗时，会一起列出你还没看过的小更新。',
+          '**正式更新**（新功能、重要变化）照常在更新后第一次打开网站时弹出。',
+          '公告页里每一篇都标明了是小更新还是正式更新。',
+        ],
+      },
+    ],
+  },
+  {
     id: 'v1.1.6',
+    kind: 'minor',
     version: '1.1.6',
     date: '2026-10-18',
     title: '公开核对线上运行的代码',
@@ -48,10 +68,11 @@ export const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 'v1.1.5',
+    kind: 'major',
     version: '1.1.5',
     date: '2026-10-18',
     title: '新增更新公告，近期重要更新一览',
-    summary: '以后每次更新，第一次打开网站时都会弹出公告，说明更新了什么；历史公告可以在“更新公告”页翻阅。下面是最近几次比较重要的更新。',
+    summary: '以后每次正式更新，第一次打开网站时都会弹出公告，说明更新了什么；历史公告可以在“更新公告”页翻阅。下面是最近几次比较重要的更新。',
     highlights: [
       {
         icon: 'i-lucide-scan-text',
@@ -86,7 +107,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
       {
         title: '更新公告',
         items: [
-          '每次更新后，第一次打开网站时弹出公告，说明这次更新了什么；关掉后就不再弹出。',
+          '每次正式更新后，第一次打开网站时弹出公告，说明这次更新了什么；关掉后就不再弹出。小更新只写在公告页，不弹窗。',
           '侧边栏的“更新公告”可以翻阅全部历史公告，没看过的会标出来；左下角的版本号也能点开。',
           '“看到了哪一篇”只记在这个浏览器里，不上传。',
         ],
@@ -95,6 +116,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 'v1.1.4',
+    kind: 'major',
     version: '1.1.4',
     date: '2026-10-18',
     title: '截图导入已拥有的干员、赠送单独统计、云同步无密码模式',
@@ -133,6 +155,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 'v1.1.3',
+    kind: 'minor',
     version: '1.1.3',
     date: '2026-10-17',
     title: '在新的浏览器里一键启用，只需输入一次密码',
@@ -150,6 +173,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 'v1.1.2',
+    kind: 'minor',
     version: '1.1.2',
     date: '2026-10-17',
     title: '修复终末地部分账号无法开通云同步',
@@ -169,6 +193,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 'v1.1.1',
+    kind: 'major',
     version: '1.1.1',
     date: '2026-10-17',
     title: '加密云同步上线',
@@ -197,6 +222,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: '2026-10-16-feedback',
+    kind: 'major',
     version: null,
     date: '2026-10-16',
     title: '新增反馈页，第一次访问的引导与统计选择',
@@ -220,6 +246,7 @@ export const ANNOUNCEMENTS: Announcement[] = [
   },
   {
     id: 'v1.0.0',
+    kind: 'major',
     version: '1.0.0',
     date: '2026-10-16',
     title: 'ArkRecord 1.0.0：全新版本上线',
