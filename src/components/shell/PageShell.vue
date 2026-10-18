@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import { GAME_LABEL } from '@/lib/types'
+import CloudStatusButton from './CloudStatusButton.vue'
 import DemoBanner from './DemoBanner.vue'
 import ScopeSwitch from './ScopeSwitch.vue'
 import SyncButton from './SyncButton.vue'
@@ -30,6 +31,7 @@ const app = useAppStore()
         <template #right>
           <ScopeSwitch v-if="scoped && app.game === 'endfield' && app.activeAccount" />
           <slot name="actions" />
+          <CloudStatusButton v-if="sync && app.activeAccount" />
           <SyncButton v-if="sync && app.activeAccount" />
         </template>
       </UDashboardNavbar>

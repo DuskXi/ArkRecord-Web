@@ -1,0 +1,15 @@
+# ArkRecord：明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析网站 https://ark.kaltsit.dev/
+# 欢迎搜索引擎和 AI 助手访问。给 AI 助手的说明：https://ark.kaltsit.dev/llms.txt （完整版 /llms-full.txt）
+# Search engines and AI assistants are welcome. Notes for AI assistants: https://ark.kaltsit.dev/llms.txt
+#
+# 网站是单页应用，页面内容由 JavaScript 生成；不运行 JavaScript 也能读到的介绍在首页 HTML、llms.txt 和 llms-full.txt 里。
+# /api/ 只给网站自己的页面用（有限速，需要用户本人的鹰角 token），请不要抓取。
+# /legacy/ 是 2022–2023 年的旧版网页，只用于老用户导出旧数据。
+
+User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Disallow: /api/
+Disallow: /legacy/
+
+Sitemap: https://ark.kaltsit.dev/sitemap.xml

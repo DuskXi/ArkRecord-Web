@@ -42,6 +42,8 @@ function fixture() {
     'client/gamedata/ak-meta.json': '{}',
     'client/_headers': '/*\n  X-Frame-Options: DENY\n  Content-Security-Policy: default-src \'self\'\n/legacy/*\n  ! Content-Security-Policy\n',
     'client/.assetsignore': 'wrangler.json\n.dev.vars\n',
+    'client/.well-known/security.txt': 'Contact: x',
+    'client/.hidden/secret.txt': 'x',
     'client/wrangler.json': '{}',
     'client/build-manifest.json': '{"old":true}',
     'arkrecord_next/index.js': 'export default {}',
@@ -63,7 +65,7 @@ const make = (f: ReturnType<typeof fixture>) =>
 describe('构建清单', () => {
   it('只列出网站实际提供的文件；Worker 模块是代码和 _headers，不含 .map、配置和本地开发的密钥文件', () => {
     const m = make(fixture())
-    expect(Object.keys(m.files)).toEqual(['assets/app-abc.js', 'gamedata/ak-meta.json', 'index.html', 'legacy/index.html'])
+    expect(Object.keys(m.files)).toEqual(['.well-known/security.txt', 'assets/app-abc.js', 'gamedata/ak-meta.json', 'index.html', 'legacy/index.html'])
     expect(Object.keys(m.worker.modules)).toEqual(['_headers', 'index.js'])
     expect(m.worker.modules['index.js'].sha256).toBe(sha256Hex('export default {}'))
     expect(JSON.stringify(m)).not.toContain('secret')
@@ -88,8 +90,8 @@ const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8')
 describe('读取别人给的清单：格式检查', () => {
 
   it('文件路径只能是普通的相对路径', () => {
-    for (const ok of ['index.html', 'assets/a-1.js', 'gamedata/avatars/char_002_amiya.webp', 'ocr/6.0.1-6.1.2/core/x.wasm.js']) expect(isSafePath(ok)).toBe(true)
-    for (const bad of ['../etc/passwd', 'a/../b', '/abs', 'a//b', '.dev.vars', 'a/.git/config', 'a?b=1', 'a#b', 'http://evil', '//evil.example/x', 'a\\b', '']) {
+    for (const ok of ['index.html', 'assets/a-1.js', 'gamedata/avatars/char_002_amiya.webp', 'ocr/6.0.1-6.1.2/core/x.wasm.js', '.well-known/security.txt']) expect(isSafePath(ok)).toBe(true)
+    for (const bad of ['../etc/passwd', 'a/../b', '/abs', 'a//b', '.dev.vars', 'a/.git/config', 'a?b=1', 'a#b', 'http://evil', '//evil.example/x', 'a\\b', '', '.well-known', '.well-known/.x', '.well-known/../x', 'a/.well-known/x']) {
       expect(isSafePath(bad), bad).toBe(false)
     }
   })

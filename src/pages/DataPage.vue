@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import CloudSyncPanel from '@/components/cloud/CloudSyncPanel.vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
@@ -44,6 +45,19 @@ const counts = useLiveQuery(
 // Dexie 的 Collection.reverse()，不是数组方法
 // oxlint-disable-next-line unicorn/no-array-reverse
 const snapshots = useLiveQuery(() => db.snapshots.orderBy('createdAt').reverse().toArray(), [], [])
+
+// ── 从右上角的云同步状态按钮过来（/data#cloud-sync）：滚动到云同步部分 ──
+const route = useRoute()
+watch(
+  () => route.hash,
+  async (hash) => {
+    if (hash !== '#cloud-sync') return
+    await nextTick()
+    // 账号列表从本地数据库读出来之后，云同步部分的位置才稳定
+    setTimeout(() => document.getElementById('cloud-sync')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+  },
+  { immediate: true },
+)
 
 // ── 存储状态 ──
 const persisted = ref<boolean | null>(null)

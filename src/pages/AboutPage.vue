@@ -174,6 +174,10 @@ const sources = [
           。本站为玩家自制工具，与鹰角网络无关。游戏内的名称与图像版权归鹰角网络所有。
         </p>
         <p class="mt-1">
+          给 AI 助手和搜索引擎的说明：<a href="/llms.txt" target="_blank" rel="noopener" class="text-primary">/llms.txt</a>（完整版
+          <a href="/llms-full.txt" target="_blank" rel="noopener" class="text-primary">/llms-full.txt</a>）。
+        </p>
+        <p class="mt-1">
           旧版 ArkRecord（v0.1）仍然可以在
           <a :href="LEGACY_APP_PATH" target="_blank" rel="noopener" class="text-primary">{{ LEGACY_APP_PATH }}</a>
           访问，用于查看和导出旧版留在浏览器里的数据。

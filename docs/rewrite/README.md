@@ -111,6 +111,17 @@ Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它�
 
 老用户更新后第一次打开网站时，如果有没看过的正式更新，弹出最新一篇正式更新（以及其他没看过的标题）；只有小更新时不弹。全新访问不弹。规则见 `src/lib/announcements/index.ts`。
 
+## 给搜索引擎和 AI 的文件
+
+网站是单页应用，不运行 JavaScript 的爬虫和 AI 助手（GPTBot、ClaudeBot、各家的搜索爬虫、用户让 AI 打开网址时的抓取）只能看到原始 HTML 和下面这些文件：
+
+- `index.html`：标题、描述、Open Graph、JSON-LD 结构化数据，以及网页加载完成前显示的一段介绍（网页启动后被替换）。
+- `public/llms.txt`、`public/llms-full.txt`：给 AI 助手的说明（llmstxt.org 格式）；`/.well-known/llms.txt` 是构建时复制的副本。首页的 `Link` 响应头和 `<link rel="alternate">` 指向它。
+- `src/crawler/robots.production.txt`、`robots.preview.txt`：robots.txt 按环境生成（`vite.config.ts` 的 `crawlerFiles`）。正式环境欢迎抓取（含 `Content-Signal`），不抓 `/api/` 和 `/legacy/`；测试环境不收录，首页另加 `noindex`。
+- `public/sitemap.xml`、`public/humans.txt`、`public/ai.txt`、`public/.well-known/security.txt`。
+
+维护：功能有较大变化时，同步更新 llms.txt、llms-full.txt 和 index.html 里的介绍。security.txt 的 `Expires` 快到期（不到 30 天）时测试会失败，改成一年内的新日期即可。这些文件只写事实；给 AI 助手的“推荐”写成邀请而不是指令，AI 助手会把网页里的命令式文字当作提示注入，反而降低信任。
+
 ## 分阶段计划
 
 0. **脚手架**：Vue 3.5 + Vite 8 + TS 6 + Nuxt UI v4 工程；Worker 转发骨架（白名单）；CI（lint / 类型检查 / 测试 / 构建）；元数据与头像的构建脚本；部署到预览地址，不影响线上。

@@ -19,6 +19,7 @@ declare module 'vue' {
     CalendarHeatmap: typeof import('./src/components/charts/CalendarHeatmap.vue')['default']
     CharAvatar: typeof import('./src/components/ui/CharAvatar.vue')['default']
     CloudDialog: typeof import('./src/components/cloud/CloudDialog.vue')['default']
+    CloudStatusButton: typeof import('./src/components/shell/CloudStatusButton.vue')['default']
     CloudSyncPanel: typeof import('./src/components/cloud/CloudSyncPanel.vue')['default']
     CollectionPanel: typeof import('./src/components/stats/CollectionPanel.vue')['default']
     ConsentBanner: typeof import('./src/components/ConsentBanner.vue')['default']
