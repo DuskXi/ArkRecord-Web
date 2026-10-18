@@ -109,6 +109,10 @@ describe('页面列表', () => {
     expect(PAGE_PATHS.toSorted()).toEqual(routes.toSorted())
   })
 
+  it('wrangler.jsonc 给了 Worker 静态文件的绑定 ASSETS（没有它，经过 Worker 的页面全部 404）', () => {
+    expect(read('wrangler.jsonc')).toMatch(/"assets": \{[^}]*"binding": "ASSETS"/)
+  })
+
   it('和 wrangler.jsonc 的 run_worker_first 一致（页面地址都要经过 Worker）', () => {
     const config = read('wrangler.jsonc')
     const list = /"run_worker_first": \[([^\]]*)\]/.exec(config)?.[1] ?? ''

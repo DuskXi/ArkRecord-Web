@@ -9,6 +9,8 @@
   "preview_urls": false,
   "routes": [{ "pattern": "ark-next.kaltsit.dev", "custom_domain": true }],
   "assets": {
+    // Worker 通过 env.ASSETS 取静态文件（页面地址经过 Worker 时要用）
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // 只有 /api/* 和各个页面地址会执行 Worker 代码，其余静态资源直接由 Cloudflare 返回（免费、不计请求数）。
     // 页面地址经过 Worker，是为了 AI agent 要 Markdown 时返回 Markdown 说明（worker/pages.ts，列表和 PAGES 一致，测试会检查）；
