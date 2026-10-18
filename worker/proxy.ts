@@ -7,6 +7,7 @@ import { CLOUD_PREFIX } from '../shared/cloud-protocol'
 import { type CloudEnv, handleCloud } from './cloud'
 import { FEEDBACK_PREFIX, hashToken, newFeedbackId, newFeedbackToken, parseFeedback } from './feedback'
 import { handleImage, IMAGE_PREFIX } from './images'
+import { handlePage, PAGES } from './pages'
 import { checkSameOrigin, rateLimitClient } from './security'
 import { parsePing, STATS_PREFIX } from './stats'
 import { findRoute, type Limiter, type Route, type Upstream } from './upstreams'
@@ -95,6 +96,8 @@ export async function handleRequest(request: Request, env: Env, ctx?: Pick<Execu
     })
   }
   if (url.pathname === '/api/health') return proxyError(200, 'ok')
+  // 页面地址：AI agent 要 Markdown 时返回 Markdown 说明（见 pages.ts）
+  if (env.ASSETS && Object.hasOwn(PAGES, url.pathname)) return handlePage(request, env.ASSETS, url)
   if (env.ASSETS) return env.ASSETS.fetch(request)
   return proxyError(404, 'not_found')
 }

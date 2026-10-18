@@ -2,4 +2,6 @@
 # This is a staging site, please do not index it. The real site is https://ark.kaltsit.dev/
 
 User-agent: *
+# 测试环境不用于搜索、AI 回答和训练；正式网站的声明是全部允许
+Content-Signal: search=no, ai-input=no, ai-train=no
 Disallow: /

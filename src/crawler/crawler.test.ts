@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 /** 给搜索引擎和 AI 助手的文件（说明见 docs/rewrite/README.md 的“给搜索引擎和 AI 的文件”） */
@@ -20,8 +21,10 @@ describe('robots.txt', () => {
 
   it('测试环境：不收录', () => {
     const robots = read('src/crawler/robots.preview.txt')
-    expect(robots).toMatch(/^User-agent: \*\nDisallow: \/$/m)
+    expect(robots).toMatch(/^User-agent: \*$/m)
+    expect(robots).toMatch(/^Disallow: \/$/m)
     expect(robots).not.toMatch(/^Allow:/m)
+    expect(robots).toMatch(/^Content-Signal: search=no, ai-input=no, ai-train=no$/m)
   })
 })
 
@@ -80,5 +83,53 @@ describe('index.html', () => {
     expect(html).toMatch(/<div id="app"[^>]*>\s*<main class="boot">[\s\S]*明日方舟[\s\S]*<\/main>\s*<\/div>/)
     expect(html).toContain('href="/llms.txt"')
     expect(html).toContain(`<link rel="canonical" href="${SITE}/" />`)
+  })
+})
+
+const json = (path: string) => JSON.parse(read(path))
+/** 站内地址对应 public/ 里的文件 */
+const local = (href: string) => `public${href.startsWith(SITE) ? href.slice(SITE.length) : href}`
+
+describe('给 AI agent 的发现文件', () => {
+
+  it('Agent Skills 索引：每个技能的文件存在，digest 和文件内容一致（改了 SKILL.md 要更新 index.json 里的 digest）', () => {
+    const index = json('public/.well-known/agent-skills/index.json')
+    expect(index.$schema).toMatch(/^https:\/\//)
+    expect(index.skills.length).toBeGreaterThan(0)
+    for (const skill of index.skills) {
+      const file = local(skill.url)
+      expect(existsSync(file), file).toBe(true)
+      const content = readFileSync(file)
+      expect(skill.digest, file).toBe(`sha256:${createHash('sha256').update(content).digest('hex')}`)
+      // SKILL.md 的 name 和目录名、索引里的 name 一致；description 不超过 1024 字
+      const text = content.toString('utf8')
+      expect(text).toMatch(new RegExp(`^---\\nname: ${skill.name}\\n`))
+      expect(file).toBe(`public/.well-known/agent-skills/${skill.name}/SKILL.md`)
+      expect(/^description: (.+)$/m.exec(text)?.[1]?.length).toBeLessThanOrEqual(1024)
+    }
+  })
+
+  it('API 目录（RFC 9727）和 OpenAPI 说明是合法的 JSON，指向的站内文件都存在', () => {
+    const catalog = json('public/.well-known/api-catalog')
+    const hrefs = catalog.linkset.flatMap((set: Record<string, unknown>) =>
+      Object.values(set).flatMap((v) => (Array.isArray(v) ? v.map((link: { href: string }) => link.href) : [])),
+    )
+    expect(hrefs.length).toBeGreaterThan(0)
+    for (const href of hrefs.filter((h: string) => h.startsWith(SITE))) {
+      // build-manifest.json 在部署时生成
+      if (!href.endsWith('/build-manifest.json')) expect(existsSync(local(href)), href).toBe(true)
+    }
+    const openapi = json('public/openapi.json')
+    expect(openapi.openapi).toMatch(/^3\.1\./)
+    // /api/ 只给网站自己用，不写进公开的接口说明
+    expect(Object.keys(openapi.paths).some((p) => p.startsWith('/api/'))).toBe(false)
+  })
+
+  it('首页的 Link 响应头指向的文件都存在', () => {
+    const headers = read('public/_headers')
+    const rule = /^\/\n((?:[ \t]+.*\n)+)/m.exec(headers)?.[1] ?? ''
+    const targets = [...rule.matchAll(/^\s+Link: <([^>]+)>/gm)].map((m) => m[1]!)
+    expect(targets.length).toBeGreaterThan(1)
+    for (const target of targets) expect(existsSync(`public${target}`), target).toBe(true)
   })
 })

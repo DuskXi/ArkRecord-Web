@@ -10,8 +10,24 @@
   "routes": [{ "pattern": "ark-next.kaltsit.dev", "custom_domain": true }],
   "assets": {
     "not_found_handling": "single-page-application",
-    // 只有 /api/* 会执行 Worker 代码，其余静态资源直接由 Cloudflare 返回（免费、不计请求数）。
-    "run_worker_first": ["/api/*"]
+    // 只有 /api/* 和各个页面地址会执行 Worker 代码，其余静态资源直接由 Cloudflare 返回（免费、不计请求数）。
+    // 页面地址经过 Worker，是为了 AI agent 要 Markdown 时返回 Markdown 说明（worker/pages.ts，列表和 PAGES 一致，测试会检查）；
+    // 普通访问照常返回网页，_headers 里的响应头仍然生效。
+    "run_worker_first": [
+      "/api/*",
+      "/",
+      "/history",
+      "/banners",
+      "/analysis",
+      "/stats",
+      "/timeline",
+      "/codex",
+      "/ledger",
+      "/data",
+      "/announcements",
+      "/feedback",
+      "/about"
+    ]
   },
   // 关闭 Workers Logs：转发请求的 URL 中可能带有用户的游戏 token（鹰角接口要求放在查询参数里），
   // 不能让平台记录它们。
