@@ -140,7 +140,7 @@ function startMenu(a: Account): DropdownMenuItem[][] {
 </script>
 
 <template>
-  <section>
+  <section id="cloud-sync" class="scroll-mt-4">
     <SectionHeader :index="props.index" eyebrow="CLOUD SYNC" title="云同步">
       <div class="flex flex-wrap gap-2">
         <UButton

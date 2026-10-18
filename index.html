@@ -3,15 +3,82 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="明日方舟 / 终末地 寻访记录本地存档与分析。所有数据只保存在你的浏览器里。" />
+    <title>ArkRecord · 明日方舟 / 终末地 寻访记录统计</title>
+    <meta
+      name="description"
+      content="明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析：保底进度、出货统计、时间线、图鉴、可选的加密云同步。免费、开源，记录只保存在你的浏览器里。"
+    />
+    <meta name="keywords" content="明日方舟,终末地,明日方舟终末地,寻访记录,抽卡记录,抽卡统计,抽卡分析,保底,出金,出红,Arknights,Arknights Endfield,gacha" />
     <meta name="theme-color" content="#09090b" />
+    <link rel="canonical" href="https://ark.kaltsit.dev/" />
     <link rel="icon" type="image/png" href="/icons/record-128.png" />
-    <title>ArkRecord</title>
+    <!-- 给 AI 助手和其他不运行 JavaScript 的读者的说明（llmstxt.org） -->
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="给 AI 助手的说明 / Notes for AI assistants" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ArkRecord" />
+    <meta property="og:title" content="ArkRecord · 明日方舟 / 终末地 寻访记录统计" />
+    <meta property="og:description" content="明日方舟 / 明日方舟：终末地 抽卡记录的本地存档与统计分析。免费、开源，记录只保存在你的浏览器里。" />
+    <meta property="og:url" content="https://ark.kaltsit.dev/" />
+    <meta property="og:image" content="https://ark.kaltsit.dev/icons/record-128.png" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta name="twitter:card" content="summary" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "ArkRecord",
+        "alternateName": ["明日方舟寻访记录统计", "终末地寻访记录统计"],
+        "url": "https://ark.kaltsit.dev/",
+        "description": "明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析网站。免费、开源，记录只保存在用户自己的浏览器里，线上运行的代码可以公开核对。A free web tool for archiving and analyzing Arknights and Arknights: Endfield gacha records; data stays in the browser.",
+        "keywords": "明日方舟, 明日方舟：终末地, 寻访记录, 抽卡记录, 抽卡统计, 保底, Arknights, Arknights: Endfield, gacha, pity, open source, local-first, privacy, client-side encryption, verifiable deployment, reproducible builds, Sigstore",
+        "inLanguage": "zh-CN",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Web browser",
+        "isAccessibleForFree": true,
+        "license": "https://github.com/DuskXi/ArkRecord-Web/blob/master/LICENSE",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
+        "about": [
+          { "@type": "VideoGame", "name": "明日方舟", "alternateName": "Arknights" },
+          { "@type": "VideoGame", "name": "明日方舟：终末地", "alternateName": "Arknights: Endfield" }
+        ],
+        "featureList": [
+          "保底追踪与定向保底进度",
+          "寻访记录按十连分组、筛选",
+          "出金抽数分布与歪不歪的概率分布",
+          "时间线与分享图片",
+          "图鉴，可导入森空岛截图补全已拥有的干员",
+          "源石与充值记录（明日方舟）",
+          "数据导入导出与自动快照",
+          "可选的加密云同步"
+        ],
+        "author": { "@type": "Person", "name": "DuskXi", "url": "https://github.com/DuskXi" },
+        "sameAs": ["https://github.com/DuskXi/ArkRecord-Web"]
+      }
+    </script>
+    <style>
+      /* 给不运行 JavaScript 的读者（爬虫、AI 助手）的介绍：写在 HTML 里，但浏览器默认不显示，网页启动后被替换；
+         只有关闭了 JavaScript 的浏览器才显示（下面的 noscript） */
+      .boot { display: none; max-width: 36rem; margin: 18vh auto 0; padding: 0 1.25rem; font: 14px/1.75 system-ui, sans-serif; color: #71717a; }
+      .boot h1 { margin: 0 0 0.5rem; font-size: 1.25rem; color: #a1a1aa; letter-spacing: 0.02em; }
+      .boot p { margin: 0.5rem 0; }
+      .boot a { color: inherit; }
+    </style>
+    <noscript><style>.boot { display: block; }</style></noscript>
     <!-- 在页面渲染前确定深浅色和游戏主题，避免首屏闪烁（外部文件，便于 CSP 不放行内联脚本） -->
     <script src="/theme-init.js"></script>
   </head>
   <body>
-    <div id="app" class="isolate"></div>
+    <div id="app" class="isolate">
+      <main class="boot">
+        <h1>ArkRecord</h1>
+        <p>明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析：保底进度、出货统计、时间线与分享图、图鉴、源石与充值记录，以及可选的加密云同步。</p>
+        <p>
+          免费、开源（源码公开在 <a href="https://github.com/DuskXi/ArkRecord-Web">GitHub</a>）；记录只保存在你自己的浏览器里，线上运行的代码可以公开核对。本站为玩家自制工具，与鹰角网络无关。
+        </p>
+        <p>这个网站需要启用 JavaScript。不运行 JavaScript 也能阅读的介绍：<a href="/llms.txt">/llms.txt</a></p>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

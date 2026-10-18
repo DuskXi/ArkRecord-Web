@@ -8,6 +8,27 @@ import type { Announcement } from './index'
  */
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: 'v1.1.8',
+    kind: 'minor',
+    version: '1.1.8',
+    date: '2026-10-18',
+    title: '右上角显示云同步状态',
+    summary: '同步按钮旁边新增云同步状态图标：一眼看出当前账号有没有开启云同步，点一下就能去开启或查看。',
+    sections: [
+      {
+        title: '云同步状态',
+        items: [
+          '同步按钮左边的云朵图标表示当前账号的云同步状态：灰色是未开启，绿色是已开启，黄色是已经开通、但这台设备还没解锁。',
+          '鼠标悬停（手机上长按）可以看到说明和上次云同步的时间；点一下转到[数据](/data)页的云同步部分。',
+        ],
+      },
+      {
+        title: '其他',
+        items: ['为搜索引擎和 AI 助手准备了网站介绍（平时不显示），它们不运行网页也能知道这是什么网站（说明见[关于](/about)页底部）。'],
+      },
+    ],
+  },
+  {
     id: 'v1.1.7',
     kind: 'minor',
     version: '1.1.7',

@@ -1,14 +1,15 @@
 /**
  * ArkRecord 的 Cloudflare Worker。
  *
- * 只做三件事：
+ * 只做这几件事：
  *   - 把本站页面发出的请求转发给白名单内的鹰角接口（原因见 upstreams.ts，请求格式见 proxy.ts）；
  *   - 为本站页面缓存少量构建时拿不到的图片（见 images.ts），结果缓存在 Cloudflare，减少对来源站的请求；
  *   - 匿名使用人数统计（见 stats.ts），只维护计数器，不收集任何标识符，用户同意后才上报；
  *   - 站内反馈（见 feedback.ts），只保存用户主动提交的内容；
- *   - 云同步（见 cloud.ts、cloud-vault.ts），只保存浏览器加密后的密文；核实鹰角 token 的代码只在 hg-verify.ts。
+ *   - 云同步（见 cloud.ts、cloud-vault.ts），只保存浏览器加密后的密文；核实鹰角 token 的代码只在 hg-verify.ts；
+ *   - AI agent 用 Accept: text/markdown 请求页面时，返回公开的 Markdown 说明（见 pages.ts）。
  * 转发时不记录、不存储任何请求或响应内容。
- * 静态页面由 Cloudflare 直接返回，不经过这里的代码（见 wrangler.jsonc 的 run_worker_first）。
+ * 静态文件由 Cloudflare 直接返回，不经过这里的代码；页面地址经过这里只为上面的 Markdown（见 wrangler.jsonc 的 run_worker_first）。
  *
  * 鹰角 token 只存在于处理请求时的内存里：
  *   - 浏览器把 token 放在请求体里（不放在网址和请求头里），平台的统计、安全事件和实时日志都不包含请求体；

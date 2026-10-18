@@ -44,6 +44,40 @@ function ocrAssets(): Plugin {
   }
 }
 
+/**
+ * 给搜索引擎和 AI 助手的文件（见 public/llms.txt）：
+ *   - robots.txt 按环境生成：正式环境欢迎抓取；测试环境要求不收录，避免和正式站内容重复；
+ *   - /.well-known/llms.txt：llms.txt 的副本，有的工具会在这里找；
+ *   - 测试环境的首页加上 noindex。
+ * 正式环境 = 构建时 CLOUDFLARE_ENV=production（deploy-production.yml）。
+ */
+const readText = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
+
+function crawlerFiles(): Plugin {
+  const production = process.env.CLOUDFLARE_ENV === 'production'
+  const robots = () => readText(production ? './src/crawler/robots.production.txt' : './src/crawler/robots.preview.txt')
+  return {
+    name: 'arkrecord:crawler-files',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = req.url?.split('?')[0]
+        if (path !== '/robots.txt' && path !== '/.well-known/llms.txt') return next()
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+        res.end(path === '/robots.txt' ? robots() : readText('./public/llms.txt'))
+      })
+    },
+    transformIndexHtml(html, ctx) {
+      if (production || ctx.server) return html
+      return html.replace('</title>', '</title>\n    <meta name="robots" content="noindex" />')
+    },
+    applyToEnvironment: (environment) => environment.name === 'client',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'robots.txt', source: robots() })
+      this.emitFile({ type: 'asset', fileName: '.well-known/llms.txt', source: readText('./public/llms.txt') })
+    },
+  }
+}
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -53,6 +87,7 @@ export default defineConfig({
   plugins: [
     vue(),
     ocrAssets(),
+    crawlerFiles(),
     ui({
       ui: {
         colors: { primary: 'sky', neutral: 'zinc' },

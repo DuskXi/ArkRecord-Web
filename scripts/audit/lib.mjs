@@ -39,8 +39,16 @@ export function walkFiles(dir) {
   return out
 }
 
+/** 以 . 开头、但网站会提供的目录：/.well-known/（security.txt、llms.txt） */
+const SERVED_DOT_DIRS = new Set(['.well-known'])
+
+/** 路径里有没有以 . 开头的部分（.well-known 目录本身除外） */
+function hasDotPart(p) {
+  return p.split('/').some((part, i, parts) => part.startsWith('.') && !(i === 0 && parts.length > 1 && SERVED_DOT_DIRS.has(part)))
+}
+
 /**
- * 网站实际提供的文件：去掉以 . 开头的文件和目录（.assetsignore、本地开发用的 .dev.vars 等）、
+ * 网站实际提供的文件：去掉以 . 开头的文件和目录（.assetsignore、本地开发用的 .dev.vars 等；/.well-known/ 除外）、
  * Cloudflare 的配置文件（_headers、_redirects）、清单本身，以及 .assetsignore 里列出的文件。
  */
 export function servedFiles(clientDir) {
@@ -56,7 +64,7 @@ export function servedFiles(clientDir) {
     // 没有 .assetsignore
   }
   return walkFiles(clientDir).filter((p) => {
-    if (p.split('/').some((part) => part.startsWith('.'))) return false
+    if (hasDotPart(p)) return false
     if (p === '_headers' || p === '_redirects' || p === MANIFEST_PATH) return false
     return !ignored.has(p) && !ignored.has(posix.basename(p))
   })
@@ -132,9 +140,12 @@ const SAFE_PATH = /^[\w@+-][\w@+.-]*(\/[\w@+-][\w@+.-]*)*$/
 const HEX64 = /^[0-9a-f]{64}$/
 const COMMIT = /^[0-9a-f]{40}$/
 
-/** 文件路径只能是普通的相对路径：不能有 ..、//、反斜杠、查询参数，也不能以 . 开头 */
+/** 文件路径只能是普通的相对路径：不能有 ..、//、反斜杠、查询参数，也不能以 . 开头（/.well-known/ 下的文件除外） */
 export function isSafePath(p) {
-  return typeof p === 'string' && p.length <= 300 && SAFE_PATH.test(p) && !p.split('/').includes('..')
+  if (typeof p !== 'string' || p.length > 300 || p.split('/').includes('..')) return false
+  const [first, ...rest] = p.split('/')
+  if (SERVED_DOT_DIRS.has(first) && rest.length) return SAFE_PATH.test(rest.join('/'))
+  return SAFE_PATH.test(p)
 }
 
 function isEntry(e) {
@@ -175,7 +186,7 @@ export function servedPath(file) {
   return `/${file}`
 }
 
-const CODE_EXT = /\.(html|js|mjs|cjs|css|wasm|json|svg|webmanifest|map|txt)$/i
+const CODE_EXT = /\.(html|js|mjs|cjs|css|wasm|json|svg|webmanifest|map|txt|xml)$/i
 
 /** 默认只核对能执行或影响页面行为的文件（代码、样式、数据）；图片、字体、文字识别模型用 --all 时才核对 */
 export function isCodeFile(p) {

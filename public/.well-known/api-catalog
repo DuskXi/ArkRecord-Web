@@ -1,0 +1,22 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://ark.kaltsit.dev/.well-known/api-catalog",
+      "item": [
+        { "href": "https://ark.kaltsit.dev/build-manifest.json", "title": "Build manifest of the current deployment (read-only)" },
+        { "href": "https://ark.kaltsit.dev/llms.txt", "title": "Description of the site for AI assistants (read-only)" }
+      ]
+    },
+    {
+      "anchor": "https://ark.kaltsit.dev/build-manifest.json",
+      "service-desc": [{ "href": "https://ark.kaltsit.dev/openapi.json", "type": "application/openapi+json" }],
+      "service-doc": [{ "href": "https://github.com/DuskXi/ArkRecord-Web/blob/master/SECURITY.md", "type": "text/html", "title": "How the deployment is verified" }],
+      "status": [{ "href": "https://github.com/DuskXi/ArkRecord-Web/actions/workflows/audit-deployment.yml", "type": "text/html", "title": "Daily public audit of the live site" }]
+    },
+    {
+      "anchor": "https://ark.kaltsit.dev/llms.txt",
+      "service-desc": [{ "href": "https://ark.kaltsit.dev/openapi.json", "type": "application/openapi+json" }],
+      "service-doc": [{ "href": "https://ark.kaltsit.dev/llms-full.txt", "type": "text/markdown", "title": "Full description" }]
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ArkRecord public resources",
+    "version": "1.0.0",
+    "summary": "Read-only public files of ArkRecord, the free, open-source Arknights / Arknights: Endfield gacha record tool.",
+    "description": "ArkRecord (https://ark.kaltsit.dev/) keeps every player's records in their own browser and has no public user data. This document describes the public, read-only resources an agent can use: the site description for AI assistants, Markdown versions of the pages, and the build manifest for verifying the deployed code. Paths under /api/ serve only the site's own pages (same-origin only, rate-limited, and they need the player's own Hypergryph token); they are intentionally not described here and should not be called by agents.",
+    "contact": { "name": "ArkRecord on GitHub", "url": "https://github.com/DuskXi/ArkRecord-Web/issues" },
+    "license": { "name": "MIT", "identifier": "MIT" }
+  },
+  "externalDocs": { "description": "Notes for AI assistants (llmstxt.org)", "url": "https://ark.kaltsit.dev/llms.txt" },
+  "servers": [{ "url": "https://ark.kaltsit.dev" }],
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "getHomePage",
+        "summary": "Home page, or its Markdown description",
+        "description": "Browsers get the web app (it needs JavaScript). Send `Accept: text/markdown` to get the full Markdown description of the site instead. Every page path (/history, /stats, /data, /about, ...) answers the same way, with a short section about that page in front.",
+        "responses": {
+          "200": {
+            "description": "The web app, or Markdown when `text/markdown` is preferred in the Accept header.",
+            "headers": { "Vary": { "schema": { "type": "string", "const": "Accept" } } },
+            "content": {
+              "text/html": { "schema": { "type": "string" } },
+              "text/markdown": { "schema": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "operationId": "getLlmsTxt",
+        "summary": "Short description of the site for AI assistants",
+        "responses": { "200": { "description": "Markdown (llmstxt.org format)", "content": { "text/plain": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/llms-full.txt": {
+      "get": {
+        "operationId": "getLlmsFullTxt",
+        "summary": "Full description: features, how to use, privacy, verification, FAQ",
+        "responses": { "200": { "description": "Markdown", "content": { "text/plain": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/build-manifest.json": {
+      "get": {
+        "operationId": "getBuildManifest",
+        "summary": "Build manifest of the current deployment",
+        "description": "SHA-256 of every file the site serves and of the server (Worker) code, with the commit and the GitHub Actions run that built and deployed them. Each manifest has a GitHub build attestation in Sigstore's public transparency log; verify it with `gh attestation verify build-manifest.json --repo DuskXi/ArkRecord-Web --signer-workflow DuskXi/ArkRecord-Web/.github/workflows/deploy-production.yml`.",
+        "externalDocs": { "description": "How the deployment is verified, and the limits", "url": "https://github.com/DuskXi/ArkRecord-Web/blob/master/SECURITY.md" },
+        "responses": {
+          "200": {
+            "description": "The manifest",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuildManifest" } } }
+          }
+        }
+      }
+    },
+    "/.well-known/agent-skills/index.json": {
+      "get": {
+        "operationId": "getAgentSkills",
+        "summary": "Agent Skills published by this site",
+        "responses": { "200": { "description": "Agent Skills discovery index", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Digest": {
+        "type": "object",
+        "required": ["sha256", "size"],
+        "properties": {
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "BuildManifest": {
+        "type": "object",
+        "required": ["schema", "repository", "commit", "environment", "workflow", "run", "worker", "files"],
+        "properties": {
+          "schema": { "type": "string", "const": "arkrecord-build-manifest/1" },
+          "repository": { "type": "string", "examples": ["DuskXi/ArkRecord-Web"] },
+          "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "environment": { "type": "string", "enum": ["production", "preview"] },
+          "workflow": { "type": "string", "description": "The workflow file that built and deployed this version" },
+          "run": {
+            "type": "object",
+            "properties": { "id": { "type": "string" }, "attempt": { "type": "string" }, "url": { "type": "string", "format": "uri" } }
+          },
+          "worker": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "modules": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/Digest" } }
+            }
+          },
+          "headers": { "type": "object", "description": "Response headers from the _headers file, by path pattern" },
+          "files": {
+            "type": "object",
+            "description": "Every served file, by path without the leading slash",
+            "additionalProperties": { "$ref": "#/components/schemas/Digest" }
+          }
+        }
+      }
+    }
+  }
+}

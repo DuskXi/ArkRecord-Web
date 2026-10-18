@@ -1,0 +1,16 @@
+/* ArkRecord */
+明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析网站。
+本站为玩家自制工具，与鹰角网络无关。
+
+/* TEAM */
+维护者: DuskXi
+GitHub: https://github.com/DuskXi
+
+/* SITE */
+网站: https://ark.kaltsit.dev/
+源码: https://github.com/DuskXi/ArkRecord-Web
+反馈: https://github.com/DuskXi/ArkRecord-Web/issues
+给 AI 助手的说明: https://ark.kaltsit.dev/llms.txt
+语言: 简体中文
+技术: Vue 3, Vite, TypeScript, Nuxt UI, Cloudflare Workers
+数据来源: 鹰角网络、PRTS、明日方舟终末地 BWIKI、森空岛等（见网站“关于”页）

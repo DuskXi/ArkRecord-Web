@@ -1,0 +1,6 @@
+# ArkRecord 的安全联系方式（RFC 9116）。报告方式与服务器接触敏感信息的全部位置见 Policy。
+Contact: https://github.com/DuskXi/ArkRecord-Web/blob/master/SECURITY.md
+Policy: https://github.com/DuskXi/ArkRecord-Web/blob/master/SECURITY.md
+Preferred-Languages: zh, en
+Canonical: https://ark.kaltsit.dev/.well-known/security.txt
+Expires: 2027-10-01T00:00:00.000Z

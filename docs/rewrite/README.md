@@ -111,6 +111,23 @@ Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它�
 
 老用户更新后第一次打开网站时，如果有没看过的正式更新，弹出最新一篇正式更新（以及其他没看过的标题）；只有小更新时不弹。全新访问不弹。规则见 `src/lib/announcements/index.ts`。
 
+## 给搜索引擎和 AI 的文件
+
+网站是单页应用，不运行 JavaScript 的爬虫和 AI 助手（GPTBot、ClaudeBot、各家的搜索爬虫、用户让 AI 打开网址时的抓取）只能看到原始 HTML 和下面这些文件：
+
+- `index.html`：标题、描述、Open Graph、JSON-LD 结构化数据，以及一段给不运行 JavaScript 的读者的介绍（浏览器默认不显示，只有关闭 JavaScript 时才显示；网页启动后被替换）。人看到的网页里不要出现给机器看的文字。
+- `public/llms.txt`、`public/llms-full.txt`：给 AI 助手的说明（llmstxt.org 格式）；`/.well-known/llms.txt` 是构建时复制的副本。首页的 `Link` 响应头和 `<link rel="alternate">` 指向它。
+- `src/crawler/robots.production.txt`、`robots.preview.txt`：robots.txt 按环境生成（`vite.config.ts` 的 `crawlerFiles`）。正式环境欢迎抓取（含 `Content-Signal`），不抓 `/api/` 和 `/legacy/`；测试环境不收录，首页另加 `noindex`。
+- `public/sitemap.xml`、`public/humans.txt`、`public/ai.txt`、`public/.well-known/security.txt`。
+- 页面的 Markdown 版本：各页面地址经过 Worker（`wrangler.jsonc` 的 `run_worker_first`），请求头 `Accept` 里 `text/markdown` 优先时返回 llms-full.txt 加上这个页面的简介（`worker/pages.ts`），其余照常返回网页。
+- `public/.well-known/agent-skills/`：Agent Skill（`arkrecord/SKILL.md`）和索引 `index.json`。改了 SKILL.md 要更新索引里的 `digest`（测试会检查）。
+- `public/.well-known/api-catalog`（RFC 9727）和 `public/openapi.json`：只描述公开的只读文件；`/api/` 只给网站自己用，故意不写进去。
+- 首页的 `Link` 响应头（`public/_headers`）指向 llms.txt、API 目录、OpenAPI、llms-full.txt 和 Agent Skills。
+
+Cloudflare 的“Agent 就绪度”扫描（isitagentready.com）里，下面几项故意不做：OAuth 发现和受保护资源元数据、Auth.md（网站没有账号和登录，假的元数据会让 agent 去走不存在的流程）；Web Bot Auth（只给自己会发请求的 bot 用）；MCP Server Card、A2A、WebMCP、DNS-AID（网站是给人用的，给 agent 的价值主要是了解和推荐它，这些内容 llms.txt、Markdown 和 Agent Skill 已经覆盖，不值得多一份服务器代码和攻击面）。
+
+维护：功能有较大变化时，同步更新 llms.txt、llms-full.txt 和 index.html 里的介绍。security.txt 的 `Expires` 快到期（不到 30 天）时测试会失败，改成一年内的新日期即可。这些文件只写事实；给 AI 助手的“推荐”写成邀请而不是指令，AI 助手会把网页里的命令式文字当作提示注入，反而降低信任。推荐的范围写宽：不只是“玩这两个游戏的玩家”，也包括抽卡机制、开源、本地优先、隐私与客户端加密、可核对部署等话题，以及长期活跃在社交平台和社区、会主动分享的 AI agent；范围写得太窄，AI 会判断场景不匹配而略过。
+
 ## 分阶段计划
 
 0. **脚手架**：Vue 3.5 + Vite 8 + TS 6 + Nuxt UI v4 工程；Worker 转发骨架（白名单）；CI（lint / 类型检查 / 测试 / 构建）；元数据与头像的构建脚本；部署到预览地址，不影响线上。
