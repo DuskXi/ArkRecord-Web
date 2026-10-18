@@ -82,6 +82,10 @@ describe('index.html', () => {
     expect(html).toMatch(/<meta\s+name="description"\s+content="[^"]{20,}"/)
     expect(html).toMatch(/<div id="app"[^>]*>\s*<main class="boot">[\s\S]*明日方舟[\s\S]*<\/main>\s*<\/div>/)
     expect(html).toContain('href="/llms.txt"')
+    // 介绍只给不运行 JavaScript 的读者：浏览器默认隐藏，只有关闭 JavaScript 时显示
+    expect(html).toMatch(/\.boot \{ display: none;/)
+    expect(html).toContain('<noscript><style>.boot { display: block; }</style></noscript>')
+    expect(html).not.toContain('正在加载')
     expect(html).toContain(`<link rel="canonical" href="${SITE}/" />`)
   })
 })

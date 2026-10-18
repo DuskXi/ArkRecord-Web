@@ -56,12 +56,14 @@
       }
     </script>
     <style>
-      /* 加载完成前显示的介绍（不运行 JavaScript 的读者也能看到），网页启动后被替换 */
-      .boot { max-width: 36rem; margin: 18vh auto 0; padding: 0 1.25rem; font: 14px/1.75 system-ui, sans-serif; color: #71717a; }
+      /* 给不运行 JavaScript 的读者（爬虫、AI 助手）的介绍：写在 HTML 里，但浏览器默认不显示，网页启动后被替换；
+         只有关闭了 JavaScript 的浏览器才显示（下面的 noscript） */
+      .boot { display: none; max-width: 36rem; margin: 18vh auto 0; padding: 0 1.25rem; font: 14px/1.75 system-ui, sans-serif; color: #71717a; }
       .boot h1 { margin: 0 0 0.5rem; font-size: 1.25rem; color: #a1a1aa; letter-spacing: 0.02em; }
       .boot p { margin: 0.5rem 0; }
       .boot a { color: inherit; }
     </style>
+    <noscript><style>.boot { display: block; }</style></noscript>
     <!-- 在页面渲染前确定深浅色和游戏主题，避免首屏闪烁（外部文件，便于 CSP 不放行内联脚本） -->
     <script src="/theme-init.js"></script>
   </head>
@@ -73,8 +75,7 @@
         <p>
           免费、开源（源码公开在 <a href="https://github.com/DuskXi/ArkRecord-Web">GitHub</a>）；记录只保存在你自己的浏览器里，线上运行的代码可以公开核对。本站为玩家自制工具，与鹰角网络无关。
         </p>
-        <p>正在加载…</p>
-        <noscript><p>这个网站需要启用 JavaScript。不运行 JavaScript 也能阅读的介绍：<a href="/llms.txt">/llms.txt</a></p></noscript>
+        <p>这个网站需要启用 JavaScript。不运行 JavaScript 也能阅读的介绍：<a href="/llms.txt">/llms.txt</a></p>
       </main>
     </div>
     <script type="module" src="/src/main.ts"></script>

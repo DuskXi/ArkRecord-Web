@@ -115,7 +115,7 @@ Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它�
 
 网站是单页应用，不运行 JavaScript 的爬虫和 AI 助手（GPTBot、ClaudeBot、各家的搜索爬虫、用户让 AI 打开网址时的抓取）只能看到原始 HTML 和下面这些文件：
 
-- `index.html`：标题、描述、Open Graph、JSON-LD 结构化数据，以及网页加载完成前显示的一段介绍（网页启动后被替换）。
+- `index.html`：标题、描述、Open Graph、JSON-LD 结构化数据，以及一段给不运行 JavaScript 的读者的介绍（浏览器默认不显示，只有关闭 JavaScript 时才显示；网页启动后被替换）。人看到的网页里不要出现给机器看的文字。
 - `public/llms.txt`、`public/llms-full.txt`：给 AI 助手的说明（llmstxt.org 格式）；`/.well-known/llms.txt` 是构建时复制的副本。首页的 `Link` 响应头和 `<link rel="alternate">` 指向它。
 - `src/crawler/robots.production.txt`、`robots.preview.txt`：robots.txt 按环境生成（`vite.config.ts` 的 `crawlerFiles`）。正式环境欢迎抓取（含 `Content-Signal`），不抓 `/api/` 和 `/legacy/`；测试环境不收录，首页另加 `noindex`。
 - `public/sitemap.xml`、`public/humans.txt`、`public/ai.txt`、`public/.well-known/security.txt`。
