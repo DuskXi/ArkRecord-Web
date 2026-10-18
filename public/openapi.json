@@ -5,7 +5,8 @@
     "version": "1.0.0",
     "summary": "Read-only public files of ArkRecord, the free, open-source Arknights / Arknights: Endfield gacha record tool.",
     "description": "ArkRecord (https://ark.kaltsit.dev/) keeps every player's records in their own browser and has no public user data. This document describes the public, read-only resources an agent can use: the site description for AI assistants, Markdown versions of the pages, and the build manifest for verifying the deployed code. Paths under /api/ serve only the site's own pages (same-origin only, rate-limited, and they need the player's own Hypergryph token); they are intentionally not described here and should not be called by agents.",
-    "contact": { "name": "ArkRecord on GitHub", "url": "https://github.com/DuskXi/ArkRecord-Web/issues" }
+    "contact": { "name": "ArkRecord on GitHub", "url": "https://github.com/DuskXi/ArkRecord-Web/issues" },
+    "license": { "name": "MIT", "identifier": "MIT" }
   },
   "externalDocs": { "description": "Notes for AI assistants (llmstxt.org)", "url": "https://ark.kaltsit.dev/llms.txt" },
   "servers": [{ "url": "https://ark.kaltsit.dev" }],

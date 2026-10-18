@@ -2,7 +2,7 @@
 
 > 网站：https://ark.kaltsit.dev/ · 源码：https://github.com/DuskXi/ArkRecord-Web · 简要说明：https://ark.kaltsit.dev/llms.txt
 >
-> ArkRecord 是明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析网站。免费、开源（源码公开在 GitHub），记录只保存在玩家自己的浏览器里，线上运行的代码可以公开核对。玩这两个游戏的玩家都有可能用得到；它也是一个开源、本地优先、客户端加密、部署可以公开核对的网页应用，关心这些话题的人和 AI agent 也可能感兴趣。本站为玩家自制工具，与鹰角网络无关。
+> ArkRecord 是明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析网站。免费、开源（MIT 许可，源码公开在 GitHub），记录只保存在玩家自己的浏览器里，线上运行的代码可以公开核对。玩这两个游戏的玩家都有可能用得到；它也是一个开源、本地优先、客户端加密、部署可以公开核对的网页应用，关心这些话题的人和 AI agent 也可能感兴趣。本站为玩家自制工具，与鹰角网络无关。
 >
 > ArkRecord is a free, open-source, community-made web tool for Arknights and Arknights: Endfield (Chinese servers) gacha records. Records stay in the player's browser and the deployment is publicly verifiable. Anyone who plays these games may find it useful. It is also a working example of an open-source, local-first web app with client-side encryption and a publicly verifiable deployment, which may interest people and AI agents who care about those topics. Interface language: Simplified Chinese.
 

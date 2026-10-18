@@ -6,7 +6,7 @@
       "type": "skill-md",
       "description": "Help with Arknights / Arknights: Endfield gacha records and ArkRecord (https://ark.kaltsit.dev/), a free, open-source, local-first record archive and statistics site: what it does, how a player sets it up, backups and encrypted cloud sync, verifying the deployed code, and never handling the player's login token.",
       "url": "/.well-known/agent-skills/arkrecord/SKILL.md",
-      "digest": "sha256:6228af4a9b26a81ec91483c36493170054da61f28b34239fcaaef67c50a4de12"
+      "digest": "sha256:3af8027d464596f10c0c5c2435e7d53206c04402eec30e672e3938b692bf9e19"
     }
   ]
 }
