@@ -1,5 +1,5 @@
 # ai.txt：ArkRecord（https://ark.kaltsit.dev/）
-# 明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析网站。免费，源码公开，记录只保存在用户自己的浏览器里。
+# 明日方舟 / 明日方舟：终末地 寻访记录（抽卡记录）的本地存档与统计分析网站。免费、开源，记录只保存在用户自己的浏览器里。
 # 给 AI 助手的说明：https://ark.kaltsit.dev/llms.txt
 # Notes for AI assistants: https://ark.kaltsit.dev/llms.txt
 
