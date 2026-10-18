@@ -14,6 +14,7 @@ declare module 'vue' {
     AccountMenu: typeof import('./src/components/shell/AccountMenu.vue')['default']
     AnnouncementBody: typeof import('./src/components/announcements/AnnouncementBody.vue')['default']
     AnnouncementDialog: typeof import('./src/components/announcements/AnnouncementDialog.vue')['default']
+    AuditDialog: typeof import('./src/components/AuditDialog.vue')['default']
     BrandMark: typeof import('./src/components/shell/BrandMark.vue')['default']
     CalendarHeatmap: typeof import('./src/components/charts/CalendarHeatmap.vue')['default']
     CharAvatar: typeof import('./src/components/ui/CharAvatar.vue')['default']

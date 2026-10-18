@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import AuditDialog from '@/components/AuditDialog.vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { formatNumber } from '@/lib/format'
@@ -9,6 +12,17 @@ import { IMAGE_SOURCES } from '../../worker/images'
 import { UPSTREAMS } from '../../worker/upstreams'
 
 const app = useAppStore()
+const route = useRoute()
+
+/** 线上代码审计弹窗；/about#audit 直接打开（更新公告里的链接） */
+const auditOpen = ref(false)
+watch(
+  () => route.hash,
+  (hash) => {
+    if (hash === '#audit') auditOpen.value = true
+  },
+  { immediate: true },
+)
 const upstreams = Object.values(UPSTREAMS)
 const imageSources = Object.values(IMAGE_SOURCES)
 
@@ -26,6 +40,15 @@ const sources = [
 <template>
   <PageShell id="about" title="关于" eyebrow="ABOUT & TRANSPARENCY" :require-account="false" :sync="false" :scoped="false">
     <div class="space-y-10">
+      <section class="flex flex-col gap-4 rounded-(--ui-radius) border border-primary/40 bg-primary/5 p-5 sm:flex-row sm:items-center">
+        <UIcon name="i-lucide-badge-check" class="size-9 shrink-0 text-primary" />
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-highlighted">这个网站运行的，就是公开的源码吗？</p>
+          <p class="mt-1 text-sm leading-relaxed text-muted">每次部署都会留下任何人都能核对的公开记录，每天自动核对一次。点开看看是怎么保证的、现在运行的是哪个版本。</p>
+        </div>
+        <UButton label="线上代码审计" icon="i-lucide-shield-check" size="lg" class="shrink-0 justify-center" @click="auditOpen = true" />
+      </section>
+
       <section class="grid gap-3 md:grid-cols-3">
         <div v-for="item in [
           { icon: 'i-lucide-hard-drive', title: '数据只在你的浏览器里', desc: '寻访记录、统计结果、账号 token 都保存在本机的 IndexedDB 中，本站没有用户系统。开启云同步时，服务器只保存你在浏览器里加密好的密文。' },
@@ -157,5 +180,6 @@ const sources = [
         </p>
       </section>
     </div>
+    <AuditDialog v-model:open="auditOpen" />
   </PageShell>
 </template>

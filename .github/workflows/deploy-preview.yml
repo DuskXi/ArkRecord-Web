@@ -1,4 +1,10 @@
 # 部署到测试域名 ark-next.kaltsit.dev（Worker arkrecord-next）。正式域名见 deploy-production.yml。
+# 分成四个任务（见 SECURITY.md 的“对照线上代码”）：
+#   build   安装依赖、检查、构建，生成构建清单（网站每个文件和 Worker 每个模块的 SHA-256）；
+#   attest  签发构建证明，记录在 Sigstore 的公开透明日志里。只有这个任务有签发权限，而且不检出代码、不安装任何依赖：
+#           即使某个 npm 依赖被投毒，也拿不到签发权限，没法给别的代码伪造“本仓库构建”的证明；
+#   deploy  部署 build 产出的那一份文件（和签发证明的是同一份），Worker 版本标记为 commit；
+#   audit   部署后立即核对线上的网站文件和 Worker 代码（audit-deployment.yml）。
 name: Deploy preview
 
 on:
@@ -14,12 +20,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    env:
-      HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    outputs:
+      can-deploy: ${{ steps.token.outputs.ok }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -41,18 +49,82 @@ jobs:
           npx oxlint
           npx vue-tsc -b
           npx vitest run
+      # 构建时没有设置 CLOUDFLARE_ENV，使用 wrangler.jsonc 顶层的测试环境配置
       - name: 构建
         run: npx vite build
+      # 网站每个文件和 Worker 每个模块的 SHA-256，随网站公开在 /build-manifest.json
+      - name: 生成构建清单
+        run: node scripts/audit/manifest.mjs --env preview
 
-      - name: 尚未配置 Cloudflare 密钥
-        if: env.HAS_CF_TOKEN != 'true'
-        run: echo "::notice::未配置 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，跳过部署（见 docs/rewrite/README.md）"
+      - name: 是否配置了 Cloudflare 密钥
+        id: token
+        env:
+          HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        run: |
+          echo "ok=$HAS_CF_TOKEN" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_CF_TOKEN" != true ]; then echo "::notice::未配置 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，跳过部署（见 docs/rewrite/README.md）"; fi
 
-      # 构建时没有设置 CLOUDFLARE_ENV，使用 wrangler.jsonc 顶层的测试环境配置
+      # 构建产物交给后面的任务：.wrangler/deploy/config.json 指向 dist 里 Cloudflare 插件生成的部署配置
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            dist/
+            .wrangler/deploy/config.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  attest:
+    needs: build
+    if: needs.build.outputs.can-deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+      # 构建清单和 Worker 的每个模块（dist/attestation-subjects.sha256）
+      - name: 签发构建证明
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: dist/attestation-subjects.sha256
+
+  deploy:
+    needs: [build, attest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+
+      # 版本标记为 commit，Cloudflare 后台和核对报告里都能看到
       - name: 部署到 Cloudflare Workers（测试环境）
-        if: env.HAS_CF_TOKEN == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+          command: deploy --tag ${{ github.sha }} --message actions-run-${{ github.run_id }}
+
+  audit:
+    needs: deploy
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/audit-deployment.yml
+    with:
+      environment: preview
+      expect-commit: ${{ github.sha }}
+    secrets: inherit

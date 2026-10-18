@@ -7,6 +7,46 @@ import type { Announcement } from './index'
  */
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: 'v1.1.6',
+    version: '1.1.6',
+    date: '2026-10-18',
+    title: '公开核对线上运行的代码',
+    summary: '现在任何人都可以核对：本站线上运行的代码，就是本仓库的公开源码由 GitHub Actions 构建、部署的那一份。',
+    sections: [
+      {
+        title: '每次部署都留下公开记录',
+        items: [
+          '部署时列出网站上每个文件和服务器代码（Worker）的 SHA-256，公开在 [build-manifest.json](https://ark.kaltsit.dev/build-manifest.json)。',
+          '这份清单和服务器代码由 GitHub Actions 签发**构建证明**，记录在 Sigstore 的公开透明日志里，写明是本仓库哪个 commit、哪次运行构建的。透明日志只能追加，事后删不掉，也改不了时间。',
+          '构建可以复现：同一个 commit 在别的电脑上构建，得到的文件逐字节相同。',
+        ],
+      },
+      {
+        title: '在网站里查看',
+        items: ['在[关于](/about#audit)页顶部点“线上代码审计”，可以直接在网站里阅读这些说明，看到现在运行的是哪个版本，以及自己核对的方法。'],
+      },
+      {
+        title: '任何人都能核对网站',
+        items: [
+          '网站上的文件（包括在浏览器里加密数据的代码）谁都能下载。仓库里的核对脚本会验证构建证明，再逐个对比线上的文件和安全响应头；也可以自己从源码构建再对比。用法见[安全说明](https://github.com/DuskXi/ArkRecord-Web/blob/master/SECURITY.md)的“对照线上代码”。',
+        ],
+      },
+      {
+        title: '服务器代码：公开的定时核对',
+        items: [
+          '服务器代码只有 Cloudflare 账号持有者能取回，所以由仓库里公开的定时任务代为核对：每天一次，每次部署后也立即核对。最近 72 小时上传到 Cloudflare 的**每一个版本**，都必须有本仓库部署流程签发的构建证明。',
+          '核对结果在 GitHub 的 [Actions 页面](https://github.com/DuskXi/ArkRecord-Web/actions/workflows/audit-deployment.yml)公开，每次的报告也签发了构建证明。核对只读取代码和部署记录，报告里没有账号信息。',
+        ],
+      },
+      {
+        title: '局限',
+        items: [
+          'Cloudflare 没有能从密码学上证明“服务器正在运行哪份代码”的机制。这些措施能让“绕过公开流程部署别的代码”**被发现、留下删不掉的记录**，但不能从技术上阻止。具体的局限也写在安全说明里。',
+        ],
+      },
+    ],
+  },
+  {
     id: 'v1.1.5',
     version: '1.1.5',
     date: '2026-10-18',
