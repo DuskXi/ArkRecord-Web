@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { type Announcement, announcementPath } from '@/lib/announcements'
+import { type Announcement, announcementPath, KIND_LABEL } from '@/lib/announcements'
 import { useAnnouncementsStore } from '@/stores/announcements'
 import { useAppStore } from '@/stores/app'
 import AnnouncementBody from './AnnouncementBody.vue'
@@ -45,6 +45,7 @@ function stamp(a: Announcement): string {
             <li v-for="a in store.plan.others" :key="a.id" class="flex items-baseline gap-2 text-sm">
               <span class="w-20 shrink-0 font-display text-xs text-dimmed">{{ a.version ? `v${a.version}` : a.date.slice(5) }}</span>
               <ULink :to="announcementPath(a.id)" class="min-w-0 text-highlighted hover:text-primary" @click="store.dismiss()">{{ a.title }}</ULink>
+              <span v-if="a.kind === 'minor'" class="shrink-0 text-xs text-dimmed">{{ KIND_LABEL.minor }}</span>
             </li>
           </ul>
         </div>

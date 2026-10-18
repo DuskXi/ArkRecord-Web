@@ -1,13 +1,23 @@
 /**
  * 更新公告：每次发布新版本都在 content.ts 里加一篇（测试会检查当前版本有公告）。
  *
+ * 两种更新：
+ *   - 正式更新（major）：新功能、重要变化。更新后第一次打开网站时弹出；
+ *   - 小更新（minor）：修复、小改进。只写进“更新公告”页，不弹窗，也不计入侧边栏的未读数；
+ *     下一次正式更新弹窗时，会和它一起列出还没看过的小更新。
+ *
  * 弹出规则：
  *   - 浏览器里记下“已读到哪一篇”（localStorage，只在这台设备上）；
- *   - 有更新的公告时，第一次打开网站弹出最新一篇，同时列出其他没看过的；关掉就算全部已读；
+ *   - 有没看过的正式更新时，第一次打开网站弹出最新一篇正式更新，同时列出其他没看过的；关掉就算全部已读；
  *   - 全新访问（会显示欢迎窗口）不弹，直接记为已读；
- *   - 老用户第一次遇到公告功能（还没有记录）：弹出最新一篇，并列出最近几篇。
+ *   - 老用户第一次遇到公告功能（还没有记录）：弹出最新一篇正式更新，并列出最近几篇。
  */
 import { ANNOUNCEMENTS } from './content'
+
+/** major：正式更新，弹窗；minor：小更新，只写进公告页 */
+export type AnnouncementKind = 'major' | 'minor'
+
+export const KIND_LABEL: Record<AnnouncementKind, string> = { major: '正式更新', minor: '小更新' }
 
 export interface AnnouncementHighlight {
   /** 图标名必须写成字面量（构建时扫描打包） */
@@ -36,8 +46,8 @@ export interface Announcement {
   title: string
   /** 一两句话的概括：列表和弹窗里显示 */
   summary: string
-  /** 默认弹出；小修复可以设为 false，只在公告页标为未读 */
-  popup?: boolean
+  /** 正式更新弹窗；小更新只写进公告页 */
+  kind: AnnouncementKind
   highlights?: AnnouncementHighlight[]
   sections: AnnouncementSection[]
 }
@@ -63,6 +73,12 @@ export function unreadOf(seen: string | null, list: readonly Announcement[] = AN
   return index < 0 ? [] : list.slice(0, index)
 }
 
+/** 没看过的正式更新（侧边栏的未读数只算这些） */
+export function unreadMajorOf(seen: string | null, list: readonly Announcement[] = ANNOUNCEMENTS): Announcement[] {
+  if (seen === null) return list.filter((a) => a.kind === 'major').slice(0, 1)
+  return unreadOf(seen, list).filter((a) => a.kind === 'major')
+}
+
 export interface PopupPlan {
   /** 弹窗里完整显示的一篇 */
   main: Announcement
@@ -79,12 +95,12 @@ export interface PopupPlan {
 export function popupPlan(seen: string | null, list: readonly Announcement[] = ANNOUNCEMENTS): PopupPlan | null {
   if (!list.length) return null
   if (seen === null) {
-    const main = list.find((a) => a.popup !== false)
+    const main = list.find((a) => a.kind === 'major')
     if (!main) return null
     return { main, others: list.filter((a) => a !== main).slice(0, RECENT_ON_FIRST), othersLabel: '近期更新' }
   }
   const unread = unreadOf(seen, list)
-  const main = unread.find((a) => a.popup !== false)
+  const main = unread.find((a) => a.kind === 'major')
   if (!main) return null
   return { main, others: unread.filter((a) => a !== main), othersLabel: '你还没看过的其他更新' }
 }

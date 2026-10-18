@@ -3,7 +3,7 @@ import { nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AnnouncementBody from '@/components/announcements/AnnouncementBody.vue'
 import PageShell from '@/components/shell/PageShell.vue'
-import { ANNOUNCEMENTS } from '@/lib/announcements'
+import { ANNOUNCEMENTS, KIND_LABEL } from '@/lib/announcements'
 import { useAnnouncementsStore } from '@/stores/announcements'
 
 /** 全部更新公告，新的在前。最新一篇和没看过的默认展开；地址里的 #id 指向某一篇时展开并滚动过去 */
@@ -39,7 +39,9 @@ watch(
 <template>
   <PageShell id="announcements" title="更新公告" eyebrow="ANNOUNCEMENTS" :require-account="false" :sync="false" :scoped="false">
     <div class="mx-auto max-w-3xl space-y-4">
-      <p class="text-sm leading-relaxed text-muted">每次更新后第一次打开网站时，会弹出这次的更新公告。这里按时间倒序列出全部公告，点标题展开或收起。</p>
+      <p class="text-sm leading-relaxed text-muted">
+        正式更新（新功能、重要变化）会在更新后第一次打开网站时弹出；小更新（修复、小改进）只写在这里，不弹窗。这里按时间倒序列出全部公告，点标题展开或收起。
+      </p>
 
       <article
         v-for="a in ANNOUNCEMENTS"
@@ -52,6 +54,7 @@ watch(
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2">
               <UBadge :label="a.version ? `v${a.version}` : '公告'" color="neutral" variant="outline" size="sm" class="font-display" />
+              <UBadge :label="KIND_LABEL[a.kind]" :color="a.kind === 'major' ? 'primary' : 'neutral'" variant="subtle" size="sm" />
               <UBadge v-if="fresh.has(a.id)" label="新" color="error" variant="solid" size="sm" />
               <span class="font-display text-xs text-dimmed">{{ a.date }}</span>
             </div>

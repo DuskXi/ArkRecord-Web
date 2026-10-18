@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { type Announcement, ANNOUNCEMENTS, isInternalHref, parseInline, popupPlan, RECENT_ON_FIRST, readSeen, unreadOf, writeSeen } from './index'
+import { type Announcement, type AnnouncementKind, ANNOUNCEMENTS, isInternalHref, parseInline, popupPlan, RECENT_ON_FIRST, readSeen, unreadMajorOf, unreadOf, writeSeen } from './index'
 
 /** router.ts 里的页面路径（不导入 router，避免在测试里创建浏览器路由） */
 const ROUTES = new Set([...readFileSync(new URL('../../router.ts', import.meta.url), 'utf8').matchAll(/path: '([^']+)'/g)].map((m) => m[1]!))
@@ -37,6 +37,11 @@ describe('公告内容', () => {
     expect(dates).toEqual(dates.toSorted().toReversed())
   })
 
+  it('每篇都标明是正式更新还是小更新，至少有一篇正式更新', () => {
+    for (const a of ANNOUNCEMENTS) expect(['major', 'minor'], a.id).toContain(a.kind)
+    expect(ANNOUNCEMENTS.some((a) => a.kind === 'major')).toBe(true)
+  })
+
   it('有标题、概括和正文', () => {
     for (const a of ANNOUNCEMENTS) {
       expect(a.title.trim()).not.toBe('')
@@ -60,8 +65,8 @@ describe('公告内容', () => {
   })
 })
 
-const post = (id: string, popup?: boolean): Announcement => ({ id, version: null, date: '2026-01-01', title: id, summary: id, popup, sections: [{ title: 't', items: ['x'] }] })
-const LIST = [post('d'), post('c', false), post('b'), post('a')]
+const post = (id: string, kind: AnnouncementKind = 'major'): Announcement => ({ id, kind, version: null, date: '2026-01-01', title: id, summary: id, sections: [{ title: 't', items: ['x'] }] })
+const LIST = [post('d'), post('c', 'minor'), post('b'), post('a')]
 
 describe('弹出规则', () => {
   it('没看过的：已读那一篇之前的', () => {
@@ -78,11 +83,28 @@ describe('弹出规则', () => {
     expect(plan.othersLabel).toContain('没看过')
   })
 
-  it('没有更新、或者只有不弹出的小修复：不弹', () => {
+  it('没有更新、或者只有小更新：不弹，侧边栏也不显示未读数', () => {
     expect(popupPlan('d', LIST)).toBeNull()
-    const withFix = [post('e', false), ...LIST]
-    expect(popupPlan('d', withFix)).toBeNull()
-    expect(unreadOf('d', withFix).map((a) => a.id)).toEqual(['e'])
+    const withMinor = [post('f', 'minor'), post('e', 'minor'), ...LIST]
+    expect(popupPlan('d', withMinor)).toBeNull()
+    expect(unreadOf('d', withMinor).map((a) => a.id)).toEqual(['f', 'e'])
+    expect(unreadMajorOf('d', withMinor)).toEqual([])
+  })
+
+  it('小更新之后的正式更新：弹出正式更新，并列出没看过的小更新', () => {
+    const list = [post('g'), post('f', 'minor'), post('e', 'minor'), ...LIST]
+    const plan = popupPlan('d', list)!
+    expect(plan.main.id).toBe('g')
+    expect(plan.others.map((a) => a.id)).toEqual(['f', 'e'])
+    expect(unreadMajorOf('d', list).map((a) => a.id)).toEqual(['g'])
+  })
+
+  it('最新的是小更新时，第一次遇到公告功能的老用户看到的是上一次正式更新', () => {
+    const list = [post('f', 'minor'), post('e', 'minor'), ...LIST]
+    const plan = popupPlan(null, list)!
+    expect(plan.main.id).toBe('d')
+    expect(plan.others.map((a) => a.id)).toEqual(['f', 'e', 'c', 'b'].slice(0, RECENT_ON_FIRST))
+    expect(unreadMajorOf(null, list).map((a) => a.id)).toEqual(['d'])
   })
 
   it('老用户第一次遇到公告功能：弹出最新一篇，并列出最近几篇', () => {
