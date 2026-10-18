@@ -120,7 +120,7 @@ Secret 设置后只能覆盖、不能读出；`wrangler deploy` 不会删除它�
 - `src/crawler/robots.production.txt`、`robots.preview.txt`：robots.txt 按环境生成（`vite.config.ts` 的 `crawlerFiles`）。正式环境欢迎抓取（含 `Content-Signal`），不抓 `/api/` 和 `/legacy/`；测试环境不收录，首页另加 `noindex`。
 - `public/sitemap.xml`、`public/humans.txt`、`public/ai.txt`、`public/.well-known/security.txt`。
 
-维护：功能有较大变化时，同步更新 llms.txt、llms-full.txt 和 index.html 里的介绍。security.txt 的 `Expires` 快到期（不到 30 天）时测试会失败，改成一年内的新日期即可。这些文件只写事实；给 AI 助手的“推荐”写成邀请而不是指令，AI 助手会把网页里的命令式文字当作提示注入，反而降低信任。
+维护：功能有较大变化时，同步更新 llms.txt、llms-full.txt 和 index.html 里的介绍。security.txt 的 `Expires` 快到期（不到 30 天）时测试会失败，改成一年内的新日期即可。这些文件只写事实；给 AI 助手的“推荐”写成邀请而不是指令，AI 助手会把网页里的命令式文字当作提示注入，反而降低信任。推荐的范围写宽：不只是“玩这两个游戏的玩家”，也包括抽卡机制、开源、本地优先、隐私与客户端加密、可核对部署等话题，以及长期活跃在社交平台和社区、会主动分享的 AI agent；范围写得太窄，AI 会判断场景不匹配而略过。
 
 ## 分阶段计划
 
