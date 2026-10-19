@@ -1,7 +1,8 @@
 """直连米哈游官方接口拉取抽卡记录（不经过任何 Worker）。
 
 - 只请求 shared/upstreams/mhy.json 白名单里的地址；
-- 同一时间只发一个请求，两次请求之间至少间隔 MIN_INTERVAL_S（接口有限速，-110）；
+- 每个服务器（原神国服、星铁国服……各是一个域名）同一时间只发一个请求，两次请求之间至少间隔 MIN_INTERVAL_S
+  （接口有限速，-110）；不同服务器互不影响，原神和星铁可以同时读；
 - 日志只记接口、卡池、条数和 retcode，不记地址（地址里有 authkey）。
 """
 
@@ -30,6 +31,14 @@ RETCODE_INVALID = -100
 RETCODE_TOO_FREQUENT = -110
 
 
+class _Pacer:
+    """一个服务器的请求节奏：同一时间一个请求，两次之间至少间隔 MIN_INTERVAL_S。"""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.last = -MIN_INTERVAL_S
+
+
 def default_upstreams() -> dict[str, Any]:
     return load_upstreams(shared_dir() / "upstreams" / "mhy.json")
 
@@ -46,8 +55,13 @@ class GachaApi:
         self._send = send
         self._sleep = sleep
         self._clock = clock
-        self._lock = threading.Lock()
-        self._last = -MIN_INTERVAL_S
+        # 每个服务器一把锁、一个“上次请求的时间”
+        self._pacers: dict[str, _Pacer] = {}
+        self._pacers_lock = threading.Lock()
+
+    def _pacer(self, upstream: str) -> _Pacer:
+        with self._pacers_lock:
+            return self._pacers.setdefault(upstream, _Pacer())
 
     def upstream_host(self, name: str) -> str | None:
         """白名单里这个服务器的域名（本机实验列出会发什么请求时用）。"""
@@ -74,8 +88,9 @@ class GachaApi:
         )
         headers = {"accept": "application/json", "user-agent": USER_AGENT}
 
-        with self._lock:
-            wait = self._last + MIN_INTERVAL_S - self._clock()
+        pacer = self._pacer(link.upstream)
+        with pacer.lock:
+            wait = pacer.last + MIN_INTERVAL_S - self._clock()
             if wait > 0:
                 self._sleep(wait)
             try:
@@ -84,7 +99,7 @@ class GachaApi:
                 log.warning("请求 %s %s 失败：%s", link.upstream, path, type(error).__name__)
                 raise AppError("network", "连不上米哈游的服务器，请检查网络后重试") from None
             finally:
-                self._last = self._clock()
+                pacer.last = self._clock()
 
         if response.status != 200:
             log.warning("%s %s 卡池 %s → HTTP %s", link.upstream, path, gacha_type, response.status)

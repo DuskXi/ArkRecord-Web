@@ -81,6 +81,20 @@ def test_requests_are_paced():
     assert clock.slept == [pytest.approx(MIN_INTERVAL_S)]
 
 
+def test_pacing_is_per_server_so_two_games_can_read_at_once():
+    clock = Clock()
+    client = api(FakeMhy(), clock)
+    genshin = parse_link(GENSHIN_PAGE.format(key="FAKE_G"))
+    starrail = parse_link(STARRAIL_API.format(key="FAKE_S"))
+    client.fetch_page(genshin, "200")
+    # 星铁是另一个服务器：不用等原神的间隔
+    client.fetch_page(starrail, "1")
+    assert clock.slept == []
+    # 同一个服务器照旧间隔
+    client.fetch_page(genshin, "200")
+    assert clock.slept == [pytest.approx(MIN_INTERVAL_S)]
+
+
 @pytest.mark.parametrize(
     ("key", "kind"), [("expired", "link_expired"), ("invalid", "link_invalid"), ("busy", "rate_limited")]
 )
