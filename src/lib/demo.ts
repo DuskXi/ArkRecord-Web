@@ -3,13 +3,14 @@
  * 让还没登录的用户也能先看看各个页面的效果。演示账号与真实账号分开存放，可随时删除。
  */
 import { db } from './db'
+import { DEMO_ACCOUNT_ID } from './demo-account'
 import type { AkMeta } from './meta'
 import { akCodexItems } from './stats/codex'
 import { akFamily, akRuleType } from './stats/events'
 import { arknightsRate } from './stats/pity'
 import type { Account, AkPull } from './types'
 
-export const DEMO_ACCOUNT_ID = 'arknights:demo'
+export { DEMO_ACCOUNT_ID } from './demo-account'
 
 /** 可复现的伪随机数（mulberry32） */
 function random(seed: number) {

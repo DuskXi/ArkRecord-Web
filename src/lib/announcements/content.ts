@@ -8,6 +8,23 @@ import type { Announcement } from './index'
  */
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: 'v1.1.9',
+    kind: 'minor',
+    version: '1.1.9',
+    date: '2026-10-19',
+    title: '匿名统计不再把演示账号算进去',
+    summary: '匿名使用统计里“这个浏览器有哪些游戏的账号”只算真实账号，载入演示数据不会再被算作明日方舟玩家。',
+    sections: [
+      {
+        title: '统计',
+        items: [
+          '匿名使用统计（只在统计同意里选了“全部接受”才会上报）的“有哪些游戏的账号”这一项，不再包括演示账号。',
+          '以前已经计入的数字无法回溯更正。上报的具体内容见[关于](/about)页。',
+        ],
+      },
+    ],
+  },
+  {
     id: 'v1.1.8',
     kind: 'minor',
     version: '1.1.8',
