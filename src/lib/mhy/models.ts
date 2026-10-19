@@ -80,8 +80,19 @@ function cachedCurve(rates: OfficialRates): DerivedCurve | null {
  * 没有官方的软保底，softPity 等于 hardPity（界面上不显示软保底标记）；dist 是推算的（derived）。
  */
 export function mhyModel(game: MhyGame, scope: 'char' | 'weapon'): PityModel {
-  const group = scope === 'char' ? 'character' : game === 'genshin' ? 'weapon' : 'lightcone'
-  const rates = OFFICIAL_RATES[game][group]!
+  const rates = scopeRates(game, scope)
   const curve = cachedCurve(rates)
   return { dist: curve?.dist ?? null, softPity: rates.hardPity, hardPity: rates.hardPity, topStar: 5, derived: true }
+}
+
+/** 抽卡规划用的每抽概率（推算的曲线，和 mhyModel 的 dist 是同一条）；推不出来时为 null */
+export function mhyRate(game: MhyGame, scope: 'char' | 'weapon'): RateFn | null {
+  const rates = scopeRates(game, scope)
+  const curve = cachedCurve(rates)
+  return curve ? rampRate(rates, curve.start) : null
+}
+
+function scopeRates(game: MhyGame, scope: 'char' | 'weapon'): OfficialRates {
+  const group = scope === 'char' ? 'character' : game === 'genshin' ? 'weapon' : 'lightcone'
+  return OFFICIAL_RATES[game][group]!
 }

@@ -6,7 +6,7 @@ import { analyze } from '../stats/analyze'
 import { computeInsights } from '../stats/insights'
 import { luckTrend } from '../stats/sixstar'
 import { normalizeMhy } from './events'
-import { deriveCurve, mhyModel, OFFICIAL_RATES } from './models'
+import { deriveCurve, mhyModel, mhyRate, OFFICIAL_RATES } from './models'
 import type { MhyPull } from './types'
 
 const T0 = 1_760_000_000_000
@@ -50,6 +50,14 @@ describe('按官方数字推算的保底曲线', () => {
     expect(char.dist!.mean).toBeCloseTo(62.4, 0)
     expect(mhyModel('genshin', 'weapon').hardPity).toBe(80)
     expect(mhyModel('starrail', 'weapon').hardPity).toBe(80)
+  })
+
+  it('抽卡规划用的每抽概率和模型是同一条曲线', () => {
+    const rate = mhyRate('genshin', 'char')!
+    expect([rate(1), rate(73), rate(90)]).toEqual([0.006, 0.006, 1])
+    expect(rate(74)).toBeGreaterThan(0.006)
+    expect(mhyRate('starrail', 'weapon')!(66)).toBeGreaterThan(0.008)
+    expect(mhyRate('starrail', 'weapon')!(65)).toBe(0.008)
   })
 })
 
