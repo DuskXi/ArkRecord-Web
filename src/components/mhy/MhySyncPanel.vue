@@ -194,6 +194,7 @@ const problemTitle = computed(() => {
   if (!p) return ''
   if (p.partial && p.partial.fetched > 0) return '只读取了一部分'
   if (NEED_OPEN.has(p.kind)) return `需要先在游戏里打开${recordName.value}`
+  if (p.kind === 'cache_locked') return '游戏正在运行'
   if (p.kind === 'game_not_found') return '没有找到游戏目录'
   if (p.kind === 'rate_limited') return '请求太频繁'
   if (p.kind === 'network') return '网络连接失败'
@@ -203,6 +204,7 @@ const problemHint = computed(() => {
   const p = problem.value
   if (!p) return ''
   if (NEED_OPEN.has(p.kind)) return `在游戏里打开一次${recordName.value}（翻一页就行），再点“读取”；也可以点“等待读取”，打开后会自动读取。链接大约 24 小时后过期。`
+  if (p.kind === 'cache_locked') return '关闭游戏后（启动器可以不关），点下面的按钮重新读取。'
   if (p.kind === 'game_not_found') return '可以手动选择游戏目录（游戏安装目录或游戏数据目录都行），选过之后会记住。'
   if (p.kind === 'rate_limited') return '米哈游的接口限制了请求频率，请等一分钟再试。'
   if (p.kind === 'network') return '请检查网络后再试。'
@@ -272,6 +274,7 @@ const partialText = computed(() => {
         <div class="mt-2 flex flex-wrap gap-2">
           <UButton v-if="NEED_OPEN.has(problem.kind) || partialText" label="等待读取" icon="i-lucide-hourglass" size="xs" @click="startWaiting" />
           <UButton v-if="problem.kind === 'game_not_found'" label="手动选择游戏目录" icon="i-lucide-folder-open" size="xs" @click="pickDir" />
+          <UButton v-if="problem.kind === 'cache_locked'" label="关闭游戏后点这里重新读取" icon="i-lucide-refresh-cw" size="xs" :loading="running" @click="readFromCache" />
         </div>
       </template>
     </UAlert>
