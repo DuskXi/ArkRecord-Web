@@ -27,4 +27,4 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S"]
 # 测试里允许 assert、启动子进程、写合成的假凭据
-per-file-ignores = { "tests/*" = ["S101", "S105", "S106", "S603"] }
+per-file-ignores = { "tests/*" = ["S101", "S105", "S106", "S311", "S603"] }

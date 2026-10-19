@@ -8,6 +8,8 @@ import { markWelcomeSeen, welcomeSeen } from '@/lib/onboarding'
 import type { Account, Game } from '@/lib/types'
 import { loadCloudflareAnalytics } from '@/lib/analytics'
 import { type Consent, readConsent, writeConsent } from '@/lib/consent'
+import { type DesktopStatsStatus, desktopStatsStatus, reportDesktopStats, setDesktopStatsEnabled } from '@/lib/desktop-stats'
+import { isDesktop } from '@/lib/transport'
 import { fetchUsageSummary, gamesForUsage, reportUsage, type UsageSummary, usageNoticeSeen } from '@/lib/usage'
 
 export const APP_VERSION = __APP_VERSION__
@@ -47,6 +49,8 @@ export const useAppStore = defineStore('app', () => {
 
   // ── 第一次访问的引导：欢迎窗口 → 旧版数据迁移（有旧数据时）→ 统计同意 ──
   const consent = ref<Consent | null>(readConsent())
+  /** 桌面版（Electron）：统计、同意弹窗走不同的逻辑 */
+  const desktop = isDesktop()
   /** 全新访问（没看过欢迎窗口、没做过统计选择、也没用过之前的版本）才显示欢迎窗口 */
   const welcomeOpen = ref(!welcomeSeen() && consent.value === null && !usageNoticeSeen())
   function closeWelcome() {
@@ -59,7 +63,8 @@ export const useAppStore = defineStore('app', () => {
   const introDone = computed(() => !welcomeOpen.value && legacyStep.value === 'done')
   /** 在“关于”页主动打开统计设置 */
   const consentRequested = ref(false)
-  const consentOpen = computed(() => consentRequested.value || (consent.value === null && introDone.value))
+  /** 桌面版不弹统计同意（没有 Cookie，也不加载 Cloudflare 的统计脚本）；统计交给 Python 后端，见下面 */
+  const consentOpen = computed(() => !desktop && (consentRequested.value || (consent.value === null && introDone.value)))
 
   // ── 统计（见 src/lib/consent.ts）：本站匿名使用统计 + Cloudflare Web Analytics，只在“全部接受”后启用 ──
   const usage = shallowRef<UsageSummary | null>(null)
@@ -79,7 +84,26 @@ export const useAppStore = defineStore('app', () => {
     consentRequested.value = false
     if (value === 'all' && !wasAll) startAnalytics()
   }
-  if (consent.value === 'all') startAnalytics()
+  if (!desktop && consent.value === 'all') startAnalytics()
+
+  // ── 桌面版的统计（见 src/lib/desktop-stats.ts）：交给 Python 后端，默认开启，“关于”页可以关闭 ──
+  const desktopStats = ref<DesktopStatsStatus | null>(null)
+  if (desktop) {
+    void desktopStatsStatus().then((s) => (desktopStats.value = s))
+    // 账号列表从 IndexedDB 读出来后、以及之后有变化（登录了新账号）时告诉后端；后端每天去重，关闭了统计时什么都不发
+    let timer: ReturnType<typeof setTimeout> | undefined
+    watch(
+      accounts,
+      (list) => {
+        clearTimeout(timer)
+        timer = setTimeout(() => reportDesktopStats(list), 3000)
+      },
+      { immediate: true },
+    )
+  }
+  async function setDesktopStats(enabled: boolean) {
+    if (await setDesktopStatsEnabled(enabled)) desktopStats.value = { available: desktopStats.value?.available ?? false, enabled }
+  }
 
   return {
     game,
@@ -98,6 +122,9 @@ export const useAppStore = defineStore('app', () => {
     introDone,
     consent,
     consentOpen,
+    desktop,
+    desktopStats,
+    setDesktopStats,
     consentRequested,
     setConsent,
     usage,

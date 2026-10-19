@@ -138,6 +138,21 @@ interface ArkrecordBridge {
 | -32603 | 主进程内部错误 |
 | -32000 | `data.kind` = `backend_unavailable`（没装 uv、后端启动失败或已退出）、`timeout`（超时）；`app.hgLogin` 还有 `cancelled`、`login_failed` |
 
+## 使用人数统计（`stats.*`）
+
+维护者的决定：桌面版不弹 Cookie 同意，统计交给 Python 后端，默认开启、“关于”页可关闭；统计没登录的设备、加盐的 UID、设备，UID 和设备互不关联。上报什么、服务器保存什么见 [SECURITY.md](../SECURITY.md) 的“桌面版的使用人数统计”。
+
+| 方法 | 参数 | 结果 | 说明 |
+|---|---|---|---|
+| `stats.status` | 无 | `{enabled, available}` | `available` 为 false 时（没设置上报地址或数据目录）不会上报 |
+| `stats.setEnabled` | `{enabled}` | `{enabled}` | 关闭后不再发出任何统计请求，已经排好的也不发 |
+| `stats.report` | `{accounts: [{game, uid}]}` | `{scheduled}` | 页面在账号列表变化时调用（`src/lib/desktop-stats.ts`）；后端每天去重，设备马上报，每个账号在 30 到 300 秒后单独、乱序上报 |
+
+主进程启动后端时要传两个环境变量：
+
+- `ARKRECORD_DATA_DIR`：应用数据目录（`app.getPath('userData')`），后端在这里存 `stats.json`（开关、随机设备 ID、今天报过什么）。
+- `ARKRECORD_STATS_URL`：安装版 `https://ark.kaltsit.dev`，开发版 `https://ark-next.kaltsit.dev`。后端只接受这两个地址，没设置时不上报。
+
 ## 鹰角 token 的保存（主进程，`app.tokens.*`）
 
 维护者的要求：要记住，但只能用系统钥匙串加密；没有钥匙串就不记住。页面这一侧在 `src/lib/token-vault.ts`（账号表的钩子，token 不进 IndexedDB），主进程这一侧的约定：

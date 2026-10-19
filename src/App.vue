@@ -82,6 +82,7 @@ const navItems = computed(() =>
     <LegacyMigration />
     <AnnouncementDialog />
     <WelcomeDialog />
-    <ConsentBanner />
+    <!-- 桌面版不弹统计同意：没有 Cookie，统计交给本机后端，默认开启、“关于”页可以关闭 -->
+    <ConsentBanner v-if="!desktop" />
   </UApp>
 </template>

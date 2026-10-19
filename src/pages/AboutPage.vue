@@ -101,14 +101,32 @@ const sources = [
       </section>
 
       <section id="usage" class="scroll-mt-4">
-        <SectionHeader index="03" eyebrow="USAGE STATISTICS" title="统计与 Cookie">
+        <SectionHeader index="03" eyebrow="USAGE STATISTICS" :title="app.desktop ? '统计' : '统计与 Cookie'">
           <USwitch
+            v-if="app.desktop"
+            :model-value="app.desktopStats?.enabled ?? false"
+            :disabled="!app.desktopStats"
+            label="参与统计"
+            @update:model-value="(v: boolean) => app.setDesktopStats(v)"
+          />
+          <USwitch
+            v-else
             :model-value="app.consent === 'all'"
             label="参与统计"
             @update:model-value="(v: boolean) => app.setConsent(v ? 'all' : 'essential')"
           />
         </SectionHeader>
-        <div v-if="app.usage" class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div v-if="app.desktop" class="space-y-2 rounded-(--ui-radius) border border-default p-4 text-sm leading-relaxed text-muted">
+          <p>桌面版不用 Cookie，也不加载第三方统计脚本。使用人数统计由本机的后端上报，默认开启，随时可以用右上角的开关关闭；关闭后不再发出任何统计请求。</p>
+          <ul class="list-disc space-y-1 pl-5">
+            <li><b class="text-highlighted">设备</b>：每天最多一次，上报安装时随机生成的设备编号的哈希（不读取任何硬件信息），以及有没有登录账号。</li>
+            <li><b class="text-highlighted">账号</b>：每个账号每天最多一次、单独上报“游戏 + UID”加盐后的哈希；不上传 UID、昵称、token 或寻访记录。</li>
+            <li><b class="text-highlighted">互不关联</b>：设备和账号分开、间隔随机时间上报，请求里没有共同的内容，服务器无法知道哪个账号在哪台设备上。</li>
+            <li><b class="text-highlighted">服务器保存什么</b>：收到的哈希再用只有服务器知道的密钥加一次密（HMAC）后才保存，用来去重计数；不保存 IP。按天的记录保留 35 天，按月的保留 13 个月。</li>
+            <li>实现见源码 <code class="font-mono text-xs">desktop/backend/arkrecord_backend/stats.py</code> 与 <code class="font-mono text-xs">worker/desktop-stats.ts</code>，细节见 SECURITY.md。</li>
+          </ul>
+        </div>
+        <div v-if="app.usage && !app.desktop" class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div v-for="item in [
             { label: '累计用户', value: app.usage.users },
             { label: '明日方舟', value: app.usage.games.arknights },
@@ -121,7 +139,7 @@ const sources = [
             <p class="font-display text-xl font-semibold text-highlighted">{{ formatNumber(item.value) }}</p>
           </div>
         </div>
-        <div class="space-y-2 rounded-(--ui-radius) border border-default p-4 text-sm leading-relaxed text-muted">
+        <div v-if="!app.desktop" class="space-y-2 rounded-(--ui-radius) border border-default p-4 text-sm leading-relaxed text-muted">
           <p>本站不用 Cookie 追踪访客。第一次访问时会询问你是否参与统计：“全部接受”会启用下面两项统计，“仅必要”只保留网站功能本身需要的本地存储（你自己的寻访记录、账号和设置，只存在你的浏览器里）。做出选择之前，两项统计都不启用。</p>
           <p>本站统计使用人数，用来了解有多少人在用、是否值得继续维护。为了让你知情，这里说明全部细节：</p>
           <ul class="list-disc space-y-1 pl-5">
