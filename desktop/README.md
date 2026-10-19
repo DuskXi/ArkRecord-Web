@@ -13,14 +13,15 @@ desktop/
 | 命令 | 做什么 |
 |---|---|
 | `npm run desktop:dev` | 编译主进程和 preload → 启动 Vite（desktop 模式）→ 启动 Electron → 主进程拉起后端并 ping。页面代码热更新；改了 `desktop/electron` 要重新运行 |
-| `npm run desktop:smoke` | 冒烟测试：检查 `window.arkrecord`、页面里没有 Node、ping、白名单以外的方法被拒绝，跑完自动退出，退出码 0 表示通过 |
+| `npm run desktop:smoke` | 冒烟测试：检查 `window.arkrecord`、页面里没有 Node、ping、白名单以外的方法被拒绝、`hg.request` 拒绝白名单以外的路径（不发出真实请求），跑完自动退出，退出码 0 表示通过 |
 | `npm run desktop:build` | 游戏数据 + `vite build --mode desktop`（输出到 `desktop/electron/dist/renderer`）+ 编译主进程 |
 | `npm run desktop:start` | 运行构建好的版本（页面从 `app://arkrecord/` 加载） |
 
 - 需要 Node 22.12 以上、uv。Electron 版本写死在 `package.json`（目前 44.9.0）。
 - 第一次 `npm install` 之后如果没有 Electron 本体，运行 `node node_modules/electron/install.js`。网页版的 CI 和部署设置了 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`，不下载。
 - desktop 模式不加载 `cloudflare()` 和给搜索引擎的文件；默认的网页版构建不受影响（产物逐字节相同）。
-- 桌面版没有 Worker：页面里调用 `/api/*` 的功能（同步、统计、云同步）要等 M1、M5 接入后端后才能用。
+- 桌面版没有 Worker：鹰角的请求经 `src/lib/transport.ts` 的 `postHg` 交给后端的 `hg.request`，由本机直连鹰角；其他调用 `/api/*` 的功能（统计、反馈、云同步）要等 M5。
+- 开发时主进程每次启动会清掉 HTTP 缓存：Vite 给依赖的地址带版本号并让浏览器长期缓存，上次运行留下的缓存会让依赖版本对不上（504，页面空白）。
 
 ## Python 后端
 
@@ -91,8 +92,10 @@ interface ArkrecordBridge {
 主进程收到 `arkrecord:rpc` 时：
 
 - 只接受主窗口顶层页面、地址是应用自己的请求，其他的直接拒绝；
-- 只放行白名单里的方法（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`，目前只有 `ping`）；
-- 再把请求交给后端。普通请求 30 秒超时；启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
+- 只放行白名单里的方法（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`：`ping`、`hg.request`）；
+- 再把请求交给后端。超时：`ping` 30 秒，`hg.request` 45 秒（后端对上游 20 秒超时，留出余量），启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
+
+页面里鹰角的请求不用直接调 `rpc`：`postHg` 在桌面版里调用 `hg.request`，把结果还原成 `Response`（只保留上面三个响应头，`204` 等状态不带正文）；`rpc()` 失败或结果格式不对时抛 `TransportError`（继承 `TypeError`），`client.ts` 当作网络错误处理，和网页版 `fetch` 失败一样。
 
 `rpc()` 失败时 reject 的是**普通对象** `{ code, message, data? }`，不是 `Error`，这样 `code` 和 `data` 经过 contextBridge 后还在（类型 `RpcErrorObject`，判断用 `isRpcErrorObject`，都在 `src/lib/transport.ts`）。除了后端返回的错误，主进程自己会产生：
 

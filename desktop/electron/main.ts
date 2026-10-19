@@ -14,11 +14,16 @@ import { runSmokeTest } from './smoke.js'
 const APP_SCHEME = 'app'
 const APP_HOST = 'arkrecord'
 
-/** 页面能调用的后端方法（M1 加 hg.request） */
-const ALLOWED_METHODS = new Set(['ping'])
+/**
+ * 页面能调用的后端方法和各自的超时（desktop/README.md）。
+ * hg.request 由后端按 shared/upstreams/hg.json 的白名单执行；后端对上游 20 秒超时，这里多留一些余量。
+ */
+const ALLOWED_METHODS = new Map([
+  ['ping', 30_000],
+  ['hg.request', 45_000],
+])
 /** 和后端约定的协议版本（desktop/README.md） */
 const PROTOCOL_VERSION = 1
-const REQUEST_TIMEOUT_MS = 30_000
 /** 第一次启动时 uv 可能要先创建虚拟环境，多给一些时间 */
 const STARTUP_TIMEOUT_MS = 120_000
 
@@ -111,11 +116,12 @@ function isTrustedSender(event: IpcMainInvokeEvent): boolean {
 
 async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unknown): Promise<RpcReply> {
   if (!isTrustedSender(event)) throw new Error('只接受应用自己页面的请求')
-  if (typeof method !== 'string' || !ALLOWED_METHODS.has(method)) {
+  const timeoutMs = typeof method === 'string' ? ALLOWED_METHODS.get(method) : undefined
+  if (typeof method !== 'string' || timeoutMs === undefined) {
     return { ok: false, error: new RpcError(METHOD_NOT_FOUND, '不允许调用这个方法').toJSON() }
   }
   try {
-    return { ok: true, result: await backend.request(method, params, REQUEST_TIMEOUT_MS) }
+    return { ok: true, result: await backend.request(method, params, timeoutMs) }
   } catch (error) {
     return { ok: false, error: (error instanceof RpcError ? error : new RpcError(-32603, '主进程内部错误')).toJSON() }
   }
@@ -204,8 +210,11 @@ if (!app.requestSingleInstanceLock()) {
   app.on('activate', showMainWindow)
   app.on('before-quit', () => backend.stop())
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     const ses = session.defaultSession
+    // Vite 开发服务器给依赖的地址带版本号，并让浏览器长期缓存；上次运行留下的缓存会让依赖版本对不上（504，页面空白）。
+    // 开发时每次启动先清掉 HTTP 缓存（不影响 IndexedDB 里的数据）
+    if (devServer) await ses.clearCache()
     ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
       callback(ALLOWED_PERMISSIONS.has(permission) && isAppUrl(details.requestingUrl))
     })
