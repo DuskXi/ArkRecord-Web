@@ -13,7 +13,7 @@ desktop/
 | 命令 | 做什么 |
 |---|---|
 | `npm run desktop:dev` | 编译主进程和 preload → 启动 Vite（desktop 模式）→ 启动 Electron → 主进程拉起后端并 ping。页面代码热更新；改了 `desktop/electron` 要重新运行 |
-| `npm run desktop:smoke` | 冒烟测试：检查 `window.arkrecord`、页面里没有 Node、ping、白名单以外的方法被拒绝、`hg.request` 拒绝白名单以外的路径（不发出真实请求），跑完自动退出，退出码 0 表示通过 |
+| `npm run desktop:smoke` | 冒烟测试：检查 `window.arkrecord`、页面里没有 Node、ping、白名单以外的方法被拒绝、`hg.request` 拒绝白名单以外的路径、应用内登录窗口（用本机的假登录页），不发出真实请求，跑完自动退出，退出码 0 表示通过。加 `-- --shots <目录>` 会把主窗口、登录弹窗、登录窗口截图存到这个目录 |
 | `npm run desktop:build` | 游戏数据 + `vite build --mode desktop`（输出到 `desktop/electron/dist/renderer`）+ 编译主进程 |
 | `npm run desktop:start` | 运行构建好的版本（页面从 `app://arkrecord/` 加载） |
 
@@ -22,6 +22,7 @@ desktop/
 - desktop 模式不加载 `cloudflare()` 和给搜索引擎的文件；默认的网页版构建不受影响（产物逐字节相同）。
 - 桌面版没有 Worker：鹰角的请求经 `src/lib/transport.ts` 的 `postHg` 交给后端的 `hg.request`，由本机直连鹰角；其他调用 `/api/*` 的功能（统计、反馈、云同步）要等 M5。
 - 开发时主进程每次启动会清掉 HTTP 缓存：Vite 给依赖的地址带版本号并让浏览器长期缓存，上次运行留下的缓存会让依赖版本对不上（504，页面空白）。
+- `npm run desktop:dev -- --fake-hg`：应用内登录用本机的假登录页（`desktop/electron/fake-hg.mjs`），不连接鹰角。假登录页的地址只在没打包时读取，`fake-hg.mjs` 不编译进 `dist`。
 
 ## Python 后端
 
@@ -107,8 +108,22 @@ interface ArkrecordBridge {
 主进程收到 `arkrecord:rpc` 时：
 
 - 只接受主窗口顶层页面、地址是应用自己的请求，其他的直接拒绝；
-- 只放行白名单里的方法（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`：`ping`、`hg.request`）；
-- 再把请求交给后端。超时：`ping` 30 秒，`hg.request` 45 秒（后端对上游 20 秒超时，留出余量），启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
+- `app.` 开头的方法由主进程自己处理，不转给后端（见下面的“应用内鹰角登录”）；
+- 其他方法只放行白名单里的（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`：`ping`、`hg.request`），再交给后端。超时：`ping` 30 秒，`hg.request` 45 秒（后端对上游 20 秒超时，留出余量），启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
+
+### 应用内鹰角登录（`app.hgLogin`）
+
+设计见 [../docs/desktop/plan.md](../docs/desktop/plan.md) 的“应用内鹰角登录窗口”，代码在 `desktop/electron/hg-login.ts`（规则在 `hg-login-rules.ts`）。
+
+| 方法 | 结果 | 说明 |
+|---|---|---|
+| `app.hgLogin` | `{ token }` | 打开登录窗口，用户登录后返回账号 token（和 `account/info/hg` 的 `data.content` 相同）。用户关窗口：-32000 + `cancelled`；打不开登录页、超时（10 分钟）、多次读不到登录状态：-32000 + `login_failed`。同一时间只有一个登录窗口，再次调用时把它切到前面，拿到同一个结果 |
+| `app.hgLoginCheck` | `{ checking }` | 用户点“我已登录”：马上查一次登录状态；没有打开的登录窗口时 `checking` 是 `false` |
+
+- 每次登录用新的内存分区 `hg-login-<随机>`，结束时清掉它的全部存储、缓存和认证缓存，再销毁窗口；不调用鹰角的退出接口。
+- 登录窗口：沙盒、上下文隔离、不开 Node、**没有 preload**、不允许 `<webview>`、安装版关掉开发者工具；标题显示当前域名。权限请求和下载一律拒绝，证书错误不放行（保持默认）。
+- 顶层页面只允许 `https://*.hypergryph.com`，子框架另外放行 `*.geetest.com`；其他链接交给系统浏览器，`window.open` 一律拒绝。主进程的全局跳转规则跳过登录窗口。
+- 取 token：在登录会话里请求 `https://web-api.hypergryph.com/account/info/hg`，时机是每次跳转后防抖 1 秒，或 `app.hgLoginCheck`；每个窗口最多 20 次。token 只作为这次 `rpc` 的返回值交给页面，不写日志、主进程不保存。
 
 页面里鹰角的请求不用直接调 `rpc`：`postHg` 在桌面版里调用 `hg.request`，把结果还原成 `Response`（只保留上面三个响应头，`204` 等状态不带正文）；`rpc()` 失败或结果格式不对时抛 `TransportError`（继承 `TypeError`），`client.ts` 当作网络错误处理，和网页版 `fetch` 失败一样。
 
@@ -119,7 +134,7 @@ interface ArkrecordBridge {
 | -32601 | 不允许调用这个方法（不在白名单里） |
 | -32602 | 参数不是对象或数组，或者不能转成 JSON |
 | -32603 | 主进程内部错误 |
-| -32000 | `data.kind` = `backend_unavailable`（没装 uv、后端启动失败或已退出）或 `timeout`（超时） |
+| -32000 | `data.kind` = `backend_unavailable`（没装 uv、后端启动失败或已退出）、`timeout`（超时）；`app.hgLogin` 还有 `cancelled`、`login_failed` |
 
 ## Electron 的安全设置
 

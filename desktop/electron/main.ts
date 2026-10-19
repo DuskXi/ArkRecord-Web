@@ -5,8 +5,11 @@
 import { stat } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, nativeTheme, net, protocol, session, shell } from 'electron'
+import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, nativeTheme, net, protocol, session } from 'electron'
 import { Backend } from './backend.js'
+import { openExternal } from './external.js'
+import { checkHgLogin, hgLogin, isLoginSession } from './hg-login.js'
+import { OFFICIAL_LOGIN, fakeLoginTarget } from './hg-login-rules.js'
 import { METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
 import { runSmokeTest } from './smoke.js'
 
@@ -58,6 +61,9 @@ function parseDevServerUrl(value: string | undefined): URL | undefined {
 const devServer = app.isPackaged ? undefined : parseDevServerUrl(process.env.ARKRECORD_DEV_SERVER_URL)
 const smoke = !app.isPackaged && process.env.ARKRECORD_SMOKE === '1'
 const rendererDir = join(import.meta.dirname, 'renderer')
+/** 鹰角登录页。开发和冒烟测试可以换成本机的假登录页（dev.mjs 的 --fake-hg）；安装包里只用官方登录页 */
+const fakeHgOrigin = app.isPackaged ? undefined : process.env.ARKRECORD_FAKE_HG_ORIGIN
+const hgLoginTarget = fakeHgOrigin ? fakeLoginTarget(fakeHgOrigin) : OFFICIAL_LOGIN
 
 /** 是不是应用自己的页面 */
 function isAppUrl(value: string): boolean {
@@ -65,11 +71,6 @@ function isAppUrl(value: string): boolean {
   if (!url) return false
   if (devServer) return url.origin === devServer.origin
   return url.protocol === `${APP_SCHEME}:` && url.host === APP_HOST
-}
-
-/** 应用以外的链接（GitHub、鹰角官网等）交给系统浏览器，只接受 https */
-function openExternal(value: string): void {
-  if (URL.parse(value)?.protocol === 'https:') void shell.openExternal(value)
 }
 
 const isFile = (file: string) => stat(file).then((s) => s.isFile(), () => false)
@@ -114,14 +115,25 @@ function isTrustedSender(event: IpcMainInvokeEvent): boolean {
   return mainWindow !== undefined && event.sender === mainWindow.webContents && frame !== null && frame.parent === null && isAppUrl(frame.url)
 }
 
+/**
+ * app. 开头的方法由主进程自己处理，不转给后端（desktop/README.md）。
+ * app.hgLogin 的 token 只作为这次调用的返回值交给页面，主进程不保存。
+ */
+const APP_METHODS = new Map<string, (parent: BrowserWindow) => Promise<unknown>>([
+  ['app.hgLogin', async (parent) => ({ token: await hgLogin(parent, hgLoginTarget) })],
+  ['app.hgLoginCheck', async () => ({ checking: checkHgLogin() })],
+])
+
 async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unknown): Promise<RpcReply> {
-  if (!isTrustedSender(event)) throw new Error('只接受应用自己页面的请求')
+  if (!isTrustedSender(event) || !mainWindow) throw new Error('只接受应用自己页面的请求')
+  const appMethod = typeof method === 'string' ? APP_METHODS.get(method) : undefined
   const timeoutMs = typeof method === 'string' ? ALLOWED_METHODS.get(method) : undefined
-  if (typeof method !== 'string' || timeoutMs === undefined) {
+  if (typeof method !== 'string' || (!appMethod && timeoutMs === undefined)) {
     return { ok: false, error: new RpcError(METHOD_NOT_FOUND, '不允许调用这个方法').toJSON() }
   }
   try {
-    return { ok: true, result: await backend.request(method, params, timeoutMs) }
+    const result = appMethod ? await appMethod(mainWindow) : await backend.request(method, params, timeoutMs as number)
+    return { ok: true, result }
   } catch (error) {
     return { ok: false, error: (error instanceof RpcError ? error : new RpcError(-32603, '主进程内部错误')).toJSON() }
   }
@@ -185,6 +197,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standa
 app.enableSandbox()
 
 app.on('web-contents-created', (_event, contents) => {
+  // 鹰角登录窗口有自己的规则（hg-login.ts 的 guard）
+  if (isLoginSession(contents.session)) return
   contents.setWindowOpenHandler(({ url }) => {
     if (!isAppUrl(url)) openExternal(url)
     return { action: 'deny' }

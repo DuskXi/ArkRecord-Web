@@ -1,9 +1,15 @@
 /**
  * 冒烟测试（npm run desktop:smoke）：页面加载后在页面里调用 window.arkrecord，
- * 检查 ping、方法白名单、hg.request 的路由白名单、页面拿不到 Node，结果写到终端，然后退出（退出码 0 表示通过）。
- * 不发出任何真实的网络请求：hg.request 只用白名单以外的路径，后端在发请求之前就会拒绝。
+ * 检查 ping、方法白名单、hg.request 的路由白名单、页面拿不到 Node、应用内登录窗口，结果写到终端，然后退出（退出码 0 表示通过）。
+ * 不发出任何真实的网络请求：hg.request 只用白名单以外的路径，后端在发请求之前就会拒绝；登录窗口用本机的假登录页（fake-hg.mjs）。
  */
-import type { BrowserWindow } from 'electron'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { type BrowserWindow, type WebContents, session } from 'electron'
+import { currentLoginWindow, lastLoginPartition } from './hg-login.js'
+
+/** 截图目录（dev.mjs --smoke --shots <目录>）：看界面效果用，不设就不截图 */
+const SHOTS_DIR = process.env.ARKRECORD_SMOKE_SHOTS
 
 const TIMEOUT_MS = 180_000
 /** 应用没挂载时等页面刷新的时间：开发服务器重新预构建依赖后会自动刷新页面（之前的请求返回 504） */
@@ -58,7 +64,86 @@ interface ProbeResult {
   files?: { csp: boolean; spaFallback: string | null; missingAsset: number | string; traversal: number | string; traversalBackslash: number | string }
 }
 
-function report(result: ProbeResult): boolean {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** 每 100 毫秒检查一次，直到 get() 有值；超时抛错 */
+async function waitFor<T>(what: string, get: () => T | undefined, timeoutMs = 15_000): Promise<T> {
+  for (const end = Date.now() + timeoutMs; Date.now() < end; await sleep(100)) {
+    const value = get()
+    if (value !== undefined) return value
+  }
+  throw new Error(`等待${what}超时`)
+}
+
+async function shot(contents: WebContents, name: string): Promise<void> {
+  if (!SHOTS_DIR) return
+  // 等弹窗动画结束
+  await sleep(800)
+  const image = await contents.capturePage()
+  await mkdir(SHOTS_DIR, { recursive: true })
+  await writeFile(join(SHOTS_DIR, `${name}.png`), image.toPNG())
+}
+
+/** 截主窗口和桌面版的登录弹窗：点最后一个“添加账号”（第一次打开时是欢迎弹窗里的，它会关掉欢迎弹窗再打开登录弹窗） */
+async function shotPages(win: BrowserWindow): Promise<void> {
+  if (!SHOTS_DIR) return
+  await shot(win.webContents, 'main')
+  await win.webContents.executeJavaScript(`[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === '添加账号').pop()?.click()`)
+  await sleep(700)
+  await shot(win.webContents, 'login-modal')
+}
+
+interface LoginCall {
+  ok: boolean
+  token?: unknown
+  error?: { code?: number; data?: { kind?: string } }
+}
+
+/** 在页面里调用 app.hgLogin（和 LoginModal 一样），不等它结束 */
+const callLogin = (win: BrowserWindow) =>
+  win.webContents.executeJavaScript(
+    `window.arkrecord.rpc('app.hgLogin').then((r) => ({ ok: true, token: r && r.token }), (e) => ({ ok: false, error: e }))`,
+  ) as Promise<LoginCall>
+
+/** 登录窗口的五项检查：用本机的假登录页，不连接鹰角 */
+async function probeLogin(win: BrowserWindow, expectedToken: string): Promise<Record<string, boolean>> {
+  // 1. 登录成功：先检查窗口里的隔离和跳转限制，再提交假登录页的表单
+  const success = callLogin(win)
+  const login = await waitFor('登录窗口', currentLoginWindow)
+  const contents = login.webContents
+  await waitFor('登录页加载', () => (contents.getURL() && !contents.isLoading() ? true : undefined))
+  await shot(contents, 'login-window')
+  const bridgeInLogin = (await contents.executeJavaScript('typeof window.arkrecord')) as string
+  const loginUrl = contents.getURL()
+  // 白名单以外的地址：用 http，被拦下后也不会交给系统浏览器
+  await contents.executeJavaScript(`void (location.href = 'http://127.0.0.1:9/arkrecord-smoke-test')`)
+  await sleep(1000)
+  const stayed = contents.getURL() === loginUrl
+  await contents.executeJavaScript(`void setTimeout(() => document.querySelector('form').submit(), 0)`)
+  const first = await success
+  const partition = lastLoginPartition()
+  const cookiesLeft = partition ? (await session.fromPartition(partition).cookies.get({})).length : -1
+
+  // 2. 用户关掉登录窗口
+  const cancel = callLogin(win)
+  const second = await waitFor('第二个登录窗口', () => {
+    const current = currentLoginWindow()
+    return current && current !== login ? current : undefined
+  })
+  second.close()
+  const cancelled = await cancel
+
+  console.log(`[smoke] 登录窗口：${JSON.stringify({ bridgeInLogin, stayed, first: { ok: first.ok, error: first.error }, cookiesLeft, cancelled })}`)
+  return {
+    '登录窗口里拿不到 window.arkrecord': bridgeInLogin === 'undefined',
+    '登录窗口跳到白名单以外的地址被拦下': stayed,
+    '假登录页登录后拿到 token': first.ok && first.token === expectedToken,
+    '登录结束后分区被清空': cookiesLeft === 0,
+    '关闭登录窗口返回 cancelled': !cancelled.ok && cancelled.error?.code === -32000 && cancelled.error.data?.kind === 'cancelled',
+  }
+}
+
+function report(result: ProbeResult, extra: Record<string, boolean>): boolean {
   const checks: Record<string, boolean> = {
     '页面有 window.arkrecord': result.bridge === 'object',
     'platform 正确': result.platform === process.platform,
@@ -76,6 +161,7 @@ function report(result: ProbeResult): boolean {
     checks['app:// 不存在的文件返回 404'] = result.files.missingAsset === 404
     checks['app:// 读不到产物目录以外的文件'] = result.files.traversal === 404 && result.files.traversalBackslash === 404
   }
+  Object.assign(checks, extra)
   console.log(`[smoke] ${JSON.stringify(result)}`)
   for (const [name, ok] of Object.entries(checks)) console.log(`[smoke] ${ok ? '通过' : '失败'}：${name}`)
   return Object.values(checks).every(Boolean)
@@ -119,9 +205,21 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
     if (finished) return
     if (!result.appMounted) {
       console.log(`[smoke] 应用还没挂载，等页面刷新：${JSON.stringify(result.failedRequests ?? [])}`)
-      reloadTimer = setTimeout(() => finish(report(result)), RELOAD_WAIT_MS)
+      reloadTimer = setTimeout(() => finish(report(result, {})), RELOAD_WAIT_MS)
       return
     }
-    finish(report(result))
+    await shotPages(win).catch((error: unknown) => console.error(`[smoke] 截图失败：${(error as Error).message}`))
+    // 只有带着假登录页启动时（dev.mjs --smoke）才检查登录窗口
+    const fakeToken = process.env.ARKRECORD_FAKE_HG_TOKEN
+    let login: Record<string, boolean> = {}
+    if (fakeToken) {
+      try {
+        login = await probeLogin(win, fakeToken)
+      } catch (error) {
+        console.error(`[smoke] 登录窗口检查出错：${(error as Error).message}`)
+        login = { 登录窗口检查没有跑完: false }
+      }
+    }
+    finish(report(result, login))
   })
 }
