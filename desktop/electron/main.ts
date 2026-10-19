@@ -5,12 +5,12 @@
 import { stat } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, nativeTheme, net, protocol, session } from 'electron'
+import { BrowserWindow, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, app, ipcMain, nativeTheme, net, protocol, session } from 'electron'
 import { Backend } from './backend.js'
 import { openExternal } from './external.js'
 import { checkHgLogin, hgLogin, isLoginSession } from './hg-login.js'
 import { OFFICIAL_LOGIN, fakeLoginTarget } from './hg-login-rules.js'
-import { METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
+import { INVALID_PARAMS, METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
 import { runSmokeTest } from './smoke.js'
 
 /** 正式构建用的协议：注册成 standard + secure，页面来源固定是 app://arkrecord，升级后 IndexedDB 里的数据还在 */
@@ -116,12 +116,41 @@ function isTrustedSender(event: IpcMainInvokeEvent): boolean {
 }
 
 /**
+ * 窗口按钮区的高度：自定义标题栏高 40px（src/components/shell/DesktopTitleBar.vue），
+ * 最下面 1px 是分隔线，按钮区不盖住它
+ */
+const TITLE_BAR_HEIGHT = 39
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+/**
+ * 不用系统标题栏，页面顶部是自己的标题栏（DesktopTitleBar）。
+ * Windows / Linux：最小化、最大化、关闭按钮由 Electron 画在右上角，颜色由页面按深浅色设置（app.setTitleBar）；
+ * macOS：红绿灯留在左上角。
+ */
+function titleBarOptions(): BrowserWindowConstructorOptions {
+  if (process.platform === 'darwin') return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 } }
+  const dark = nativeTheme.shouldUseDarkColors
+  return { titleBarStyle: 'hidden', titleBarOverlay: { color: dark ? '#18181b' : '#ffffff', symbolColor: dark ? '#a1a1aa' : '#71717a', height: TITLE_BAR_HEIGHT } }
+}
+
+/** 页面切换深浅色时设置窗口按钮的颜色（只有 Windows、Linux 有这些按钮） */
+async function setTitleBar(parent: BrowserWindow, params: unknown): Promise<object> {
+  const { color, symbolColor } = (params ?? {}) as Record<string, unknown>
+  if (typeof color !== 'string' || typeof symbolColor !== 'string' || !HEX_COLOR.test(color) || !HEX_COLOR.test(symbolColor)) {
+    throw new RpcError(INVALID_PARAMS, '颜色只能是 #rrggbb')
+  }
+  if (process.platform !== 'darwin') parent.setTitleBarOverlay({ color, symbolColor, height: TITLE_BAR_HEIGHT })
+  return {}
+}
+
+/**
  * app. 开头的方法由主进程自己处理，不转给后端（desktop/README.md）。
  * app.hgLogin 的 token 只作为这次调用的返回值交给页面，主进程不保存。
  */
-const APP_METHODS = new Map<string, (parent: BrowserWindow) => Promise<unknown>>([
+const APP_METHODS = new Map<string, (parent: BrowserWindow, params: unknown) => Promise<unknown>>([
   ['app.hgLogin', async (parent) => ({ token: await hgLogin(parent, hgLoginTarget) })],
   ['app.hgLoginCheck', async () => ({ checking: checkHgLogin() })],
+  ['app.setTitleBar', setTitleBar],
 ])
 
 async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unknown): Promise<RpcReply> {
@@ -132,7 +161,7 @@ async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unk
     return { ok: false, error: new RpcError(METHOD_NOT_FOUND, '不允许调用这个方法').toJSON() }
   }
   try {
-    const result = appMethod ? await appMethod(mainWindow) : await backend.request(method, params, timeoutMs as number)
+    const result = appMethod ? await appMethod(mainWindow, params) : await backend.request(method, params, timeoutMs as number)
     return { ok: true, result }
   } catch (error) {
     return { ok: false, error: (error instanceof RpcError ? error : new RpcError(-32603, '主进程内部错误')).toJSON() }
@@ -163,6 +192,7 @@ function createWindow(): BrowserWindow {
     title: 'ArkRecord',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#09090b' : '#ffffff',
     icon: app.isPackaged ? undefined : join(app.getAppPath(), 'public/icons/record-128.png'),
+    ...titleBarOptions(),
     webPreferences: {
       preload: join(import.meta.dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -172,6 +202,16 @@ function createWindow(): BrowserWindow {
       spellcheck: false,
     },
   })
+  // Windows / Linux 不要菜单栏（按 Alt 也不出来）；macOS 保留系统菜单（复制粘贴、退出等快捷键靠它）
+  if (process.platform !== 'darwin') win.removeMenu()
+  // 没有菜单以后，开发时用 F12 打开开发者工具
+  if (!app.isPackaged) {
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown' || input.key !== 'F12') return
+      event.preventDefault()
+      win.webContents.toggleDevTools()
+    })
+  }
   win.once('ready-to-show', () => win.show())
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = undefined

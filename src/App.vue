@@ -11,13 +11,17 @@ import CloudDialog from '@/components/cloud/CloudDialog.vue'
 import TokenConsentDialog from '@/components/cloud/TokenConsentDialog.vue'
 import LegacyMigration from '@/components/LegacyMigration.vue'
 import AnnouncementDialog from '@/components/announcements/AnnouncementDialog.vue'
+import DesktopTitleBar from '@/components/shell/DesktopTitleBar.vue'
 import { computed } from 'vue'
+import { isDesktop } from '@/lib/transport'
 import { navItemsFor } from '@/navigation'
 import { useAnnouncementsStore } from '@/stores/announcements'
 import { APP_VERSION, useAppStore } from '@/stores/app'
 
 const app = useAppStore()
 const announcements = useAnnouncementsStore()
+/** 桌面版用自己的标题栏（DesktopTitleBar，高 40px）：页面整体往下让出这一条，通知也放到它下面 */
+const desktop = isDesktop()
 /** 有没看过的更新公告时，在“更新公告”旁边标出数量 */
 const navItems = computed(() =>
   navItemsFor(app.game).map((item) =>
@@ -29,8 +33,9 @@ const navItems = computed(() =>
 </script>
 
 <template>
-  <UApp :toaster="{ position: 'top-center' }" :tooltip="{ delayDuration: 200 }">
-    <UDashboardGroup unit="rem" storage="local" storage-key="arkrecord-layout">
+  <UApp :toaster="desktop ? { position: 'top-center', ui: { viewport: 'top-14' } } : { position: 'top-center' }" :tooltip="{ delayDuration: 200 }">
+    <DesktopTitleBar v-if="desktop" />
+    <UDashboardGroup unit="rem" storage="local" storage-key="arkrecord-layout" :class="desktop ? 'top-10' : undefined">
       <UDashboardSidebar
         id="main"
         collapsible

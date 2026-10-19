@@ -119,6 +119,7 @@ interface ArkrecordBridge {
 |---|---|---|
 | `app.hgLogin` | `{ token }` | 打开登录窗口，用户登录后返回账号 token（和 `account/info/hg` 的 `data.content` 相同）。用户关窗口：-32000 + `cancelled`；打不开登录页、超时（10 分钟）、多次读不到登录状态：-32000 + `login_failed`。同一时间只有一个登录窗口，再次调用时把它切到前面，拿到同一个结果 |
 | `app.hgLoginCheck` | `{ checking }` | 用户点“我已登录”：马上查一次登录状态；没有打开的登录窗口时 `checking` 是 `false` |
+| `app.setTitleBar` | `{}` | 参数 `{ color, symbolColor }`（`#rrggbb`）：设置右上角窗口按钮的背景色和图标色，由 `DesktopTitleBar.vue` 按深浅色调用；macOS 上不做什么 |
 
 - 每次登录用新的内存分区 `hg-login-<随机>`，结束时清掉它的全部存储、缓存和认证缓存，再销毁窗口；不调用鹰角的退出接口。
 - 登录窗口：沙盒、上下文隔离、不开 Node、**没有 preload**、不允许 `<webview>`、安装版关掉开发者工具；标题显示当前域名。权限请求和下载一律拒绝，证书错误不放行（保持默认）。
@@ -159,6 +160,7 @@ interface ArkrecordBridge {
 - 不开新窗口；跳转到应用以外的地址一律拦下。`https:` 链接（关于页、GitHub 等）交给系统浏览器打开，其他协议直接忽略。
 - 权限只放行 `clipboard-sanitized-write` 和 `persistent-storage`，其余一律拒绝。
 - 开发版和安装版的数据目录分开（`ArkRecord Dev` / `ArkRecord`）。
+- 主窗口不用系统标题栏：页面顶部是 40px 的自定义标题栏（`src/components/shell/DesktopTitleBar.vue`，和侧边栏同色，用来拖动窗口），页面整体往下让出这一条，通知也放到它下面。Windows / Linux 的最小化、最大化、关闭按钮由 Electron 画在右上角（`titleBarOverlay`，高 39px，不盖住底下的分隔线），颜色由页面按深浅色设置；macOS 的红绿灯在左上角。Windows / Linux 没有菜单栏，开发时按 F12 打开开发者工具。挂在 `body` 下的弹窗、菜单、通知设成不可拖动，盖到标题栏上时也能点到。登录窗口保留系统标题栏（标题里显示当前域名）。
 - 还没做（M4）：Electron fuses、正式菜单、打包。
 
 ## 安全规则

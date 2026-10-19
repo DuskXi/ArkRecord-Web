@@ -5,7 +5,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { type BrowserWindow, type WebContents, session } from 'electron'
+import { type BrowserWindow, type WebContents, desktopCapturer, session } from 'electron'
 import { currentLoginWindow, lastLoginPartition } from './hg-login.js'
 
 /** 截图目录（dev.mjs --smoke --shots <目录>）：看界面效果用，不设就不截图 */
@@ -84,10 +84,27 @@ async function shot(contents: WebContents, name: string): Promise<void> {
   await writeFile(join(SHOTS_DIR, `${name}.png`), image.toPNG())
 }
 
-/** 截主窗口和桌面版的登录弹窗：点最后一个“添加账号”（第一次打开时是欢迎弹窗里的，它会关掉欢迎弹窗再打开登录弹窗） */
+/** 整个窗口的截图（经系统的窗口截图，包括 Electron 画的窗口按钮；页面截图里没有它们） */
+async function shotWindow(win: BrowserWindow, name: string): Promise<void> {
+  if (!SHOTS_DIR) return
+  await sleep(800)
+  const [width, height] = win.getSize()
+  const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: width ?? 1280, height: height ?? 860 } })
+  const source = sources.find((s) => s.id === win.getMediaSourceId())
+  if (!source) throw new Error('没有找到主窗口的截图来源')
+  await mkdir(SHOTS_DIR, { recursive: true })
+  await writeFile(join(SHOTS_DIR, `${name}.png`), source.thumbnail.toPNG())
+}
+
+/** 截主窗口（浅色、深色）和桌面版的登录弹窗：点最后一个“添加账号”（第一次打开时是欢迎弹窗里的，它会关掉欢迎弹窗再打开登录弹窗） */
 async function shotPages(win: BrowserWindow): Promise<void> {
   if (!SHOTS_DIR) return
   await shot(win.webContents, 'main')
+  const dark = (await win.webContents.executeJavaScript(`document.documentElement.classList.contains('dark')`)) as boolean
+  await shotWindow(win, dark ? 'window-dark' : 'window-light')
+  await win.webContents.executeJavaScript(`void document.documentElement.classList.toggle('dark')`)
+  await shotWindow(win, dark ? 'window-light' : 'window-dark')
+  await win.webContents.executeJavaScript(`void document.documentElement.classList.toggle('dark')`)
   await win.webContents.executeJavaScript(`[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === '添加账号').pop()?.click()`)
   await sleep(700)
   await shot(win.webContents, 'login-modal')
