@@ -28,6 +28,12 @@ ArkRecord：明日方舟 / 终末地寻访记录的本地存档与统计网站�
 - 不按 IP 等标识统计用户；匿名统计只在用户选择“全部接受”后上报，演示账号不计入。
 - 改动服务器接触敏感信息的方式时，同步更新 SECURITY.md。
 
+## 本地环境（Windows）
+
+- Node 要求 22.12 以上（`package.json` 的 `engines`）。用 nvm-windows 时**不要 `nvm use`**：它改的是全局链接，会影响本机所有程序。
+- 改为只在当前进程把 Node 22 放到 PATH 最前面：`$env:PATH = "$env:LOCALAPPDATA\nvm\v22.21.1;$env:PATH"`（nvm 目录用 `nvm root` 查，版本号按实际安装的）。
+- AI 助手每次执行命令都是新的 shell，PATH 不会保留：每条用到 node / npm / npx 的命令前都加上这一行。装依赖用 Node 22 自带的 npm。
+
 ## 提交前
 
 - `npm test`、`npm run lint`、`npm run typecheck`；改了 Worker 或构建配置时再跑 `npm run build`。
