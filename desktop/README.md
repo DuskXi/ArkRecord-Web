@@ -83,6 +83,7 @@ uv run --project desktop/backend python -m arkrecord_backend
 - 请求由本机直连米哈游官方接口，只发 [`shared/upstreams/mhy.json`](../shared/upstreams/mhy.json) 白名单里的抽卡记录接口；两次请求至少间隔 0.5 秒；日志不记地址。
 - `gachaType`：原神 100、200、301（会同时返回 400）、302、500；星铁 1、2、11、12、21、22（21、22 走联动池接口）。
 - 业务错误（-32000）的 `data.kind`：`game_not_found`、`no_link`（先在游戏里打开抽卡记录）、`link_expired`、`link_invalid`、`bad_link`、`handle_expired`、`rate_limited`（-110，稍后重试）、`network`、`upstream_error`、`unsupported`。
+- 页面：`/genshin`（`src/pages/mhy/GenshinPage.vue` → `src/components/mhy/MhyGamePage.vue`，星铁以后复用）：从游戏缓存读取（先 `mhy.locate`，找不到时用 `app.pickDirectory` 手动选，选过的目录记在本机）、等待读取（每 3 秒查 `mhy.cacheStamp`，变了就读，最多 10 分钟）、粘贴链接（输入框不回显、不保存，提交后马上清空）、同步进度、出错时按 `kind` 给出下一步、中途出错时显示已经保存的部分；统计和记录列表只数事实，不写保底规则。
 - 本机只读检查（不输出参数值、不发请求）：`uv run --project desktop/backend python -m arkrecord_backend.mhy.inspect genshin`。
 - 本机真实请求实验：`uv run --project desktop/backend python -m arkrecord_backend.mhy.probe genshin`。不加 `--yes` 只列出会发哪些请求；加 `--yes` 后走和应用相同的代码（校验链接、每个卡池拉到最后一页），只输出页数、条数、字段名和格式检查，不输出 authkey、UID 和记录内容。要先在游戏里打开一次抽卡记录，并经维护者同意（见 docs/desktop/plan.md 的调试规则）。
 
@@ -123,6 +124,7 @@ interface ArkrecordBridge {
 | `app.hgLogin` | `{ token }` | 打开登录窗口，用户登录后返回账号 token（和 `account/info/hg` 的 `data.content` 相同）。用户关窗口：-32000 + `cancelled`；打不开登录页、超时（10 分钟）、多次读不到登录状态：-32000 + `login_failed`。同一时间只有一个登录窗口，再次调用时把它切到前面，拿到同一个结果 |
 | `app.hgLoginCheck` | `{ checking }` | 用户点“我已登录”：马上查一次登录状态；没有打开的登录窗口时 `checking` 是 `false` |
 | `app.setTitleBar` | `{}` | 参数 `{ color, symbolColor }`（`#rrggbb`）：设置右上角窗口按钮的背景色和图标色，由 `DesktopTitleBar.vue` 按深浅色调用；macOS 上不做什么 |
+| `app.pickDirectory` | `{ path }` | 参数 `{ title? }`：打开系统的选择目录窗口（米哈游游戏目录找不到时手动选），取消时 `path` 为 null |
 
 - 每次登录用新的内存分区 `hg-login-<随机>`，结束时清掉它的全部存储、缓存和认证缓存，再销毁窗口；不调用鹰角的退出接口。
 - 登录窗口：沙盒、上下文隔离、不开 Node、**没有 preload**、不允许 `<webview>`、安装版关掉开发者工具；标题显示当前域名。权限请求和下载一律拒绝，证书错误不放行（保持默认）。

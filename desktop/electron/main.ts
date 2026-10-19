@@ -5,7 +5,7 @@
 import { stat } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { BrowserWindow, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, app, ipcMain, nativeTheme, net, protocol, session } from 'electron'
+import { BrowserWindow, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, app, dialog, ipcMain, nativeTheme, net, protocol, session } from 'electron'
 import { Backend } from './backend.js'
 import { openExternal } from './external.js'
 import { checkHgLogin, hgLogin, isLoginSession } from './hg-login.js'
@@ -187,6 +187,16 @@ async function setTitleBar(parent: BrowserWindow, params: unknown): Promise<obje
   return {}
 }
 
+/** 让用户选一个目录（米哈游游戏目录找不到时手动指定）。取消时 path 为 null */
+async function pickDirectory(parent: BrowserWindow, params: unknown): Promise<{ path: string | null }> {
+  const { title } = (params ?? {}) as Record<string, unknown>
+  const result = await dialog.showOpenDialog(parent, {
+    title: typeof title === 'string' && title ? title.slice(0, 100) : '选择目录',
+    properties: ['openDirectory'],
+  })
+  return { path: result.canceled ? null : (result.filePaths[0] ?? null) }
+}
+
 /**
  * app. 开头的方法由主进程自己处理，不转给后端（desktop/README.md）。
  * app.hgLogin 的 token 只作为这次调用的返回值交给页面，主进程不保存。
@@ -195,6 +205,7 @@ const APP_METHODS = new Map<string, (parent: BrowserWindow, params: unknown) => 
   ['app.hgLogin', async (parent) => ({ token: await hgLogin(parent, hgLoginTarget) })],
   ['app.hgLoginCheck', async () => ({ checking: checkHgLogin() })],
   ['app.setTitleBar', setTitleBar],
+  ['app.pickDirectory', pickDirectory],
   // 鹰角 token 只用系统钥匙串加密保存（keychain.ts）
   ['app.tokens.status', async () => keychainStatus()],
   ['app.tokens.load', loadTokens],

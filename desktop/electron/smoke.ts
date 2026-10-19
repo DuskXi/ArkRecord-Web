@@ -122,6 +122,10 @@ async function shotPages(win: BrowserWindow): Promise<void> {
   await win.webContents.executeJavaScript(`[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === '添加账号').pop()?.click()`)
   await sleep(700)
   await shot(win.webContents, 'login-modal')
+  // 关掉登录弹窗，后面的截图不被它挡住
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
+  await sleep(500)
 }
 
 interface LoginCall {
@@ -289,26 +293,65 @@ async function probeImages(win: BrowserWindow): Promise<Record<string, boolean>>
   }
 }
 
+/** 页面是不是在开发服务器上（只有开发服务器上能 import('/src/…')） */
+const devPage = (win: BrowserWindow) => win.webContents.getURL().startsWith('http:')
+
+/** 截图用的假原神记录：写进冒烟测试临时目录里的 arkrecord-mhy 库，截完图删掉。名字都是“测试…”，UID 是假的 */
+const FAKE_MHY = `
+  const accountId = 'genshin:100000000'
+  const pools = [['301', '301'], ['400', '301'], ['302', '302'], ['200', '200']]
+  const start = Date.parse('2026-08-01T00:00:00+08:00')
+  const pulls = Array.from({ length: 160 }, (_, i) => {
+    const [gachaType, pool] = pools[i % 4]
+    const rank = i % 53 === 52 ? 5 : i % 10 === 9 ? 4 : 3
+    const ts = start + i * 3600_000
+    const time = new Date(ts + 8 * 3600_000).toISOString().slice(0, 19).replace('T', ' ')
+    const name = rank === 5 ? '测试五星' + i : rank === 4 ? '测试四星' + (i % 7) : '测试三星' + (i % 5)
+    return { accountId, id: String(1000000000000000000n + BigInt(i)), gachaType, pool, itemId: '', name, itemType: rank === 3 ? '武器' : '角色', rank, count: 1, time, ts, lang: 'zh-cn', source: 'api' }
+  })
+`
+
 /**
- * 桌面版的游戏切换里有原神（src/platform/desktop.ts）：点了进原神页面，再点明日方舟回到总览。
- * 网页版没有这个入口，由网页构建的检查保证（vite.config.ts 的 webWithoutDesktopCode）
+ * 桌面版的游戏切换里有原神（src/platform/desktop.ts）：点了进原神页面（能看到“读取”），再点明日方舟回到总览。
+ * 不点任何读取按钮，不发请求。网页版没有这个入口，由网页构建的检查保证（vite.config.ts 的 webWithoutDesktopCode）
  */
+/** 在页面里点游戏切换里的某个游戏，等页面切过去 */
+const clickGame = (name: string) => `
+  [...document.querySelectorAll('[aria-label="切换游戏"] [role="radio"]')].find((b) => b.textContent.trim() === ${JSON.stringify(name)})?.click()
+  await new Promise((resolve) => setTimeout(resolve, 800))
+`
+
 async function probeGenshinEntry(win: BrowserWindow): Promise<Record<string, boolean>> {
-  const result = (await win.webContents.executeJavaScript(`(async () => {
-    const wait = () => new Promise((resolve) => setTimeout(resolve, 500))
-    const buttons = () => [...document.querySelectorAll('[aria-label="切换游戏"] [role="radio"]')]
-    const games = buttons().map((b) => b.textContent.trim())
-    buttons().find((b) => b.textContent.trim() === '原神')?.click()
-    await wait()
-    const genshin = { path: location.pathname, page: document.body.innerText.includes('原神正在开发中') }
-    buttons().find((b) => b.textContent.trim() === '明日方舟')?.click()
-    await wait()
-    return { games, genshin, back: location.pathname }
-  })()`)) as { games: string[]; genshin: { path: string; page: boolean }; back: string }
-  console.log(`[smoke] 游戏切换：${JSON.stringify(result)}`)
+  const run = (code: string) => win.webContents.executeJavaScript(`(async () => { ${code} })()`) as Promise<unknown>
+  const games = (await run(`return [...document.querySelectorAll('[aria-label="切换游戏"] [role="radio"]')].map((b) => b.textContent.trim())`)) as string[]
+  const genshin = (await run(`${clickGame('原神')}
+    return { path: location.pathname, read: document.body.innerText.includes('从游戏缓存读取'), empty: document.body.innerText.includes('还没有原神的抽卡记录') }`)) as {
+    path: string
+    read: boolean
+    empty: boolean
+  }
+  if (SHOTS_DIR) {
+    await shot(win.webContents, 'genshin-empty')
+    // 只在开发服务器上能 import 页面用的模块
+    if (devPage(win)) {
+      await run(`${FAKE_MHY}
+        const { mhyDb } = await import('/src/lib/mhy/db.ts')
+        await mhyDb.accounts.put({ id: accountId, game: 'genshin', uid: '100000000', region: 'cn_gf01', gameBiz: 'hk4e_cn', utcOffset: 8, createdAt: Date.now(), lastSyncAt: Date.now() })
+        await mhyDb.pulls.bulkPut(pulls)`)
+      await shot(win.webContents, 'genshin-data')
+      await run(`document.querySelector('table')?.scrollIntoView({ block: 'start' })`)
+      await shot(win.webContents, 'genshin-list')
+      await run(`${FAKE_MHY}
+        const { mhyDb } = await import('/src/lib/mhy/db.ts')
+        await mhyDb.pulls.where('accountId').equals(accountId).delete()
+        await mhyDb.accounts.delete(accountId)`)
+    }
+  }
+  const back = (await run(`${clickGame('明日方舟')} return location.pathname`)) as string
+  console.log(`[smoke] 游戏切换：${JSON.stringify({ games, genshin, back })}`)
   return {
-    '桌面版的游戏切换里有原神，点了进原神页面': result.games.includes('原神') && result.genshin.path === '/genshin' && result.genshin.page,
-    '从原神点明日方舟回到总览': result.back === '/',
+    '桌面版的游戏切换里有原神，点了进原神页面（有读取、没有记录）': games.includes('原神') && genshin.path === '/genshin' && genshin.read && genshin.empty,
+    '从原神点明日方舟回到总览': back === '/',
   }
 }
 
