@@ -5,7 +5,8 @@
  *   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… node scripts/audit/verify-worker.mjs --env production --manifest build-manifest.json
  *
  * 规则：
- *   1. 最近 72 小时内上传的每一个 Worker 版本（不论谁上传、是否部署过），每个模块都必须有本仓库对应环境的部署流程签发的构建证明。
+ *   1. 最近 72 小时内上传的每一个 Worker 版本（不论谁上传、是否部署过），每个模块都必须有本仓库对应环境的部署流程签发的构建证明，
+ *      并且来自同一次构建（同一份构建证明里列出了这个版本的全部模块，见 lib.mjs 的 commonProvenance）。
  *      按时间而不是按个数取版本，连续上传再多版本也挤不出核对范围；定时任务每天运行（部署后也会运行），每个版本至少被核对两次。
  *      在网页后台改密钥也会产生新版本，但代码不变，所以同样有构建证明。
  *      开始签发构建证明之前的版本（版本号小于 lib.mjs 里固定的起点）记为“核对开始之前”。
@@ -126,7 +127,7 @@ async function inspect(id, dir, preferred) {
     number: Number.isInteger(version?.number) ? version.number : null,
     attested: each && common !== null,
     commit: common?.commit ?? null,
-    // 每个模块都有证明，但找不到一个共同的 commit：模块被拼凑过
+    // 每个模块都有证明，但没有一次构建同时产生了全部模块：模块被拼凑过
     mixedCommits: each && common === null,
     ref: common?.ref ?? null,
     run: common?.run ?? null,
@@ -167,7 +168,7 @@ async function main() {
       }
       report.versions.push(entry)
       if (entry.status === 'unattested' && !entry.mixedCommits) problem(`版本 ${number ?? v.id}（${entry.createdOn}，来源 ${entry.source}）的代码没有本仓库部署流程签发的构建证明`)
-      if (entry.mixedCommits) problem(`版本 ${number ?? v.id} 的各个模块都有构建证明，但不是同一次构建产生的（找不到共同的 commit）`)
+      if (entry.mixedCommits) problem(`版本 ${number ?? v.id} 的各个模块都有构建证明，但不是同一次构建产生的（没有一份构建证明同时列出全部模块）`)
     }
     if (!recent.length) report.notes.push(`最近 ${hours} 小时没有上传新版本。`)
 
