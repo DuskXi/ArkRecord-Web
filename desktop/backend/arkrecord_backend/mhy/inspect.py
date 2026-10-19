@@ -50,6 +50,9 @@ def main(argv: list[str]) -> int:
             version = path.parent.parent.parent.name
             try:
                 urls = gacha_urls(read_cache(path))
+            except PermissionError:
+                print(f"  {version}：被占用（游戏可能正在运行），读不了")
+                continue
             except OSError as error:
                 print(f"  {version}：读取失败（{type(error).__name__}）")
                 continue

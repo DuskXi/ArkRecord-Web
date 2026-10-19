@@ -22,6 +22,8 @@ from .locate import find_data_dirs, log_paths, resolve_data_dir
 
 log = logging.getLogger(__name__)
 
+CACHE_LOCKED_MESSAGE = "游戏正在运行，缓存文件被占用：请先关闭游戏再读取（已经打开过的记录在关闭游戏后仍然可以读取）"
+
 # 最多校验这么多条候选链接（每条要发一次请求）
 MAX_CANDIDATES = 5
 MAX_HANDLES = 8
@@ -125,9 +127,15 @@ class MhyService:
         candidates: list[GachaLink] = []
         seen: set[str] = set()
         for data_dir in self._data_dirs(game, chosen):
-            for path in cache_files(data_dir):
+            for index, path in enumerate(cache_files(data_dir)):
                 try:
                     data = read_cache(path)
+                except PermissionError:
+                    log.warning("缓存被占用（%s）", path.parent.parent.parent.name)
+                    # 最新版本的缓存被占用（游戏正在运行）：刚打开的记录就在这里，不能悄悄退回旧版本的过期链接
+                    if index == 0:
+                        raise AppError("cache_locked", CACHE_LOCKED_MESSAGE) from None
+                    continue
                 except OSError as error:
                     log.warning("读取缓存失败（%s）：%s", path.parent.parent.parent.name, type(error).__name__)
                     continue
