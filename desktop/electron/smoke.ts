@@ -283,6 +283,22 @@ async function probeImages(win: BrowserWindow): Promise<Record<string, boolean>>
   }
 }
 
+/** 页面发来的 stats.report：只记账号个数和有没有带同步识别码，不记内容 */
+const statsReports: { accounts: number; hasUser: boolean }[] = []
+
+/** main.ts 在冒烟测试时调用 */
+export function noteStatsReport(params: unknown): void {
+  const value = typeof params === 'object' && params !== null ? (params as Record<string, unknown>) : {}
+  statsReports.push({ accounts: Array.isArray(value.accounts) ? value.accounts.length : -1, hasUser: 'user' in value })
+}
+
+/** 冒烟测试是全新的数据目录，没开通过云同步：页面的 stats.report 不应该带同步识别码（src/stores/app.ts 在账号列表读出 3 秒后上报） */
+async function probeStatsReports(): Promise<Record<string, boolean>> {
+  await waitFor('页面的统计上报', () => (statsReports.length ? true : undefined)).catch(() => undefined)
+  console.log(`[smoke] stats.report：${JSON.stringify(statsReports)}`)
+  return { '没开通云同步时 stats.report 不带同步识别码': statsReports.length > 0 && statsReports.every((r) => !r.hasUser) }
+}
+
 function report(result: ProbeResult, extra: Record<string, boolean>): boolean {
   const checks: Record<string, boolean> = {
     '页面有 window.arkrecord': result.bridge === 'object',
@@ -360,7 +376,7 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
     }
     let images: Record<string, boolean>
     try {
-      images = await probeImages(win)
+      images = { ...(await probeImages(win)), ...(await probeStatsReports()) }
     } catch (error) {
       console.error(`[smoke] 图片检查出错：${(error as Error).message}`)
       images = { 图片检查没有跑完: false }

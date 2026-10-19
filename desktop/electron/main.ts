@@ -13,7 +13,7 @@ import { OFFICIAL_LOGIN, fakeLoginTarget } from './hg-login-rules.js'
 import { IMAGE_PREFIX, serveImage } from './images.js'
 import { deleteToken, keychainStatus, loadTokens, saveToken } from './keychain.js'
 import { INVALID_PARAMS, METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
-import { runSmokeTest } from './smoke.js'
+import { noteStatsReport, runSmokeTest } from './smoke.js'
 
 /** 正式构建用的协议：注册成 standard + secure，页面来源固定是 app://arkrecord，升级后 IndexedDB 里的数据还在 */
 const APP_SCHEME = 'app'
@@ -202,6 +202,8 @@ async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unk
   if (typeof method !== 'string' || (!appMethod && timeoutMs === undefined)) {
     return { ok: false, error: new RpcError(METHOD_NOT_FOUND, '不允许调用这个方法').toJSON() }
   }
+  // 冒烟测试检查页面的统计上报带了什么（只记有没有识别码）
+  if (smoke && method === 'stats.report') noteStatsReport(params)
   try {
     const result = appMethod ? await appMethod(mainWindow, params) : await backend.request(method, params, timeoutMs as number)
     return { ok: true, result }
