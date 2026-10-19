@@ -132,7 +132,7 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 1. **M0 骨架**（2026-10-19 完成）：Electron + Python 子进程跑通（ping），一条命令启动开发环境（`npm run desktop:dev`）；渲染进程加载现有应用（desktop 构建）。
 2. **M1 鹰角两款**：`transport.ts` + `shared/upstreams/hg.json` + Python 执行请求信封；应用内登录窗口取 token；明日方舟、终末地同步跑通，不经过 Worker。
-3. **M2 原神**：读日志找目录 → 读缓存取链接 → 校验 → 分页拉取抽卡记录；粘贴链接；手动选择目录；存储、统计页面。
+3. **M2 原神**（2026-10-19 完成）：读日志找目录 → 读缓存取链接 → 校验 → 分页拉取抽卡记录；粘贴链接；手动选择目录；存储、统计页面。数据层在 `src/lib/mhy/`（单独的 IndexedDB `arkrecord-mhy`），界面在 `src/components/mhy/`、`src/pages/mhy/`，只在桌面构建里出现（`@/platform`，网页构建引用到就报错）。真机测试：第一次读取十几次请求、各卡池条数和 `mhy.probe` 一致；第二次读取每个卡池 1 页就停，没有新记录。保底规则（上限、小保底 / 大保底）还没按官方公示核对，界面只显示数出来的抽数。
 4. **M3 星铁**（含联动池）；UIGF 导入导出；Linux 下的路径处理。
 5. **M4 打包**：三平台安装包，每个安装包签发构建证明（签名另议：macOS 需要 Apple 开发者年费，Windows 可申请 SignPath 开源免费签名）。
 6. **M5 云同步**：鹰角走 ark.kaltsit.dev，米哈游走 `mhy.<域名>`。现在的 `/api/cloud` 只接受网页同源请求，桌面版要单独设计客户端校验，并经过安全评审、更新 SECURITY.md。
