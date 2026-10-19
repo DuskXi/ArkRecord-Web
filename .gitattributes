@@ -1,2 +1,5 @@
+# 文本文件在仓库和工作区里一律用 LF（Windows 上 core.autocrlf=true 时，CRLF 会让摘要校验等测试失败）
+* text=auto eol=lf
+
 # 旧版网页的构建产物（scripts/build-legacy.sh 生成）
 public/legacy/** linguist-generated=true -diff
