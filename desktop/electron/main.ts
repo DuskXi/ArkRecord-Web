@@ -10,6 +10,7 @@ import { Backend } from './backend.js'
 import { openExternal } from './external.js'
 import { checkHgLogin, hgLogin, isLoginSession } from './hg-login.js'
 import { OFFICIAL_LOGIN, fakeLoginTarget } from './hg-login-rules.js'
+import { IMAGE_PREFIX, serveImage } from './images.js'
 import { deleteToken, keychainStatus, loadTokens, saveToken } from './keychain.js'
 import { INVALID_PARAMS, METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
 import { runSmokeTest } from './smoke.js'
@@ -80,10 +81,11 @@ function isAppUrl(value: string): boolean {
 
 const isFile = (file: string) => stat(file).then((s) => s.isFile(), () => false)
 
-/** app://arkrecord/ 下的文件来自 vite build --mode desktop 的产物 */
+/** app://arkrecord/ 下的文件来自 vite build --mode desktop 的产物；/api/img/ 下的图片交给后端（和页面同源，分享图导出时 canvas 不会出错） */
 async function serveAppFile(request: Request): Promise<Response> {
   const url = new URL(request.url)
   if (url.host !== APP_HOST) return new Response(null, { status: 404 })
+  if (url.pathname.startsWith(IMAGE_PREFIX)) return serveImage(request, fetchImage)
   let path: string
   try {
     path = decodeURIComponent(url.pathname)
@@ -121,6 +123,24 @@ const backend = new Backend(() => {
     env: { ARKRECORD_DATA_DIR: app.getPath('userData'), ARKRECORD_STATS_URL: STATS_URL },
   }
 })
+
+/** 后端拉一张图片的超时（后端对来源站有自己的超时，这里多留余量） */
+const IMAGE_TIMEOUT_MS = 30_000
+
+/** 图片只由主进程调用 img.fetch（页面不能直接调用，不在 ALLOWED_METHODS 里） */
+const fetchImage = (source: string, target: string) => backend.request('img.fetch', { source, target }, IMAGE_TIMEOUT_MS)
+
+/**
+ * 开发模式：页面在 Vite 开发服务器上，只把开发服务器的 /api/img/ 交给后端，其余请求原样交给 Vite。
+ * 只拦截应用自己的默认会话（登录窗口用的是单独的会话，不受影响）
+ */
+function interceptDevImages(server: URL): void {
+  protocol.handle('http', (request) => {
+    const url = URL.parse(request.url)
+    if (url?.origin === server.origin && url.pathname.startsWith(IMAGE_PREFIX)) return serveImage(request, fetchImage)
+    return net.fetch(request, { bypassCustomProtocolHandlers: true })
+  })
+}
 
 let mainWindow: BrowserWindow | undefined
 
@@ -303,7 +323,8 @@ if (!app.requestSingleInstanceLock()) {
       callback(ALLOWED_PERMISSIONS.has(permission) && isAppUrl(details.requestingUrl))
     })
     ses.setPermissionCheckHandler((_contents, permission, requestingOrigin) => ALLOWED_PERMISSIONS.has(permission) && isAppUrl(requestingOrigin))
-    if (!devServer) protocol.handle(APP_SCHEME, serveAppFile)
+    if (devServer) interceptDevImages(devServer)
+    else protocol.handle(APP_SCHEME, serveAppFile)
     ipcMain.handle('arkrecord:rpc', handleRpc)
 
     showMainWindow()

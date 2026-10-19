@@ -4,10 +4,11 @@
  * 不发出任何真实的网络请求：hg.request 只用白名单以外的路径，后端在发请求之前就会拒绝；登录窗口用本机的假登录页（fake-hg.mjs）。
  */
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { type BrowserWindow, type WebContents, app, desktopCapturer, session } from 'electron'
 import { currentLoginWindow, lastLoginPartition, recentBlocked } from './hg-login.js'
+import { forwardedImageRequests } from './images.js'
 import { TOKEN_FILE } from './token-store.js'
 
 /** 截图目录（dev.mjs --smoke --shots <目录>）：看界面效果用，不设就不截图 */
@@ -263,6 +264,25 @@ async function probeAccountVault(win: BrowserWindow): Promise<Record<string, boo
   }
 }
 
+/**
+ * 图片（/api/img/，交给后端的 img.fetch）：页面自己 fetch，开发模式走拦截的 http，正式构建走 app://。
+ * 只用白名单以外的来源名：就算代码有问题也不会真的去拉图片。真的向来源站发过请求的话，image-cache 里会有缓存
+ */
+async function probeImages(win: BrowserWindow): Promise<Record<string, boolean>> {
+  const status = (path: string) => win.webContents.executeJavaScript(`fetch(${JSON.stringify(path)}).then((r) => r.status, () => 'error')`) as Promise<number | string>
+  const before = forwardedImageRequests()
+  const notAllowed = await status('/api/img/arkrecord-smoke-test/not-allowed.png')
+  const afterNotAllowed = forwardedImageRequests()
+  const withQuery = await status('/api/img/arkrecord-smoke-test/not-allowed.png?v=1')
+  const afterQuery = forwardedImageRequests()
+  const cached = await readdir(join(app.getPath('userData'), 'image-cache')).then((files) => files.length, () => 0)
+  console.log(`[smoke] 图片：${JSON.stringify({ notAllowed, withQuery, forwarded: afterQuery - before, cached })}`)
+  return {
+    '白名单以外的图片返回 404，没有发出请求': notAllowed === 404 && afterNotAllowed - before === 1 && cached === 0,
+    '图片地址带查询参数时返回 404，不交给后端': withQuery === 404 && afterQuery === afterNotAllowed,
+  }
+}
+
 function report(result: ProbeResult, extra: Record<string, boolean>): boolean {
   const checks: Record<string, boolean> = {
     '页面有 window.arkrecord': result.bridge === 'object',
@@ -338,6 +358,13 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
       console.error(`[smoke] token 保存检查出错：${(error as Error).message}`)
       tokens = { token保存检查没有跑完: false }
     }
+    let images: Record<string, boolean>
+    try {
+      images = await probeImages(win)
+    } catch (error) {
+      console.error(`[smoke] 图片检查出错：${(error as Error).message}`)
+      images = { 图片检查没有跑完: false }
+    }
     // 只有带着假登录页启动时（dev.mjs --smoke）才检查登录窗口
     const fakeToken = process.env.ARKRECORD_FAKE_HG_TOKEN
     let login: Record<string, boolean> = {}
@@ -349,6 +376,6 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
         login = { 登录窗口检查没有跑完: false }
       }
     }
-    finish(report(result, { ...tokens, ...login }))
+    finish(report(result, { ...tokens, ...images, ...login }))
   })
 }

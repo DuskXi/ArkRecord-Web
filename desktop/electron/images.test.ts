@@ -1,0 +1,50 @@
+import { describe, expect, it, vi } from 'vitest'
+import { serveImage } from './images.js'
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const get = (path: string, method = 'GET') => new Request(`app://arkrecord${path}`, { method })
+
+describe('serveImage', () => {
+  it('把来源和路径交给 img.fetch（路径原样，不解码），返回图片', async () => {
+    const fetchImage = vi.fn(async () => ({ status: 200, contentType: 'image/png', body: PNG.toString('base64') }))
+    const response = await serveImage(get('/api/img/prts-avatar/char_002_amiya'), fetchImage)
+    expect(fetchImage).toHaveBeenCalledWith('prts-avatar', 'char_002_amiya')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('image/png')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(PNG)
+
+    await serveImage(get('/api/img/hycdn/upload/image/20260101/a%2Fb.png'), fetchImage)
+    expect(fetchImage).toHaveBeenLastCalledWith('hycdn', 'upload/image/20260101/a%2Fb.png')
+  })
+
+  it('带查询参数、格式不对、不是 GET 的不交给后端', async () => {
+    const fetchImage = vi.fn(async () => ({ status: 200, contentType: 'image/png', body: '' }))
+    for (const path of ['/api/img/prts-avatar/char_002_amiya?v=1', '/api/img/prts-avatar', '/api/img//x', '/api/img/prts-avatar/', '/api/other']) {
+      expect((await serveImage(get(path), fetchImage)).status).toBe(404)
+    }
+    expect((await serveImage(get('/api/img/prts-avatar/char_002_amiya', 'POST'), fetchImage)).status).toBe(405)
+    expect(fetchImage).not.toHaveBeenCalled()
+  })
+
+  it('404 和 502 原样返回，不带正文', async () => {
+    for (const status of [404, 502]) {
+      const response = await serveImage(get('/api/img/x/y'), async () => ({ status }))
+      expect(response.status).toBe(status)
+      expect(await response.text()).toBe('')
+    }
+  })
+
+  it('后端出错或结果不对时返回 502', async () => {
+    const results: unknown[] = [
+      null,
+      'text',
+      { status: 200, contentType: 'text/html', body: 'PGh0bWw+' },
+      { status: 200, contentType: 'image/png' },
+      { status: 200, body: 'AAAA' },
+      { status: 500 },
+    ]
+    for (const result of results) expect((await serveImage(get('/api/img/x/y'), async () => result)).status).toBe(502)
+    expect((await serveImage(get('/api/img/x/y'), () => Promise.reject(new Error('backend gone')))).status).toBe(502)
+  })
+})

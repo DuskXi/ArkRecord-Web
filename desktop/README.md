@@ -152,6 +152,10 @@ interface ArkrecordBridge {
   - 正式构建：`app://arkrecord/api/img/<来源>/<路径>` 由 `protocol.handle('app')` 交给 `img.fetch`，和页面同源，导出分享图时 canvas 不会因为跨域图片出错；
   - 开发时：页面在 Vite 开发服务器上，`/api/img/*` 也要转给 `img.fetch`（不要转到 Worker）；
   - 返回时带上 `content-type`、`x-content-type-options: nosniff`；地址里带查询参数的一律 404（和 Worker 一样）；`img.fetch` 加进主进程能调用的方法里，但**不要**放进页面能直接调用的白名单。
+- 实现：`desktop/electron/images.ts`（`serveImage`，不依赖 Electron，有单元测试）。解析和 Worker 一样：第一段是来源，其余原样是路径，不解码；带查询参数、格式不对、不是 GET / HEAD 的直接 404 / 405，不交给后端。后端返回 404 / 502 时原样返回、不带正文；后端出错或结果不对时返回 502。
+  - 正式构建：`main.ts` 的 `serveAppFile` 遇到 `/api/img/` 时交给 `serveImage`。
+  - 开发模式：只在应用的默认会话里拦截 `http`，开发服务器地址下的 `/api/img/` 交给 `serveImage`，其余请求用 `net.fetch(request, { bypassCustomProtocolHandlers: true })` 原样交给 Vite；登录窗口用单独的会话，不受影响。
+  - 冒烟测试只用白名单以外的来源名（不会真的去拉图片）：检查返回 404、交给了后端一次、临时数据目录的 `image-cache` 是空的（真的向来源站发过请求就会有缓存）；带查询参数时返回 404、不交给后端。
 
 ## 使用人数统计（`stats.*`）
 
