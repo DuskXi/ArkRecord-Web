@@ -120,13 +120,11 @@ class MhyService:
         stamps = [path.stat().st_mtime for d in self._data_dirs(game, p.get("dataDir")) for path in cache_files(d)]
         return {"mtime": max(stamps) if stamps else None}
 
-    def read_cache(self, params: Params) -> dict[str, Any]:
-        """mhy.readCache {game, dataDir?} → 从缓存里找到并校验抽卡链接，返回句柄。"""
-        p = _params(params, {"game"}, {"dataDir"})
-        game = _game(p["game"])
+    def find_links(self, game: Game, chosen: Any = None) -> list[GachaLink]:
+        """缓存里的抽卡链接（新的在前，按 authkey 去重），不发请求。readCache 和本机实验（probe.py）共用。"""
         candidates: list[GachaLink] = []
         seen: set[str] = set()
-        for data_dir in self._data_dirs(game, p.get("dataDir")):
+        for data_dir in self._data_dirs(game, chosen):
             for path in cache_files(data_dir):
                 try:
                     data = read_cache(path)
@@ -140,6 +138,12 @@ class MhyService:
                         seen.add(key)
                         candidates.append(link)
         log.info("%s：缓存里找到 %d 条抽卡链接", game.id, len(candidates))
+        return candidates
+
+    def read_cache(self, params: Params) -> dict[str, Any]:
+        """mhy.readCache {game, dataDir?} → 从缓存里找到并校验抽卡链接，返回句柄。"""
+        p = _params(params, {"game"}, {"dataDir"})
+        candidates = self.find_links(_game(p["game"]), p.get("dataDir"))
         if not candidates:
             raise AppError("no_link", "缓存里没有抽卡链接：请先在游戏里打开一次抽卡记录，再读取")
         for link in candidates[:MAX_CANDIDATES]:

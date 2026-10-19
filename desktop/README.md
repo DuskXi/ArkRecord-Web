@@ -82,6 +82,7 @@ uv run --project desktop/backend python -m arkrecord_backend
 - `gachaType`：原神 100、200、301（会同时返回 400）、302、500；星铁 1、2、11、12、21、22（21、22 走联动池接口）。
 - 业务错误（-32000）的 `data.kind`：`game_not_found`、`no_link`（先在游戏里打开抽卡记录）、`link_expired`、`link_invalid`、`bad_link`、`handle_expired`、`rate_limited`（-110，稍后重试）、`network`、`upstream_error`、`unsupported`。
 - 本机只读检查（不输出参数值、不发请求）：`uv run --project desktop/backend python -m arkrecord_backend.mhy.inspect genshin`。
+- 本机真实请求实验：`uv run --project desktop/backend python -m arkrecord_backend.mhy.probe genshin`。不加 `--yes` 只列出会发哪些请求；加 `--yes` 后走和应用相同的代码（校验链接、每个卡池拉到最后一页），只输出页数、条数、字段名和格式检查，不输出 authkey、UID 和记录内容。要先在游戏里打开一次抽卡记录，并经维护者同意（见 docs/desktop/plan.md 的调试规则）。
 
 ### 错误
 

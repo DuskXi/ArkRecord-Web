@@ -49,6 +49,11 @@ class GachaApi:
         self._lock = threading.Lock()
         self._last = -MIN_INTERVAL_S
 
+    def upstream_host(self, name: str) -> str | None:
+        """白名单里这个服务器的域名（本机实验列出会发什么请求时用）。"""
+        upstream = self._upstreams.get(name)
+        return upstream["host"] if upstream else None
+
     def path_for(self, link: GachaLink, gacha_type: str) -> str:
         if link.game.biz == "hk4e":
             return "/gacha_info/api/getGachaLog"

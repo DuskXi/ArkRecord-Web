@@ -19,7 +19,8 @@ from .link import parse_link
 from .locate import find_data_dirs, log_paths, resolve_data_dir
 
 
-def _mask(path: Path) -> str:
+def mask_path(path: Path) -> str:
+    """路径里的用户名换成 ***（输出给开发者看的路径都要过一遍）。"""
     text = str(path)
     user = os.environ.get("USERNAME") or os.environ.get("USER")
     return text.replace(user, "***") if user else text
@@ -38,12 +39,12 @@ def main(argv: list[str]) -> int:
     else:
         logs, dirs = find_data_dirs(game, home)
         for path in log_paths(game, home):
-            print(f"日志 {_mask(path)}：{'存在' if path in logs else '不存在'}")
+            print(f"日志 {mask_path(path)}：{'存在' if path in logs else '不存在'}")
     if not dirs:
         print("没有找到游戏数据目录")
         return 1
     for data_dir in dirs:
-        print(f"游戏数据目录：{_mask(data_dir)}")
+        print(f"游戏数据目录：{mask_path(data_dir)}")
         print(f"  版本目录（从新到旧）：{', '.join(d.name for d in version_dirs(data_dir)) or '无'}")
         for path in cache_files(data_dir):
             version = path.parent.parent.parent.name
