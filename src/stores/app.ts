@@ -8,7 +8,7 @@ import { markWelcomeSeen, welcomeSeen } from '@/lib/onboarding'
 import type { Account, Game } from '@/lib/types'
 import { loadCloudflareAnalytics } from '@/lib/analytics'
 import { type Consent, readConsent, writeConsent } from '@/lib/consent'
-import { fetchUsageSummary, reportUsage, type UsageSummary, usageNoticeSeen } from '@/lib/usage'
+import { fetchUsageSummary, gamesForUsage, reportUsage, type UsageSummary, usageNoticeSeen } from '@/lib/usage'
 
 export const APP_VERSION = __APP_VERSION__
 
@@ -65,7 +65,7 @@ export const useAppStore = defineStore('app', () => {
   const usage = shallowRef<UsageSummary | null>(null)
   void fetchUsageSummary().then((s) => (usage.value = s))
   function reportUsageNow() {
-    void reportUsage(accounts.value.map((a) => a.game))
+    void reportUsage(gamesForUsage(accounts.value))
   }
   function startAnalytics() {
     loadCloudflareAnalytics()

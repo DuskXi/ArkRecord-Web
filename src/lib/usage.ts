@@ -5,12 +5,13 @@
  * 上报内容只有四个字段，不含账号、UID、寻访记录，也不生成或上传任何标识符：
  *   first     这个浏览器是否第一次上报
  *   newMonth  本月是否第一次上报
- *   games     这个浏览器里有哪些游戏的账号（arknights / endfield）
+ *   games     这个浏览器里有哪些游戏的账号（arknights / endfield；演示账号不算）
  *   newGames  其中第一次出现的
  * 只有用户在统计同意里选择“全部接受”之后才会上报（见 consent.ts）；选择“仅必要”或还没选择时不发出任何请求。
  */
 import { readConsent } from './consent'
-import type { Game } from './types'
+import { DEMO_ACCOUNT_ID } from './demo-account'
+import type { Account, Game } from './types'
 
 const STATE_KEY = 'arkrecord:usage'
 /** 旧版本显示过统计说明的标记，现在只用来判断是不是第一次访问 */
@@ -53,6 +54,11 @@ function write(key: string, value: string | null): void {
 /** 这个浏览器是否用过之前带统计说明的版本 */
 export function usageNoticeSeen(): boolean {
   return read(NOTICE_KEY) === '1'
+}
+
+/** 上报的“有哪些游戏的账号”：只算真实账号，演示账号不算 */
+export function gamesForUsage(accounts: readonly Pick<Account, 'id' | 'game'>[]): Game[] {
+  return accounts.filter((a) => a.id !== DEMO_ACCOUNT_ID).map((a) => a.game)
 }
 
 /** 根据本地记录决定今天是否需要上报，以及上报什么；不需要时返回 null */

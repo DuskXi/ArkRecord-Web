@@ -1,6 +1,6 @@
 {
   "name": "arkrecord",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "description": "明日方舟 / 终末地 寻访记录本地存档与分析",
   "private": true,
   "type": "module",

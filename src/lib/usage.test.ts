@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildPing } from './usage'
+import { DEMO_ACCOUNT_ID } from './demo-account'
+import { buildPing, gamesForUsage } from './usage'
 
 const NOON = Date.parse('2026-10-16T12:00:00+08:00')
 const DAY = 86_400_000
@@ -27,5 +28,11 @@ describe('匿名使用统计的本地去重', () => {
     const state = { day: '2026-10-16', month: '2026-10', games: [] }
     expect(buildPing([], state, NOON + DAY)?.ping).toEqual({ first: false, newMonth: false, games: [], newGames: [] })
     expect(buildPing([], state, NOON + 20 * DAY)?.ping.newMonth).toBe(true)
+  })
+
+  it('演示账号不算作“有这个游戏的账号”', () => {
+    expect(gamesForUsage([{ id: DEMO_ACCOUNT_ID, game: 'arknights' }])).toEqual([])
+    expect(gamesForUsage([{ id: DEMO_ACCOUNT_ID, game: 'arknights' }, { id: 'endfield:123', game: 'endfield' }])).toEqual(['endfield'])
+    expect(gamesForUsage([{ id: 'arknights:456', game: 'arknights' }])).toEqual(['arknights'])
   })
 })
