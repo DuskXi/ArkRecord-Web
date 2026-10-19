@@ -6,14 +6,14 @@ import CharAvatar from '@/components/ui/CharAvatar.vue'
 import { formatDateTime, rarityTextVar } from '@/lib/format'
 import type { PullEvent } from '@/lib/stats/events'
 import { type GiftEvent, giftNote } from '@/lib/stats/gifts'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
 /**
  * 时间线：以 6★ 为节点分段，两次 6★ 之间的低星记录默认折叠，只显示 5★ 和新干员。
  * 选择某个保底分组后，分段与该分组的保底计数完全对应。
  * 累计寻访赠送的（信物赠礼、限定干员赠送）按时间插在中间，单独标成“赠送”：不是抽出来的，不影响分段和保底计数。
  */
-const records = useRecordsStore()
+const records = useRecords()
 const family = ref<string>('all')
 const expanded = ref(new Set<string>())
 const shareOpen = ref(false)

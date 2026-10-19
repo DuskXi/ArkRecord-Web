@@ -8,13 +8,13 @@ import StatTile from '@/components/ui/StatTile.vue'
 import { formatDate, formatNumber, formatPercent } from '@/lib/format'
 import { luckLabel } from '@/lib/stats/analyze'
 import { useAppStore } from '@/stores/app'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
 // 图表库较大，异步加载，不阻塞首屏
 const CalendarHeatmap = defineAsyncComponent(() => import('@/components/charts/CalendarHeatmap.vue'))
 
 const app = useAppStore()
-const records = useRecordsStore()
+const records = useRecords()
 const a = computed(() => records.analysis)
 
 const RECENT = 21 * 86_400_000

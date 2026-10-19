@@ -7,9 +7,9 @@ import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { useChartTheme } from '@/composables/useChartTheme'
 import { formatPercent } from '@/lib/format'
 import { luckLabel } from '@/lib/stats/analyze'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
-const records = useRecordsStore()
+const records = useRecords()
 const palette = useChartTheme()
 const a = computed(() => records.analysis)
 

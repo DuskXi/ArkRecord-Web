@@ -8,10 +8,10 @@ import { formatDate, formatDateTime, rarityTextVar } from '@/lib/format'
 import { clearRoster } from '@/lib/roster'
 import { akCodexItems, applyRoster, buildCodex, type CodexEntry, efCodexItems, isOwned, PROFESSION_LABEL, summarizeCodex } from '@/lib/stats/codex'
 import { useAppStore } from '@/stores/app'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
 const app = useAppStore()
-const records = useRecordsStore()
+const records = useRecords()
 
 const weapon = computed(() => records.weaponScope)
 const noun = computed(() => (weapon.value ? '武器' : '干员'))

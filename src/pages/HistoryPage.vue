@@ -9,9 +9,9 @@ import { dayKey } from '@/lib/stats/analyze'
 import type { PullEvent } from '@/lib/stats/events'
 import type { GiftEvent } from '@/lib/stats/gifts'
 import { type Batch, bestStar, groupBatches } from '@/lib/stats/insights'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
-const records = useRecordsStore()
+const records = useRecords()
 
 const view = useLocalStorage<'batch' | 'list'>('arkrecord:history-view', 'batch')
 /** 终末地没有 3★ */

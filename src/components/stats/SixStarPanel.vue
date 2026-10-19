@@ -8,9 +8,9 @@ import { formatDateTime, formatPercent } from '@/lib/format'
 import { quantile } from '@/lib/stats/pity'
 import { analyzeUp, binPity, luckTrend } from '@/lib/stats/sixstar'
 import { SIX_TERM } from '@/lib/types'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
-const records = useRecordsStore()
+const records = useRecords()
 /** 明日方舟叫“出金”，终末地叫“出红” */
 const term = computed(() => SIX_TERM[records.game])
 const palette = useChartTheme()

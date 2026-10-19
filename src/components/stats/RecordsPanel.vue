@@ -3,9 +3,9 @@ import { computed } from 'vue'
 import CharAvatar from '@/components/ui/CharAvatar.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { formatDate, formatPercent } from '@/lib/format'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
-const records = useRecordsStore()
+const records = useRecords()
 const s = computed(() => records.insights)
 const unit = computed(() => (records.weaponScope ? '件' : '名'))
 

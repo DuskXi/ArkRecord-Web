@@ -5,7 +5,7 @@ import { formatDate, formatNumber, formatPercent } from '@/lib/format'
 import { luckLabel } from '@/lib/stats/analyze'
 import { GAME_LABEL } from '@/lib/types'
 import { useAppStore } from '@/stores/app'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
 /**
  * 分享卡片：在页面里渲染一张设计好的卡片，再用 snapdom 转成 PNG。
@@ -13,7 +13,7 @@ import { useRecordsStore } from '@/stores/records'
  */
 const open = defineModel<boolean>('open', { default: false })
 const app = useAppStore()
-const records = useRecordsStore()
+const records = useRecords()
 const toast = useToast()
 
 const showName = ref(true)

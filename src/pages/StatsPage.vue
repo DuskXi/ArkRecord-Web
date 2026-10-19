@@ -8,9 +8,9 @@ import RecordsPanel from '@/components/stats/RecordsPanel.vue'
 import SixStarPanel from '@/components/stats/SixStarPanel.vue'
 import TimePanel from '@/components/stats/TimePanel.vue'
 import { SIX_TERM } from '@/lib/types'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
-const records = useRecordsStore()
+const records = useRecords()
 const route = useRoute()
 const router = useRouter()
 

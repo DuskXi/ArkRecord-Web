@@ -9,12 +9,12 @@ import { mergeRoster, type RosterInput, type ScreenshotTime, screenshotTime } fr
 import type { NameCandidate } from '@/lib/screenshot/names'
 import type { RecognizeProgress, RecognizedCard, ScreenshotRecognizer } from '@/lib/screenshot/recognize'
 import { useAppStore } from '@/stores/app'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
 const open = defineModel<boolean>('open', { default: false })
 
 const app = useAppStore()
-const records = useRecordsStore()
+const records = useRecords()
 const toast = useToast()
 
 const game = computed(() => records.game)

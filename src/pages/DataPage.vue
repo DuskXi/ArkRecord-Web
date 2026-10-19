@@ -23,12 +23,12 @@ import { isLegacyExport, LEGACY_APP_PATH, type LegacyExport, parseLegacyExport, 
 import { loadAkMeta } from '@/lib/meta'
 import { type Account, GAME_LABEL } from '@/lib/types'
 import { APP_VERSION, useAppStore } from '@/stores/app'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 import { useSyncStore } from '@/stores/sync'
 
 const app = useAppStore()
 const sync = useSyncStore()
-const records = useRecordsStore()
+const records = useRecords()
 const toast = useToast()
 
 const counts = useLiveQuery(

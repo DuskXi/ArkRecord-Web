@@ -2,9 +2,9 @@
 import { computed, ref } from 'vue'
 import CharAvatar from '@/components/ui/CharAvatar.vue'
 import { formatDate } from '@/lib/format'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
-const records = useRecordsStore()
+const records = useRecords()
 const star = ref('6')
 const sort = ref<'count' | 'recent'>('count')
 

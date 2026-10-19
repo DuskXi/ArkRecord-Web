@@ -7,13 +7,13 @@ import { useChartTheme } from '@/composables/useChartTheme'
 import { formatPercent } from '@/lib/format'
 import { arknightsRate, endfieldRate } from '@/lib/stats/pity'
 import { AK_PRESETS, EF_PRESETS, plan } from '@/lib/stats/planner'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
 /**
  * 抽卡规划：按游戏的保底规则精确计算“再抽 N 抽”的出货概率。
  * 当前垫抽默认取自记录，可以手动修改。
  */
-const records = useRecordsStore()
+const records = useRecords()
 const palette = useChartTheme()
 
 const presets = computed(() => (records.game === 'arknights' ? AK_PRESETS : EF_PRESETS))

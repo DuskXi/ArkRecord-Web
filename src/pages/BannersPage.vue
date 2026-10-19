@@ -6,10 +6,10 @@ import { formatDate } from '@/lib/format'
 import { ruleLabel } from '@/lib/labels'
 import { efImageUrl } from '@/lib/meta'
 import { useAppStore } from '@/stores/app'
-import { useRecordsStore } from '@/stores/records'
+import { useRecords } from '@/composables/useRecords'
 
 const app = useAppStore()
-const records = useRecordsStore()
+const records = useRecords()
 
 type Filter = 'all' | 'limited' | 'standard' | 'kernel' | 'weapon'
 const filter = ref<Filter>('all')
