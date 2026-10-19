@@ -58,3 +58,17 @@ export function rateLimitClient(ip: string | null): string {
     .map((g) => g.replace(/^0+(?=.)/, ''))
     .join(':')}::/64`
 }
+
+/**
+ * 桌面版 Python 后端的统计上报（desktop-stats.ts）：不是浏览器发的，没有 Origin / Sec-Fetch-Site。
+ * 要求 CLIENT_HEADER 是 desktop；带着浏览器的跨站标记（其他网站的页面发来的）一律拒绝。
+ * 和上面一样，请求头可以伪造，滥用由限速和严格的内容校验兜底。
+ */
+export function checkDesktopClient(request: Request): OriginRejection | null {
+  if (request.headers.get(CLIENT_HEADER) !== 'desktop') return 'missing_client_header'
+  const site = request.headers.get('sec-fetch-site')
+  const origin = request.headers.get('origin')
+  if (site !== null && site !== 'same-origin' && site !== 'none') return 'cross_origin'
+  if (origin !== null && origin !== new URL(request.url).origin) return 'cross_origin'
+  return null
+}

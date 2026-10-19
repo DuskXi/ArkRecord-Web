@@ -47,6 +47,7 @@
   // 匿名使用人数统计（worker/stats.ts，只保存计数器）、站内反馈（worker/feedback.ts）：各一个 Durable Object；
   // 云同步（worker/cloud-vault.ts）：每个账号一个 Durable Object，只保存浏览器加密后的密文。都用 SQLite 存储（免费版可用）。
   // 云同步还需要 Worker secret SYNC_PEPPER，无密码模式还需要 SYNC_HG_SECRET（都在 Cloudflare 后台设置，不进仓库），见 docs/rewrite/cloud-sync.md 第 18 节。
+  // 桌面版统计还需要 Worker secret STATS_UID_SALT（至少 32 个字符的随机字符串，在 Cloudflare 后台设置，不进仓库），见 SECURITY.md 的“桌面版的使用人数统计”。
   "durable_objects": {
     "bindings": [
       { "name": "STATS", "class_name": "UsageStats" },

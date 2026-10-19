@@ -13,6 +13,8 @@
  * 用户可以在网站的“关于”页关闭统计。
  */
 
+import { initDesktopSchema, parseDesktopRecord, readDesktopSummary, recordDesktop, type DesktopSummary } from './desktop-stats'
+
 export const STATS_PREFIX = '/api/stats/'
 export const GAMES = ['arknights', 'endfield'] as const
 type GameName = (typeof GAMES)[number]
@@ -34,6 +36,8 @@ export interface UsageSummary {
   month: number
   /** 北京时间的日期，如 2026-10-16 */
   day: string
+  /** 桌面版的统计（desktop-stats.ts） */
+  desktop?: DesktopSummary
 }
 
 function gameList(value: unknown): GameName[] | null {
@@ -111,6 +115,7 @@ export class UsageStats {
   constructor(state: DurableObjectState) {
     this.sql = state.storage.sql as unknown as SqlLike
     initSchema(this.sql)
+    initDesktopSchema(this.sql)
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -121,7 +126,15 @@ export class UsageStats {
       recordPing(this.sql, ping)
       return new Response(null, { status: 204 })
     }
-    if (request.method === 'GET' && pathname === '/summary') return Response.json(readSummary(this.sql))
+    if (request.method === 'POST' && pathname === '/desktop') {
+      const record = parseDesktopRecord(await request.json().catch(() => null))
+      if (!record) return new Response(null, { status: 400 })
+      recordDesktop(this.sql, record)
+      return new Response(null, { status: 204 })
+    }
+    if (request.method === 'GET' && pathname === '/summary') {
+      return Response.json({ ...readSummary(this.sql), desktop: readDesktopSummary(this.sql) })
+    }
     return new Response(null, { status: 404 })
   }
 }

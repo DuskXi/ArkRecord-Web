@@ -8,7 +8,8 @@ import { type CloudEnv, handleCloud } from './cloud'
 import { FEEDBACK_PREFIX, hashToken, newFeedbackId, newFeedbackToken, parseFeedback } from './feedback'
 import { handleImage, IMAGE_PREFIX } from './images'
 import { handlePage, PAGES } from './pages'
-import { checkSameOrigin, rateLimitClient } from './security'
+import { kindsFor, parseDesktopPing, saltedKey } from './desktop-stats'
+import { checkDesktopClient, checkSameOrigin, rateLimitClient } from './security'
 import { parsePing, STATS_PREFIX } from './stats'
 import { findRoute, type Limiter, type Route, type Upstream } from './upstreams'
 
@@ -18,6 +19,8 @@ export interface Env extends CloudEnv {
   RL_DATA?: RateLimit
   /** 匿名使用人数统计（见 stats.ts） */
   STATS?: DurableObjectNamespace
+  /** 桌面版统计的服务器密钥（desktop-stats.ts）：UID、设备的哈希再做 HMAC 后才保存。在 Cloudflare 后台设置，不进仓库 */
+  STATS_UID_SALT?: string
   /** 站内反馈（见 feedback.ts） */
   FEEDBACK?: DurableObjectNamespace
   RL_FEEDBACK?: RateLimit
@@ -157,6 +160,9 @@ const MAX_PING_BYTES = 512
  */
 export async function handleStats(request: Request, env: Env, url: URL, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
   const path = url.pathname.slice(STATS_PREFIX.length)
+  if ((path === 'desktop/device' || path === 'desktop/uid') && request.method === 'POST') {
+    return handleDesktopStats(request, env, path.slice('desktop/'.length))
+  }
   if (path === 'ping' && request.method === 'POST') {
     const rejection = checkSameOrigin(request)
     if (rejection) return proxyError(403, rejection)
@@ -198,6 +204,32 @@ export async function handleStats(request: Request, env: Env, url: URL, ctx?: Pi
     return response
   }
   return proxyError(request.method === 'OPTIONS' ? 405 : 404, 'stats_route_not_allowed')
+}
+
+/**
+ * 桌面版的统计上报（见 desktop-stats.ts）：POST /api/stats/desktop/device、/api/stats/desktop/uid。
+ * 由桌面版的 Python 后端发出，不是浏览器，所以不做同源检查，改为检查 x-arkrecord-client: desktop，并拒绝其他网站的页面。
+ * 上报的哈希先用服务器密钥 STATS_UID_SALT 做 HMAC，再交给计数器；没有配置密钥时拒绝（503），不保存没加盐的值。
+ */
+async function handleDesktopStats(request: Request, env: Env, kind: string): Promise<Response> {
+  const rejection = checkDesktopClient(request)
+  if (rejection) return proxyError(403, rejection)
+  if (!(await withinRateLimit(env, 'data', request))) return proxyError(429, 'rate_limited', { 'retry-after': '60' })
+  if (!(request.headers.get('content-type') ?? '').startsWith('application/json')) return proxyError(415, 'json_required')
+  const text = await readBodyLimited(request, MAX_PING_BYTES)
+  let ping = null
+  try {
+    ping = text === null ? null : parseDesktopPing(kind, JSON.parse(text))
+  } catch {
+    ping = null
+  }
+  if (!ping) return proxyError(400, 'invalid_ping')
+  if (!env.STATS_UID_SALT || env.STATS_UID_SALT.length < 32) return proxyError(503, 'stats_unavailable')
+  if (!env.STATS) return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } })
+  const key = await saltedKey(env.STATS_UID_SALT, ping)
+  const stub = env.STATS.get(env.STATS.idFromName('global'))
+  const res = await stub.fetch('https://stats/desktop', { method: 'POST', body: JSON.stringify({ kinds: kindsFor(ping), key }) })
+  return new Response(null, { status: res.ok ? 204 : 502, headers: { 'cache-control': 'no-store' } })
 }
 
 const MAX_FEEDBACK_BYTES = 8192
