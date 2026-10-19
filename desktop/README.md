@@ -19,7 +19,9 @@ desktop/
 
 - 需要 Node 22.12 以上、uv。Electron 版本写死在 `package.json`（目前 44.9.0）。
 - 第一次 `npm install` 之后如果没有 Electron 本体，运行 `node node_modules/electron/install.js`。网页版的 CI 和部署设置了 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`，不下载。
-- desktop 模式不加载 `cloudflare()` 和给搜索引擎的文件；默认的网页版构建不受影响（产物逐字节相同）。
+- desktop 模式不加载 `cloudflare()` 和给搜索引擎的文件。
+- **只有桌面版才有的代码**（米哈游的数据层 `src/lib/mhy/`、页面 `src/pages/mhy/`、`src/components/mhy/`）只能从 `src/platform/desktop.ts` 引用：桌面构建把 `@/platform` 解析成它，网页构建用 `src/platform/index.ts`（空的）。网页构建和网页版开发服务器里只要有模块引用到这些文件就直接报错（`vite.config.ts` 的 `webWithoutDesktopCode`），所以网页版的产物里不会有米哈游的代码。游戏切换里的原神入口和 `/genshin` 页面也由它提供。
+- 构建时常量 `__DESKTOP__`：桌面构建为 true。运行时判断是不是在桌面版里用 `isDesktop()`。
 - 桌面版没有 Worker：鹰角的请求经 `src/lib/transport.ts` 的 `postHg` 交给后端的 `hg.request`，由本机直连鹰角；其他调用 `/api/*` 的功能（统计、反馈、云同步）要等 M5。
 - 开发时主进程每次启动会清掉 HTTP 缓存：Vite 给依赖的地址带版本号并让浏览器长期缓存，上次运行留下的缓存会让依赖版本对不上（504，页面空白）。
 - `npm run desktop:dev -- --fake-hg`：应用内登录用本机的假登录页（`desktop/electron/fake-hg.mjs`），不连接鹰角。假登录页的地址只在没打包时读取，`fake-hg.mjs` 不编译进 `dist`。
@@ -110,7 +112,7 @@ interface ArkrecordBridge {
 
 - 只接受主窗口顶层页面、地址是应用自己的请求，其他的直接拒绝；
 - `app.` 开头的方法由主进程自己处理，不转给后端（见下面的“应用内鹰角登录”）；
-- 其他方法只放行白名单里的（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`：`ping`、`hg.request`、`stats.status`、`stats.setEnabled`、`stats.report`），再交给后端。超时：`ping` 30 秒，`hg.request` 45 秒（后端对上游 20 秒超时，留出余量），启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
+- 其他方法只放行白名单里的（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`：`ping`、`hg.request`、`stats.status`、`stats.setEnabled`、`stats.report`、`mhy.*`），再交给后端。超时：`ping` 30 秒，`hg.request` 45 秒（后端对上游 20 秒超时，留出余量），`mhy.locate` / `mhy.cacheStamp` 15 秒，`mhy.readCache` 150 秒（最多校验 5 条链接），`mhy.useLink` / `mhy.fetchPage` 45 秒，`mhy.forget` 10 秒，启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
 
 ### 应用内鹰角登录（`app.hgLogin`）
 

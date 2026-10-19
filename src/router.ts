@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { EXTRA_ROUTES } from '@/platform'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -16,6 +17,8 @@ export const router = createRouter({
     { path: '/announcements', name: 'announcements', component: () => import('./pages/AnnouncementsPage.vue') },
     { path: '/feedback', name: 'feedback', component: () => import('./pages/FeedbackPage.vue') },
     { path: '/about', name: 'about', component: () => import('./pages/AboutPage.vue') },
+    // 只有桌面版才有的页面（原神等，见 src/platform/index.ts）；网页版这里是空的
+    ...EXTRA_ROUTES,
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

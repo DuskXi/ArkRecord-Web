@@ -30,6 +30,13 @@ const ALLOWED_METHODS = new Map([
   ['stats.status', 30_000],
   ['stats.setEnabled', 30_000],
   ['stats.report', 30_000],
+  // 米哈游（desktop/README.md 的“米哈游”）：找目录、读缓存只读本机文件；readCache 最多校验 5 条链接（每条后端 20 秒超时，加上间隔）
+  ['mhy.locate', 15_000],
+  ['mhy.cacheStamp', 15_000],
+  ['mhy.readCache', 150_000],
+  ['mhy.useLink', 45_000],
+  ['mhy.fetchPage', 45_000],
+  ['mhy.forget', 10_000],
 ])
 /** 和后端约定的协议版本（desktop/README.md） */
 const PROTOCOL_VERSION = 1

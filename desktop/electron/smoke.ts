@@ -37,6 +37,11 @@ const PROBE = `(async () => {
   // 桌面版不弹 Cookie / 统计同意；冒烟测试不设上报地址，统计不可用
   out.consentBanner = document.body.innerText.includes('Cookie 与统计')
   try { out.stats = await bridge.rpc('stats.status') } catch (error) { out.stats = error }
+  // 米哈游：只调 mhy.locate（只找目录，不读缓存、不发请求）；返回的路径里有用户名，只记格式对不对
+  try {
+    const located = await bridge.rpc('mhy.locate', { game: 'genshin' })
+    out.mhyLocate = Boolean(located) && ['logs', 'searched', 'dataDirs'].every((key) => Array.isArray(located[key]))
+  } catch (error) { out.mhyLocate = error }
   try { await bridge.rpc('fs.readFile', ['C:/secret']); out.blocked = null } catch (error) { out.blocked = error }
   try {
     const result = await bridge.rpc('hg.request', { upstream: 'ak', path: '/arkrecord-smoke-test/not-allowed', envelope: '{}' })
@@ -66,6 +71,7 @@ interface ProbeResult {
   pingError?: unknown
   consentBanner?: boolean
   stats?: { available?: unknown; enabled?: unknown; code?: number }
+  mhyLocate?: unknown
   blocked?: { code?: number } | null
   hgRoute?: unknown
   /** 只有 app:// 协议（正式构建）才检查 */
@@ -283,6 +289,29 @@ async function probeImages(win: BrowserWindow): Promise<Record<string, boolean>>
   }
 }
 
+/**
+ * 桌面版的游戏切换里有原神（src/platform/desktop.ts）：点了进原神页面，再点明日方舟回到总览。
+ * 网页版没有这个入口，由网页构建的检查保证（vite.config.ts 的 webWithoutDesktopCode）
+ */
+async function probeGenshinEntry(win: BrowserWindow): Promise<Record<string, boolean>> {
+  const result = (await win.webContents.executeJavaScript(`(async () => {
+    const wait = () => new Promise((resolve) => setTimeout(resolve, 500))
+    const buttons = () => [...document.querySelectorAll('[aria-label="切换游戏"] [role="radio"]')]
+    const games = buttons().map((b) => b.textContent.trim())
+    buttons().find((b) => b.textContent.trim() === '原神')?.click()
+    await wait()
+    const genshin = { path: location.pathname, page: document.body.innerText.includes('原神正在开发中') }
+    buttons().find((b) => b.textContent.trim() === '明日方舟')?.click()
+    await wait()
+    return { games, genshin, back: location.pathname }
+  })()`)) as { games: string[]; genshin: { path: string; page: boolean }; back: string }
+  console.log(`[smoke] 游戏切换：${JSON.stringify(result)}`)
+  return {
+    '桌面版的游戏切换里有原神，点了进原神页面': result.games.includes('原神') && result.genshin.path === '/genshin' && result.genshin.page,
+    '从原神点明日方舟回到总览': result.back === '/',
+  }
+}
+
 /** 页面发来的 stats.report：只记账号个数和有没有带同步识别码，不记内容 */
 const statsReports: { accounts: number; hasUser: boolean }[] = []
 
@@ -310,6 +339,7 @@ function report(result: ProbeResult, extra: Record<string, boolean>): boolean {
     checks['ping 成功、协议版本 1'] = result.ping?.pong === true && result.ping.protocol === 1
     checks['桌面版没有 Cookie / 统计同意弹窗'] = result.consentBanner === false
     checks['冒烟测试不上报统计（stats.status 的 available 为 false）'] = result.stats?.available === false
+    checks['mhy.locate 能调通（只找目录，不发请求）'] = result.mhyLocate === true
     checks['白名单以外的方法被拒绝（-32601）'] = result.blocked?.code === -32601
     checks['hg.request 拒绝白名单以外的路径（route_not_allowed）'] = result.hgRoute === 'route_not_allowed'
   }
@@ -376,7 +406,7 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
     }
     let images: Record<string, boolean>
     try {
-      images = { ...(await probeImages(win)), ...(await probeStatsReports()) }
+      images = { ...(await probeImages(win)), ...(await probeStatsReports()), ...(await probeGenshinEntry(win)) }
     } catch (error) {
       console.error(`[smoke] 图片检查出错：${(error as Error).message}`)
       images = { 图片检查没有跑完: false }
