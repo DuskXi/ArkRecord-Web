@@ -70,11 +70,19 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 | 明日方舟、终末地 | 应用内打开鹰角官方登录页（独立会话），用户自己登录，主进程在这个会话里请求 `account/info/hg` 取 token，用完清掉会话 | 鹰角 App / 森空岛扫码（`gen_scan/login` 流程，见 docs/rewrite/research.md）；手动粘贴 |
 | 原神、星铁 | 读本机游戏缓存里的抽卡链接：先在游戏里打开一次抽卡记录（星铁可能要翻几页才会写进缓存），再在应用里点“读取” | 粘贴抽卡链接；UIGF 导入 |
 
-读游戏缓存的步骤和规则：
+读游戏文件的规则（维护者 2026-10-19，原话：“以后读取文件使用影子读取法，不要独占文件，也不要影响或者对文件加什么状态会影响游戏运行的，完全镜面只读”）。读游戏的日志、缓存等任何文件都要遵守，代码统一走 `desktop/backend/arkrecord_backend/readonly.py`：
+
+- **只申请读权限，不妨碍游戏**：打开时允许别的程序同时读、写、删除、改名（Windows：`GENERIC_READ` + `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`）。不能用 Python 自带的 `open()`：它在 Windows 上不允许别人删除和改名，游戏轮换日志（`Player.log` → `Player-prev.log`）时如果正好被我们打开着，改名会失败。
+- **只占用一瞬间**：一次读进内存（有大小上限）就关闭；解析、发请求都在关闭之后，不能改成边读边处理。
+- **不写、不加锁、不复制到磁盘、不改文件属性和时间**。（Windows 读文件时系统可能更新“最后访问时间”，那是系统行为，要阻止反而得申请写属性的权限，所以不管。）
+- **游戏独占时不强行读**：报 `cache_locked`，请用户关闭游戏再读。不用卷影复制（VSS）：需要管理员权限，计划里不请求管理员权限。
+- **读到写了一半的内容**：按“没解析到”处理，下次再读，不高频重试。
+
+读游戏缓存的步骤：
 
 1. **找游戏目录**：读游戏日志（原神 `output_log.txt`，星铁 `Player.log`，在 `%USERPROFILE%\AppData\LocalLow\` 下，国服、国际服路径不同），用正则取出 `YuanShen_Data` / `GenshinImpact_Data` / `StarRail_Data` 所在目录。日志只用来找目录，里面没有抽卡链接（实测）。找不到时让用户手动选择游戏目录（或直接选 `data_2` 文件），并记住这个路径。
 2. **找缓存文件**：`<数据目录>\webCaches\<版本号>\Cache\Cache_Data\data_2`。`webCaches` 下还有 `Cache`、`Network`、`IndexedDB` 等不是版本号的目录，要按版本号格式（如 `2.55.0.0`）过滤。按版本号从新到旧找：最新的版本目录里可能一条链接都没有（这个版本还没打开过抽卡记录），就去更早的目录找。
-3. **取链接**：**只读打开** `data_2`（不加锁，游戏运行时也能读；不复制，避免在临时目录留下含 authkey 的副本），从后往前找抽卡记录链接。匹配规则按“有 `authkey` + 和抽卡有关的路径 + 有 `game_biz`”，**不要写死页面路径**：
+3. **取链接**：按上面的规则只读打开 `data_2`（不复制，避免在临时目录留下含 authkey 的副本；最新版本目录被游戏独占时报 `cache_locked`，不退回旧目录），从后往前找抽卡记录链接。匹配规则按“有 `authkey` + 和抽卡有关的路径 + 有 `game_biz`”，**不要写死页面路径**：
    - 页面地址和接口地址都会出现，两种都要能处理；
    - 页面路径会变（实测原神是 `hk4e/event/e20190909gacha-<哈希>/index.html`，不是常见的 `gacha-v3`；星铁是 `hkrpg/event/e20211215gacha-v2/index.html`）；
    - 接口域名也变过（星铁现在是 `public-operation-hkrpg.mihoyo.com/common/gacha_record/api/getGachaLog`，更早是 `api-takumi.mihoyo.com`）。
@@ -84,7 +92,7 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 本机实测（2026-10-19，Windows，国服两款，`mhy.inspect` 只读检查）：日志里都能找到游戏目录、都没有抽卡链接；原神 `data_2` 里去重后 10 条抽卡链接；星铁有 15 个版本目录，最新的（2.53.0.0）里一条都没有，更早的目录里有；两款的接口路径都是 `gacha_record`。当时缓存里的链接都已过期，真实测试前要先在游戏里打开一次抽卡记录。
 
-星铁（2026-10-19）：游戏开着时，最新版本目录的 `data_2` 读不了（PermissionError），后端原来会悄悄退回旧目录的过期链接；现在 Windows 上用允许共享读、写、删除的方式打开，仍然读不了时报 `cache_locked`，请用户关闭游戏后再读。
+星铁（2026-10-19）：游戏开着时，用普通的 `open()` 读不了最新版本目录的 `data_2`（PermissionError），后端原来会悄悄退回旧目录的过期链接。现在按上面的只读规则打开，仍然读不了时报 `cache_locked`。
 
 第一次真实请求（2026-10-19，原神国服，`mhy.probe genshin --yes`，维护者同意后由本地会话运行）：缓存里第一条链接就有效；每个卡池按 `end_id` 翻页到最后一页，所有格式检查都通过（id 都是 19 位数字字符串、时间是 `YYYY-MM-DD HH:MM:SS`、从新到旧、没有重复、uid 和链接一致）。字段是 `count, gacha_type, id, item_id, item_type, lang, name, op_gacha_type, rank_type, time, uid`；`item_id` 全部为空（要按名称映射）；查 301 时同时返回 301 和 400 的记录；原神的接口不返回 `region_time_zone`（时区按区服推断）。`op_gacha_type` 的含义还没确认，`mhy.probe` 已经会输出 `gacha_type → op_gacha_type` 的对应，下次实验时确认。空卡池第 1 页就结束。整个过程十几秒，没有遇到 -101、-110。
 

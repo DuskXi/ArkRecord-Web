@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ..readonly import read_bytes
 from .games import Game
 
 # 日志可能很大；只读最后这么多字节，游戏目录在每次启动时都会写进去
@@ -18,11 +19,8 @@ def log_paths(game: Game, home: Path) -> list[Path]:
 
 
 def _read_tail(path: Path) -> str:
-    with path.open("rb") as file:
-        file.seek(0, 2)
-        size = file.tell()
-        file.seek(max(0, size - MAX_LOG_BYTES))
-        return file.read().decode("utf-8", errors="replace")
+    # 游戏开着时也在写日志、启动时还会轮换（改名），所以完全只读、读完马上关闭（readonly.py）
+    return read_bytes(path, MAX_LOG_BYTES, tail=True).decode("utf-8", errors="replace")
 
 
 def data_dirs_in_log(text: str, game: Game) -> list[Path]:
