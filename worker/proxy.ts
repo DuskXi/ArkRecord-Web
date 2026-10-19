@@ -8,7 +8,7 @@ import { type CloudEnv, handleCloud } from './cloud'
 import { FEEDBACK_PREFIX, hashToken, newFeedbackId, newFeedbackToken, parseFeedback } from './feedback'
 import { handleImage, IMAGE_PREFIX } from './images'
 import { handlePage, PAGES } from './pages'
-import { kindsFor, parseDesktopPing, saltedKey } from './desktop-stats'
+import { kindsFor, parseDesktopPing, saltedKey, type StatsPlatform } from './desktop-stats'
 import { checkDesktopClient, checkSameOrigin, rateLimitClient } from './security'
 import { parsePing, STATS_PREFIX } from './stats'
 import { findRoute, type Limiter, type Route, type Upstream } from './upstreams'
@@ -160,9 +160,10 @@ const MAX_PING_BYTES = 512
  */
 export async function handleStats(request: Request, env: Env, url: URL, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
   const path = url.pathname.slice(STATS_PREFIX.length)
-  if ((path === 'desktop/device' || path === 'desktop/uid') && request.method === 'POST') {
-    return handleDesktopStats(request, env, path.slice('desktop/'.length))
+  if ((path === 'desktop/device' || path === 'desktop/uid' || path === 'desktop/user') && request.method === 'POST') {
+    return handleSaltedStats(request, env, path.slice('desktop/'.length), 'desktop')
   }
+  if (path === 'user' && request.method === 'POST') return handleSaltedStats(request, env, 'user', 'web')
   if (path === 'ping' && request.method === 'POST') {
     const rejection = checkSameOrigin(request)
     if (rejection) return proxyError(403, rejection)
@@ -207,12 +208,14 @@ export async function handleStats(request: Request, env: Env, url: URL, ctx?: Pi
 }
 
 /**
- * 桌面版的统计上报（见 desktop-stats.ts）：POST /api/stats/desktop/device、/api/stats/desktop/uid。
- * 由桌面版的 Python 后端发出，不是浏览器，所以不做同源检查，改为检查 x-arkrecord-client: desktop，并拒绝其他网站的页面。
+ * 加盐的统计上报（见 desktop-stats.ts）：
+ *   POST /api/stats/desktop/device、/desktop/uid、/desktop/user：桌面版的 Python 后端发出，不是浏览器，所以不做同源检查，
+ *     改为检查 x-arkrecord-client: desktop，并拒绝其他网站的页面；
+ *   POST /api/stats/user：网页版的同步识别码，只接受本站页面的请求（与转发相同的同源检查）。
  * 上报的哈希先用服务器密钥 STATS_UID_SALT 做 HMAC，再交给计数器；没有配置密钥时拒绝（503），不保存没加盐的值。
  */
-async function handleDesktopStats(request: Request, env: Env, kind: string): Promise<Response> {
-  const rejection = checkDesktopClient(request)
+async function handleSaltedStats(request: Request, env: Env, kind: string, platform: StatsPlatform): Promise<Response> {
+  const rejection = platform === 'desktop' ? checkDesktopClient(request) : checkSameOrigin(request)
   if (rejection) return proxyError(403, rejection)
   if (!(await withinRateLimit(env, 'data', request))) return proxyError(429, 'rate_limited', { 'retry-after': '60' })
   if (!(request.headers.get('content-type') ?? '').startsWith('application/json')) return proxyError(415, 'json_required')
@@ -228,7 +231,7 @@ async function handleDesktopStats(request: Request, env: Env, kind: string): Pro
   if (!env.STATS) return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } })
   const key = await saltedKey(env.STATS_UID_SALT, ping)
   const stub = env.STATS.get(env.STATS.idFromName('global'))
-  const res = await stub.fetch('https://stats/desktop', { method: 'POST', body: JSON.stringify({ kinds: kindsFor(ping), key }) })
+  const res = await stub.fetch('https://stats/desktop', { method: 'POST', body: JSON.stringify({ kinds: kindsFor(ping, platform), key }) })
   return new Response(null, { status: res.ok ? 204 : 502, headers: { 'cache-control': 'no-store' } })
 }
 

@@ -121,7 +121,8 @@ const sources = [
           <ul class="list-disc space-y-1 pl-5">
             <li><b class="text-highlighted">设备</b>：每天最多一次，上报安装时随机生成的设备编号的哈希（不读取任何硬件信息），以及有没有登录账号。</li>
             <li><b class="text-highlighted">账号</b>：每个账号每天最多一次、单独上报“游戏 + UID”加盐后的哈希；不上传 UID、昵称、token 或寻访记录。</li>
-            <li><b class="text-highlighted">互不关联</b>：设备和账号分开、间隔随机时间上报，请求里没有共同的内容，服务器无法知道哪个账号在哪台设备上。</li>
+            <li><b class="text-highlighted">同步识别码</b>：开通过云同步才有。每天最多一次、单独上报它加了前缀后的哈希，用来统计用过云同步的独立用户数。识别码是第一次开通云同步时生成的随机数，不含任何账号或设备信息。</li>
+            <li><b class="text-highlighted">互不关联</b>：设备、账号、同步识别码分开、间隔随机时间上报，请求里没有共同的内容，服务器无法知道哪个账号在哪台设备上。</li>
             <li><b class="text-highlighted">服务器保存什么</b>：收到的哈希再用只有服务器知道的密钥加一次密（HMAC）后才保存，用来去重计数；不保存 IP。按天的记录保留 35 天，按月的保留 13 个月。</li>
             <li>实现见源码 <code class="font-mono text-xs">desktop/backend/arkrecord_backend/stats.py</code> 与 <code class="font-mono text-xs">worker/desktop-stats.ts</code>，细节见 SECURITY.md。</li>
           </ul>
@@ -145,7 +146,11 @@ const sources = [
           <ul class="list-disc space-y-1 pl-5">
             <li>
               <b class="text-highlighted">上报什么</b>：每天最多一次，只有四个开关——这个浏览器是否第一次来、本月是否第一次来、这个浏览器里有哪些游戏的账号（演示账号不算）、其中哪些是新加的。
-              不包含账号、UID、昵称、寻访记录，也不生成或上传任何可以识别你的标识符；“是否来过”记在你自己浏览器的 localStorage 里。
+              不包含账号、UID、昵称、寻访记录或任何标识符；“是否来过”记在你自己浏览器的 localStorage 里。
+            </li>
+            <li>
+              <b class="text-highlighted">同步识别码</b>：只有开通过云同步才有。它是第一次开通云同步时生成的随机数，随加密的云同步数据保存（服务器看不到），同一个人的账号共用。
+              “全部接受”后，每天最多一次、单独上报它加了前缀后的哈希，用来统计用过云同步的独立用户数；服务器再用自己的密钥加密后才保存。见 <code class="font-mono text-xs">src/lib/sync-user-stats.ts</code>。
             </li>
             <li><b class="text-highlighted">保存什么</b>：服务端只有几个计数器（累计人数、每天和每月的人数），没有逐条的访问记录，不保存 IP。</li>
             <li><b class="text-highlighted">局限</b>：同一个人换浏览器、或清除了浏览器数据，会被算作新用户，所以“累计用户”是浏览器数，略多于实际人数。</li>

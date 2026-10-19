@@ -31,6 +31,8 @@ describe('desktop stats', () => {
     reportDesktopStats(accounts as never)
     expect(rpc).toHaveBeenCalledWith('stats.setEnabled', { enabled: false })
     expect(rpc).toHaveBeenCalledWith('stats.report', { accounts: accountsForDesktopStats(accounts as never) })
+    reportDesktopStats([], 'a'.repeat(32))
+    expect(rpc).toHaveBeenLastCalledWith('stats.report', { accounts: [], user: 'a'.repeat(32) })
   })
 
   it('treats backend failures as unavailable', async () => {

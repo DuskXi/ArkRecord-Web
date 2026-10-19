@@ -165,7 +165,7 @@ interface ArkrecordBridge {
 |---|---|---|---|
 | `stats.status` | 无 | `{enabled, available}` | `available` 为 false 时（没设置上报地址或数据目录）不会上报 |
 | `stats.setEnabled` | `{enabled}` | `{enabled}` | 关闭后不再发出任何统计请求，已经排好的也不发 |
-| `stats.report` | `{accounts: [{game, uid}]}` | `{scheduled}` | 页面在账号列表变化时调用（`src/lib/desktop-stats.ts`）；后端每天去重，设备马上报，每个账号在 30 到 300 秒后单独、乱序上报 |
+| `stats.report` | `{accounts: [{game, uid}], user?}` | `{scheduled}` | 页面在账号列表变化时调用（`src/lib/desktop-stats.ts`）；`user` 是本机的同步识别码（32 位十六进制，开通过云同步才有）。后端每天去重，设备马上报，每个账号和同步识别码在 30 到 300 秒后单独、乱序上报 |
 
 主进程启动后端时要传两个环境变量：
 

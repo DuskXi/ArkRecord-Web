@@ -3,11 +3,13 @@
 - 默认开启，页面的“关于”里可以关闭（stats.setEnabled）；关闭后不发出任何统计请求。
 - 设备：安装时随机生成的设备 ID（不读任何硬件信息），上报它的 SHA-256 和“有没有登录账号”；每天最多一次。
 - 账号：每个账号单独一次请求，上报 SHA-256("arkrecord-uid-v1:<游戏>:<UID>")；每个账号每天最多一次。
-- 设备和账号互相不关联：分开请求，账号的请求在设备之后随机延迟、顺序打乱，请求里没有共同字段。
+- 用户：同步识别码（开通过云同步才有，见 docs/rewrite/sync-user-id.md），
+  上报 SHA-256("arkrecord-user-v1:<识别码>")；每天最多一次。
+- 设备、账号、用户互相不关联：分开请求，账号和用户的请求在设备之后随机延迟、顺序打乱，请求里没有共同字段。
 - 服务器再用自己的密钥做 HMAC 才保存（UID 只有 9 位左右，单纯哈希可以穷举反查）。
 - 只发给 ARKRECORD_STATS_URL 指定的本站地址（正式站或测试站）；没设置时不上报。
 
-状态存在应用数据目录（ARKRECORD_DATA_DIR）的 stats.json：开关、设备 ID、今天已经报过的设备 / 账号。
+状态存在应用数据目录（ARKRECORD_DATA_DIR）的 stats.json：开关、设备 ID、今天已经报过的设备 / 账号 / 用户。
 """
 
 from __future__ import annotations
@@ -34,7 +36,9 @@ log = logging.getLogger(__name__)
 ALLOWED_BASES = ("https://ark.kaltsit.dev", "https://ark-next.kaltsit.dev")
 GAMES = ("arknights", "endfield", "genshin", "starrail")
 UID_PREFIX = "arkrecord-uid-v1"
+USER_PREFIX = "arkrecord-user-v1"
 UID_RE = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
+SYNC_USER_RE = re.compile(r"^[0-9a-f]{32}$")
 MAX_ACCOUNTS = 64
 # 账号的请求在设备之后多久发（秒），每个账号单独随机
 UID_DELAY_RANGE = (30.0, 300.0)
@@ -50,6 +54,10 @@ def cn_day(now: datetime | None = None) -> str:
 
 def uid_hash(game: str, uid: str) -> str:
     return hashlib.sha256(f"{UID_PREFIX}:{game}:{uid}".encode()).hexdigest()
+
+
+def user_hash(sync_user: str) -> str:
+    return hashlib.sha256(f"{USER_PREFIX}:{sync_user}".encode()).hexdigest()
 
 
 def device_hash(device_id: str) -> str:
@@ -148,13 +156,14 @@ class Stats:
             state["sent"] = sent
             self._save(state)
 
-    def _send_uid(self, game: str, hashed: str, day: str) -> None:
+    def _send_later(self, kind: str, body: dict[str, Any], key: str, day: str) -> None:
+        """随机延迟后发出的账号、用户上报：发之前再看一次开关和今天报过没有。"""
         with self._lock:
             state = self._load()
-            if not state["enabled"] or state["sent"].get(f"uid:{hashed}") == day:
+            if not state["enabled"] or state["sent"].get(key) == day:
                 return
-        if self._post("uid", {"game": game, "hash": hashed}):
-            self._mark_sent(f"uid:{hashed}", day)
+        if self._post(kind, body):
+            self._mark_sent(key, day)
 
     # ---- RPC 方法 ----
 
@@ -180,12 +189,21 @@ class Stats:
         return {"enabled": params["enabled"]}
 
     def report(self, params: Params) -> dict[str, Any]:
-        """stats.report {accounts: [{game, uid}]} → 今天还没报过的设备和账号，安排上报（立即返回）。
+        """stats.report {accounts: [{game, uid}], user?} → 今天还没报过的设备、账号和用户，安排上报（立即返回）。
 
         accounts 是这台电脑上的真实账号（不含演示账号）。没有账号时，设备记为“没登录”。
+        user 是本机的同步识别码（32 位十六进制），开通过云同步才有。
         """
-        if not isinstance(params, dict) or set(params) != {"accounts"} or not isinstance(params["accounts"], list):
-            raise RpcError(INVALID_PARAMS, "参数应为 {accounts: [{game, uid}]}")
+        if (
+            not isinstance(params, dict)
+            or "accounts" not in params
+            or not set(params) <= {"accounts", "user"}
+            or not isinstance(params["accounts"], list)
+        ):
+            raise RpcError(INVALID_PARAMS, "参数应为 {accounts: [{game, uid}], user?}")
+        sync_user = params.get("user")
+        if sync_user is not None and (not isinstance(sync_user, str) or not SYNC_USER_RE.match(sync_user)):
+            raise RpcError(INVALID_PARAMS, "user 应为 32 位十六进制的同步识别码")
         accounts: list[tuple[str, str]] = []
         for item in params["accounts"][:MAX_ACCOUNTS]:
             if not isinstance(item, dict) or set(item) != {"game", "uid"}:
@@ -204,7 +222,15 @@ class Stats:
                 return {"scheduled": 0}
             device_due = state["sent"].get("device") != day
             device = device_hash(state["deviceId"])
-            due = [(g, uid_hash(g, u)) for g, u in accounts if state["sent"].get(f"uid:{uid_hash(g, u)}") != day]
+            later: list[tuple[str, dict[str, Any], str]] = []
+            for g, u in accounts:
+                hashed = uid_hash(g, u)
+                if state["sent"].get(f"uid:{hashed}") != day:
+                    later.append(("uid", {"game": g, "hash": hashed}, f"uid:{hashed}"))
+            if sync_user is not None:
+                hashed = user_hash(sync_user)
+                if state["sent"].get(f"user:{hashed}") != day:
+                    later.append(("user", {"hash": hashed}, f"user:{hashed}"))
 
         scheduled = 0
         if device_due:
@@ -215,10 +241,10 @@ class Stats:
 
             self._schedule(0.0, send_device)
             scheduled += 1
-        self._rng.shuffle(due)
-        for game, hashed in due:
+        self._rng.shuffle(later)
+        for kind, body, key in later:
             delay = self._rng.uniform(*UID_DELAY_RANGE)
-            self._schedule(delay, lambda game=game, hashed=hashed: self._send_uid(game, hashed, day))
+            self._schedule(delay, lambda kind=kind, body=body, key=key: self._send_later(kind, body, key, day))
             scheduled += 1
         return {"scheduled": scheduled}
 

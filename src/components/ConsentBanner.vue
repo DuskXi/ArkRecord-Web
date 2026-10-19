@@ -31,7 +31,7 @@ const app = useAppStore()
           <b class="text-highlighted">必要（始终开启）</b>：在你的浏览器里保存你自己的寻访记录、账号和设置。只存在你的浏览器里，不会上传。
         </li>
         <li>
-          <b class="text-highlighted">统计（可选）</b>：本站的匿名使用人数统计（不含账号、UID 和任何标识符），以及 Cloudflare Web Analytics（不使用 Cookie 的访问量统计）。
+          <b class="text-highlighted">统计（可选）</b>：本站的匿名使用人数统计（不含账号和 UID；开通过云同步的，另外上报同步识别码的哈希，用来数独立用户），以及 Cloudflare Web Analytics（不使用 Cookie 的访问量统计）。
           <ULink to="/about#usage" class="text-primary">详细说明</ULink>
         </li>
       </ul>

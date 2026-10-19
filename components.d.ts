@@ -48,6 +48,7 @@ declare module 'vue' {
     SixStarWall: typeof import('./src/components/ui/SixStarWall.vue')['default']
     StatTile: typeof import('./src/components/ui/StatTile.vue')['default']
     SyncButton: typeof import('./src/components/shell/SyncButton.vue')['default']
+    SyncUserConflictDialog: typeof import('./src/components/cloud/SyncUserConflictDialog.vue')['default']
     TimePanel: typeof import('./src/components/stats/TimePanel.vue')['default']
     TokenConsentDialog: typeof import('./src/components/cloud/TokenConsentDialog.vue')['default']
     TokenDisclosure: typeof import('./src/components/cloud/TokenDisclosure.vue')['default']

@@ -52,6 +52,14 @@ describe('上报内容校验', () => {
     expect(parseDesktopPing('uid', [H1])).toBeNull()
   })
 
+  it('用户（同步识别码）：只有 hash；同时计入合计和来源', () => {
+    expect(parseDesktopPing('user', { hash: H1 })).toEqual({ kind: 'user', hash: H1 })
+    expect(parseDesktopPing('user', { hash: H1, game: 'arknights' })).toBeNull()
+    expect(parseDesktopPing('user', { hash: 'c'.repeat(32) })).toBeNull()
+    expect(kindsFor({ kind: 'user', hash: H1 })).toEqual(['user', 'user:desktop'])
+    expect(kindsFor({ kind: 'user', hash: H1 }, 'web')).toEqual(['user', 'user:web'])
+  })
+
   it('没登录的设备同时计入设备总数', () => {
     expect(kindsFor({ kind: 'device', hash: H1, loggedIn: false })).toEqual(['device', 'device_nologin'])
     expect(kindsFor({ kind: 'device', hash: H1, loggedIn: true })).toEqual(['device'])
@@ -94,6 +102,20 @@ describe('计数', () => {
     expect(summary.devicesNoLogin).toEqual({ all: 1, month: 1, today: 1 })
     expect(summary.uids.arknights).toEqual({ all: 1, month: 1, today: 1 })
     expect(summary.uids.genshin).toEqual({ all: 0, month: 0, today: 0 })
+    expect(summary.users.all).toEqual({ all: 0, month: 0, today: 0 })
+  })
+
+  it('用户：同一个人网页版、桌面版都报，合计里只算一次', () => {
+    const sql = memorySql()
+    initDesktopSchema(sql)
+    recordDesktop(sql, { kinds: ['user', 'user:web'], key: H1 }, NOON)
+    recordDesktop(sql, { kinds: ['user', 'user:desktop'], key: H1 }, NOON)
+    recordDesktop(sql, { kinds: ['user', 'user:web'], key: H2 }, NOON)
+    expect(readDesktopSummary(sql, NOON).users).toEqual({
+      all: { all: 2, month: 2, today: 2 },
+      web: { all: 2, month: 2, today: 2 },
+      desktop: { all: 1, month: 1, today: 1 },
+    })
   })
 
   it('第二天的“今天”重新计数，累计和本月保留', () => {
@@ -152,6 +174,13 @@ function post(path: string, body: unknown, env: Env, extra: Record<string, strin
   return worker.fetch(request as never, env, ctx) as Promise<Response>
 }
 
+/** 网页版的同步识别码上报：本站页面发出的同源请求 */
+function postWeb(body: unknown, env: Env, extra: Record<string, string> = {}): Promise<Response> {
+  const headers = { 'x-arkrecord-client': '1', 'content-type': 'application/json', 'sec-fetch-site': 'same-origin', origin: SELF, ...extra }
+  const request = new Request(`${SELF}/api/stats/user`, { method: 'POST', headers, body: JSON.stringify(body) })
+  return worker.fetch(request as never, env, ctx) as Promise<Response>
+}
+
 describe('上报接口', () => {
   it('只保存加盐后的 HMAC，不保存上报的哈希', async () => {
     const { env, bodies } = fakeStats()
@@ -185,6 +214,28 @@ describe('上报接口', () => {
     expect((await post('uid', { hash: H1, game: 'arknights' }, noSalt)).status).toBe(503)
     const shortSalt = { ...env, STATS_UID_SALT: 'short' } as unknown as Env
     expect((await post('uid', { hash: H1, game: 'arknights' }, shortSalt)).status).toBe(503)
+    expect(bodies).toHaveLength(0)
+  })
+
+  it('用户：桌面版和网页版用同一个 HMAC（合计里只算一次），分别计入来源', async () => {
+    const { env, bodies } = fakeStats()
+    expect((await post('user', { hash: H3 }, env)).status).toBe(204)
+    expect((await postWeb({ hash: H3 }, env)).status).toBe(204)
+    const [desktop, web] = bodies as { kinds: string[]; key: string }[]
+    expect(desktop!.kinds).toEqual(['user', 'user:desktop'])
+    expect(web!.kinds).toEqual(['user', 'user:web'])
+    expect(web!.key).toBe(desktop!.key)
+    expect(desktop!.key).not.toBe(await saltedKey(SALT, { kind: 'device', hash: H3, loggedIn: true }))
+    expect(JSON.stringify(bodies)).not.toContain(H3)
+  })
+
+  it('网页版的用户上报只接受本站页面；桌面版的接口不接受网页的标记', async () => {
+    const { env, bodies } = fakeStats()
+    expect((await postWeb({ hash: H1 }, env, { 'sec-fetch-site': 'cross-site' })).status).toBe(403)
+    expect((await postWeb({ hash: H1 }, env, { origin: 'https://evil.example' })).status).toBe(403)
+    expect((await postWeb({ hash: H1 }, env, { 'x-arkrecord-client': 'desktop' })).status).toBe(403)
+    expect((await post('user', { hash: H1 }, env, { 'x-arkrecord-client': '1' })).status).toBe(403)
+    expect((await postWeb({ hash: H1, uid: '1' }, env)).status).toBe(400)
     expect(bodies).toHaveLength(0)
   })
 

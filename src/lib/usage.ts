@@ -8,6 +8,7 @@
  *   games     这个浏览器里有哪些游戏的账号（arknights / endfield；演示账号不算）
  *   newGames  其中第一次出现的
  * 只有用户在统计同意里选择“全部接受”之后才会上报（见 consent.ts）；选择“仅必要”或还没选择时不发出任何请求。
+ * 开通过云同步的浏览器另有同步识别码的统计（sync-user-stats.ts），单独请求，和这里互不关联。
  */
 import { readConsent } from './consent'
 import { DEMO_ACCOUNT_ID } from './demo-account'

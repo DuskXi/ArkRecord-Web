@@ -10,7 +10,7 @@ import pytest
 from arkrecord_backend.app import build_methods
 from arkrecord_backend.hg import UpstreamResponse
 from arkrecord_backend.rpc import INVALID_PARAMS, RpcError
-from arkrecord_backend.stats import UID_DELAY_RANGE, Stats, cn_day, uid_hash
+from arkrecord_backend.stats import UID_DELAY_RANGE, Stats, cn_day, uid_hash, user_hash
 
 BASE = "https://ark-next.kaltsit.dev"
 NOON = datetime(2026, 10, 16, 4, 0, tzinfo=UTC)  # 北京时间 12:00
@@ -46,6 +46,7 @@ def make(tmp_path, server=None, base=BASE, clock=lambda: NOON):
 
 
 ACCOUNTS = [{"game": "arknights", "uid": "100000001"}, {"game": "genshin", "uid": "200000002"}]
+SYNC_USER = "0123456789abcdef0123456789abcdef"  # 假的同步识别码
 
 
 def test_device_and_uids_are_separate_requests_without_shared_fields(tmp_path):
@@ -75,6 +76,26 @@ def test_uid_hash_is_salted_with_game_prefix():
     expected = hashlib.sha256(b"arkrecord-uid-v1:arknights:100000001").hexdigest()
     assert uid_hash("arknights", "100000001") == expected
     assert uid_hash("endfield", "100000001") != expected
+
+
+def test_sync_user_is_a_separate_delayed_request(tmp_path):
+    server = FakeServer()
+    stats, scheduler = make(tmp_path, server)
+    assert stats.report({"accounts": ACCOUNTS, "user": SYNC_USER}) == {"scheduled": 4}
+    assert all(UID_DELAY_RANGE[0] <= d <= UID_DELAY_RANGE[1] for d, _ in scheduler.tasks[1:])
+    scheduler.run()
+    users = [c for c in server.calls if c["url"] == f"{BASE}/api/stats/desktop/user"]
+    assert len(users) == 1 and users[0]["body"] == {"hash": user_hash(SYNC_USER)}
+    assert SYNC_USER not in json.dumps(server.calls)
+    # 每天一次；识别码换了（回答“是同一个人”之后）当天也报新的
+    assert stats.report({"accounts": ACCOUNTS, "user": SYNC_USER}) == {"scheduled": 0}
+    assert stats.report({"accounts": ACCOUNTS, "user": "f" * 32}) == {"scheduled": 1}
+
+
+def test_user_hash_has_its_own_prefix():
+    assert user_hash(SYNC_USER) == hashlib.sha256(f"arkrecord-user-v1:{SYNC_USER}".encode()).hexdigest()
+    # 和网页版的 userHash 一致（src/lib/sync-user-stats.test.ts）
+    assert user_hash(SYNC_USER) == "5d4cf0e3d5499b08c735e6effd49a9b462c4aa9d0a09270333cca92198832512"
 
 
 def test_no_accounts_means_logged_out_device(tmp_path):
@@ -147,7 +168,17 @@ def test_without_data_dir_nothing_is_written_or_sent(monkeypatch):
 
 @pytest.mark.parametrize(
     "params",
-    [None, {}, {"accounts": "x"}, {"accounts": [{"game": "arknights"}]}, {"accounts": [], "x": 1}],
+    [
+        None,
+        {},
+        {"accounts": "x"},
+        {"accounts": [{"game": "arknights"}]},
+        {"accounts": [], "x": 1},
+        {"user": SYNC_USER},
+        {"accounts": [], "user": "ABC"},
+        {"accounts": [], "user": SYNC_USER.upper()},
+        {"accounts": [], "user": 1},
+    ],
 )
 def test_report_validates_params(tmp_path, params):
     stats, _ = make(tmp_path)

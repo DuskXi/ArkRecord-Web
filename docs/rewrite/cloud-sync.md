@@ -474,6 +474,7 @@ KEK_hg = HMAC-SHA256(SYNC_HG_SECRET, "arkrecord/cloud-sync/v1/hg" ‖ 0x00 ‖ l
 - 账号信息（昵称、渠道、观察时间）放在头部。
 - 截图识别的已拥有干员（`roster`，两个游戏都有）：每名干员一条 `{itemId, name, copies, potential, observedAt, importedAt, source}`，
   按 `itemId` 排序、RFC 8785 规范化。**格式版本 2**；没有已拥有干员时一律写成版本 1，以前的网页也能读（规范唯一：版本 2 必须有这一项，版本 1 不能有）。
+- 同步识别码（`user`，见 [sync-user-id.md](sync-user-id.md)）：头部的 `{id, createdAt, merged?}`，`merged` 按字典序排好、不含 `id`。**格式版本 3**；没有识别码时照旧写成版本 1 或 2（规范唯一：版本 3 必须有这一项；版本 3 里没有已拥有干员时省略 `roster`）。以前的网页读到版本 3 只读不写，提示刷新。
 - 云同步**不复用导出文件格式**：导出格式导入终末地记录时会把 `source` 改成 `import`，不是无损的。云同步直接对本地表的字段编码。
 
 ### 9.3 编码规范：四个性质
@@ -631,6 +632,7 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 | 账号信息（昵称、渠道） | 观察时间更新的 → 规范编码字节序更小的 |
 | 终末地卡池信息 | `fetchedAt` 更新的 → 规范编码字节序更小的 |
 | 已拥有干员（截图识别） | `observedAt`（截图时间）更新的 → `importedAt`（导入时间）更新的 → 规范编码字节序更大的 |
+| 同步识别码 | 保留先生成的（`createdAt` 更早，相同时 `id` 更小），其余识别码并进 `merged`（并集）。不是取最大值，但同样满足幂等、交换、结合 |
 
 在全序上取最大值，天然满足幂等、交换、结合。
 

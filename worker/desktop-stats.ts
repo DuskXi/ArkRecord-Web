@@ -1,11 +1,13 @@
 /**
- * 桌面版的使用人数统计（维护者 2026-10-19 决定）。网页版的匿名统计见 stats.ts，不受影响。
+ * 桌面版的使用人数统计（维护者 2026-10-19 决定），以及网页版和桌面版共用的同步识别码计数。网页版的匿名统计见 stats.ts，不受影响。
  *
  * 由桌面版的 Python 后端上报（desktop/backend/arkrecord_backend/stats.py），默认开启，可以在“关于”页关闭。
- * 三种计数，互相不关联：
+ * 几种计数，互相不关联：
  *   - 设备：安装时随机生成的设备 ID（不读任何硬件信息），上报它的 SHA-256；附带“有没有登录账号”，用来数没登录的设备；
- *   - UID：每个游戏账号单独一次请求，上报 SHA-256("arkrecord-uid-v1:<游戏>:<UID>")。
- * 设备和 UID 分开请求、间隔随机时间，请求里没有共同字段，服务器无法把账号和设备对上。
+ *   - UID：每个游戏账号单独一次请求，上报 SHA-256("arkrecord-uid-v1:<游戏>:<UID>")；
+ *   - 用户：同步识别码（src/lib/sync-user.ts，开通过云同步才有），上报 SHA-256("arkrecord-user-v1:<识别码>")。
+ *     桌面版由 Python 后端上报；网页版由页面上报（同源接口，只在统计选了“全部接受”之后）。见 docs/rewrite/sync-user-id.md。
+ * 每种分开请求、间隔随机时间，请求里没有共同字段，服务器无法把账号、设备、用户对上。
  *
  * 服务器收到后，再用只有服务器知道的密钥 STATS_UID_SALT 做 HMAC，只保存 HMAC：
  * UID 只有 9 位左右，单纯哈希（即使加了公开的前缀）可以穷举反查；加了服务器密钥后，存下来的值没有密钥就反查不出。
@@ -17,13 +19,15 @@ import { cnDay, type SqlLike } from './stats'
 export const DESKTOP_GAMES = ['arknights', 'endfield', 'genshin', 'starrail'] as const
 export type DesktopGame = (typeof DESKTOP_GAMES)[number]
 
-export type DesktopPing = { kind: 'device'; hash: string; loggedIn: boolean } | { kind: 'uid'; game: DesktopGame; hash: string }
+export type DesktopPing = { kind: 'device'; hash: string; loggedIn: boolean } | { kind: 'uid'; game: DesktopGame; hash: string } | { kind: 'user'; hash: string }
+/** 用户计数从哪里报上来 */
+export type StatsPlatform = 'desktop' | 'web'
 
 const SHA256_HEX = /^[0-9a-f]{64}$/
 const DAY_RETENTION = 35
 const MONTH_RETENTION = 13
-/** 计数器种类：device、device_nologin、uid:<游戏> */
-const KINDS = new Set(['device', 'device_nologin', ...DESKTOP_GAMES.map((g) => `uid:${g}`)])
+/** 计数器种类：device、device_nologin、uid:<游戏>、user（同步识别码，网页版和桌面版合计）、user:web、user:desktop */
+const KINDS = new Set(['device', 'device_nologin', ...DESKTOP_GAMES.map((g) => `uid:${g}`), 'user', 'user:web', 'user:desktop'])
 
 /** 只接受规定的字段和格式，其他内容一律拒绝 */
 export function parseDesktopPing(kind: string, body: unknown): DesktopPing | null {
@@ -39,18 +43,23 @@ export function parseDesktopPing(kind: string, body: unknown): DesktopPing | nul
     if (!(DESKTOP_GAMES as readonly unknown[]).includes(b.game)) return null
     return { kind, game: b.game as DesktopGame, hash: b.hash }
   }
+  if (kind === 'user') {
+    if (Object.keys(b).some((k) => k !== 'hash')) return null
+    return { kind, hash: b.hash }
+  }
   return null
 }
 
-/** 这次上报要计入的计数器 */
-export function kindsFor(ping: DesktopPing): string[] {
+/** 这次上报要计入的计数器。用户计数同时计入合计和来源（同一个人网页版、桌面版都用，合计里只算一次） */
+export function kindsFor(ping: DesktopPing, platform: StatsPlatform = 'desktop'): string[] {
   if (ping.kind === 'uid') return [`uid:${ping.game}`]
+  if (ping.kind === 'user') return ['user', `user:${platform}`]
   return ping.loggedIn ? ['device'] : ['device', 'device_nologin']
 }
 
-/** 服务器密钥做的 HMAC-SHA256（十六进制）。设备和 UID 用不同的前缀，同一个值在两种计数里也对不上 */
+/** 服务器密钥做的 HMAC-SHA256（十六进制）。设备、UID、用户用不同的前缀，同一个值在不同计数里也对不上 */
 export async function saltedKey(secret: string, ping: DesktopPing): Promise<string> {
-  const message = ping.kind === 'uid' ? `uid:${ping.game}:${ping.hash}` : `device:${ping.hash}`
+  const message = ping.kind === 'uid' ? `uid:${ping.game}:${ping.hash}` : `${ping.kind}:${ping.hash}`
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message)))
   return Array.from(mac, (b) => b.toString(16).padStart(2, '0')).join('')
@@ -99,6 +108,8 @@ export interface DesktopSummary {
   /** 没登录任何账号的设备 */
   devicesNoLogin: DesktopCounts
   uids: Record<DesktopGame, DesktopCounts>
+  /** 同步识别码：用过云同步的独立用户（网页版只算选了“全部接受”的） */
+  users: { all: DesktopCounts; web: DesktopCounts; desktop: DesktopCounts }
 }
 
 export function readDesktopSummary(sql: SqlLike, now = Date.now()): DesktopSummary {
@@ -119,5 +130,6 @@ export function readDesktopSummary(sql: SqlLike, now = Date.now()): DesktopSumma
     devices: count('device'),
     devicesNoLogin: count('device_nologin'),
     uids: Object.fromEntries(DESKTOP_GAMES.map((g) => [g, count(`uid:${g}`)])) as Record<DesktopGame, DesktopCounts>,
+    users: { all: count('user'), web: count('user:web'), desktop: count('user:desktop') },
   }
 }

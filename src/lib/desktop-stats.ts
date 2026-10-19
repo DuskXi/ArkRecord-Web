@@ -40,9 +40,12 @@ export function accountsForDesktopStats(accounts: readonly Pick<Account, 'id' | 
   return accounts.filter((a) => a.id !== DEMO_ACCOUNT_ID).map((a) => ({ game: a.game, uid: a.uid }))
 }
 
-/** 把这台电脑上的账号告诉后端；关闭了统计时后端什么都不发。失败不影响任何功能 */
-export function reportDesktopStats(accounts: readonly Pick<Account, 'id' | 'game' | 'uid'>[]): void {
+/**
+ * 把这台电脑上的账号和同步识别码（开通过云同步才有，见 sync-user.ts）告诉后端；关闭了统计时后端什么都不发。
+ * 后端负责哈希、每天去重、分开上报。失败不影响任何功能
+ */
+export function reportDesktopStats(accounts: readonly Pick<Account, 'id' | 'game' | 'uid'>[], syncUser?: string): void {
   desktopBridge()
-    ?.rpc('stats.report', { accounts: accountsForDesktopStats(accounts) })
+    ?.rpc('stats.report', { accounts: accountsForDesktopStats(accounts), ...(syncUser ? { user: syncUser } : {}) })
     .catch(() => undefined)
 }

@@ -9,6 +9,8 @@ import type { Account, Game } from '@/lib/types'
 import { loadCloudflareAnalytics } from '@/lib/analytics'
 import { type Consent, readConsent, writeConsent } from '@/lib/consent'
 import { type DesktopStatsStatus, desktopStatsStatus, reportDesktopStats, setDesktopStatsEnabled } from '@/lib/desktop-stats'
+import { loadDeviceUser } from '@/lib/sync-user'
+import { reportSyncUser } from '@/lib/sync-user-stats'
 import { isDesktop } from '@/lib/transport'
 import { fetchUsageSummary, gamesForUsage, reportUsage, type UsageSummary, usageNoticeSeen } from '@/lib/usage'
 
@@ -85,6 +87,18 @@ export const useAppStore = defineStore('app', () => {
     if (value === 'all' && !wasAll) startAnalytics()
   }
   if (!desktop && consent.value === 'all') startAnalytics()
+  // 同步识别码（src/lib/sync-user-stats.ts）：同样只在“全部接受”后上报。账号变化时再看一次（刚开通云同步时识别码才生成）
+  if (!desktop) {
+    let userTimer: ReturnType<typeof setTimeout> | undefined
+    watch(
+      [accounts, consent],
+      () => {
+        clearTimeout(userTimer)
+        if (consent.value === 'all') userTimer = setTimeout(() => void reportSyncUser(), 3000)
+      },
+      { immediate: true },
+    )
+  }
 
   // ── 桌面版的统计（见 src/lib/desktop-stats.ts）：交给 Python 后端，默认开启，“关于”页可以关闭 ──
   const desktopStats = ref<DesktopStatsStatus | null>(null)
@@ -96,7 +110,7 @@ export const useAppStore = defineStore('app', () => {
       accounts,
       (list) => {
         clearTimeout(timer)
-        timer = setTimeout(() => reportDesktopStats(list), 3000)
+        timer = setTimeout(() => void loadDeviceUser().then((user) => reportDesktopStats(list, user?.id)), 3000)
       },
       { immediate: true },
     )
