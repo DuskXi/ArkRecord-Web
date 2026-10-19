@@ -70,7 +70,9 @@ export function installAccountHooks(accounts: EntityTable<Account, 'id'>, vault:
     // 返回 undefined 的字段会被删掉：token 不写进 IndexedDB
     return { accountToken: undefined }
   })
-  accounts.hook('reading', (obj) => {
+  accounts.hook('reading', (obj?: Account) => {
+    // get / bulkGet 读不存在的账号时，钩子收到的是 undefined（新账号登录时 LoginModal 会先查一下）
+    if (!obj) return obj
     const token = vault.tokens.get(obj.id)
     return token ? { ...obj, accountToken: token } : obj
   })

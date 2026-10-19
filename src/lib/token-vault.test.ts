@@ -138,6 +138,31 @@ describe('token vault in the desktop app', () => {
   })
 })
 
+describe('token vault: reading accounts that do not exist', () => {
+  // LoginModal.confirm() 先 get 一下看账号是否已存在：新账号读到的是 undefined，钩子不能因此出错（真机测试时卡在这里）
+  it('get and bulkGet of a missing account return undefined', async () => {
+    fakeBridge(true)
+    const db = freshDb()
+    await initTokenVault(db.accounts)
+    expect(await db.accounts.get('arknights:404')).toBeUndefined()
+    await db.accounts.put(account('arknights:1', { accountToken: 'FAKE_1' }))
+    const [found, missing] = await db.accounts.bulkGet(['arknights:1', 'arknights:404'])
+    expect(found?.accountToken).toBe('FAKE_1')
+    expect(missing).toBeUndefined()
+  })
+
+  it('adding a new account the way LoginModal does works end to end', async () => {
+    const { store } = fakeBridge(true)
+    const db = freshDb()
+    await initTokenVault(db.accounts)
+    const existing = await db.accounts.get('arknights:7')
+    await db.accounts.put(account('arknights:7', { createdAt: existing?.createdAt ?? 2, accountToken: 'FAKE_NEW' }))
+    await flush()
+    expect(store).toEqual({ 'arknights:7': 'FAKE_NEW' })
+    expect((await db.accounts.get('arknights:7'))?.accountToken).toBe('FAKE_NEW')
+  })
+})
+
 describe('token vault: logging in again without "remember"', () => {
   it('removes the remembered token, like the web version clears it from the record', async () => {
     const { store } = fakeBridge(true, { 'arknights:1': 'FAKE_OLD' })
