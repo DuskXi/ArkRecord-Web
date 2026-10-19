@@ -138,6 +138,21 @@ interface ArkrecordBridge {
 | -32603 | 主进程内部错误 |
 | -32000 | `data.kind` = `backend_unavailable`（没装 uv、后端启动失败或已退出）、`timeout`（超时）；`app.hgLogin` 还有 `cancelled`、`login_failed` |
 
+## 图片（`img.fetch`）
+
+维护者的决定：桌面版的图片由本机 Python 拉取，不经过 Worker。页面里的地址照旧是 `/api/img/<来源>/<路径>`（`src/lib/meta.ts`），由主进程转给后端：
+
+| 方法 | 参数 | 结果 |
+|---|---|---|
+| `img.fetch` | `{source, target}` | `{status, contentType?, body?}`：`status` 200 时 `body` 是图片的 base64；404 是不在白名单里或来源站没有；502 是来源站出错或返回的不是图片 |
+
+- 白名单是 [`shared/images.json`](../shared/images.json)，和 Worker（`worker/images.ts`）同一份；路径必须完整匹配，不跟随重定向，只接受 `image/*`、不超过 5 MB。
+- 缓存在 `ARKRECORD_DATA_DIR/image-cache`：成功的 30 天，来源站 404 的 1 小时。
+- 主进程这一侧：
+  - 正式构建：`app://arkrecord/api/img/<来源>/<路径>` 由 `protocol.handle('app')` 交给 `img.fetch`，和页面同源，导出分享图时 canvas 不会因为跨域图片出错；
+  - 开发时：页面在 Vite 开发服务器上，`/api/img/*` 也要转给 `img.fetch`（不要转到 Worker）；
+  - 返回时带上 `content-type`、`x-content-type-options: nosniff`；地址里带查询参数的一律 404（和 Worker 一样）；`img.fetch` 加进主进程能调用的方法里，但**不要**放进页面能直接调用的白名单。
+
 ## 使用人数统计（`stats.*`）
 
 维护者的决定：桌面版不弹 Cookie 同意，统计交给 Python 后端，默认开启、“关于”页可关闭；统计没登录的设备、加盐的 UID、设备，UID 和设备互不关联。上报什么、服务器保存什么见 [SECURITY.md](../SECURITY.md) 的“桌面版的使用人数统计”。

@@ -79,7 +79,7 @@ const sources = [
           </div>
         </div>
         <p class="mt-4 mb-3 text-sm text-muted">
-          图片缓存（<code class="font-mono text-xs">worker/images.ts</code>）：大部分头像在构建时已镜像为本站静态文件；
+          图片缓存（<code class="font-mono text-xs">worker/images.ts</code>，白名单在 <code class="font-mono text-xs">shared/images.json</code>）：大部分头像在构建时已镜像为本站静态文件；
           构建时拿不到的少量图片由 Worker 取回并缓存在 Cloudflare 30 天，同一张图在每个机房只向来源站请求一次，且只供本站页面使用。
         </p>
         <div class="divide-y divide-default rounded-(--ui-radius) border border-default">

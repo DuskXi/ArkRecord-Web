@@ -1,0 +1,14 @@
+{
+  "prts-avatar": {
+    "host": "torappu.prts.wiki",
+    "purpose": "明日方舟干员头像（只用于本站镜像里还没有的新干员）",
+    "pattern": "^char_\\w{1,60}$",
+    "path": "/assets/char_avatar/{target}.png"
+  },
+  "hycdn": {
+    "host": "web.hycdn.cn",
+    "purpose": "终末地卡池图（鹰角官方 CDN）",
+    "pattern": "^upload\\/image\\/\\d{8}\\/[0-9a-f]{32}\\.(?:png|jpe?g|webp)$",
+    "path": "/{target}"
+  }
+}

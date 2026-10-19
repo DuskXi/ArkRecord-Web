@@ -12,6 +12,7 @@ from typing import Any
 
 from . import PROTOCOL_VERSION, __version__
 from .hg import HgClient
+from .images import Images
 from .mhy.service import MhyService
 from .redact import RedactingFormatter
 from .rpc import Handler, Params, no_params, serve
@@ -24,7 +25,10 @@ def ping(params: Params) -> dict[str, Any]:
 
 
 def build_methods(
-    hg: HgClient | None = None, mhy: MhyService | None = None, stats: Stats | None = None
+    hg: HgClient | None = None,
+    mhy: MhyService | None = None,
+    stats: Stats | None = None,
+    images: Images | None = None,
 ) -> dict[str, Handler]:
     hg_client: list[HgClient] = [hg] if hg else []
     hg_lock = threading.Lock()
@@ -41,6 +45,7 @@ def build_methods(
         "hg.request": hg_request,
         **(mhy or MhyService()).methods(),
         **(stats or Stats()).methods(),
+        **(images or Images()).methods(),
     }
 
 

@@ -12,6 +12,8 @@
 
 export const IMAGE_PREFIX = '/api/img/'
 
+import IMAGE_SOURCE_DATA from '../shared/images.json'
+
 export interface ImageSource {
   host: string
   /** 用途（同时显示在网站的“关于”页面） */
@@ -22,20 +24,21 @@ export interface ImageSource {
   toPath: (target: string) => string
 }
 
-export const IMAGE_SOURCES = {
-  'prts-avatar': {
-    host: 'torappu.prts.wiki',
-    purpose: '明日方舟干员头像（只用于本站镜像里还没有的新干员）',
-    pattern: /^char_\w{1,60}$/,
-    toPath: (id: string) => `/assets/char_avatar/${id}.png`,
-  },
-  hycdn: {
-    host: 'web.hycdn.cn',
-    purpose: '终末地卡池图（鹰角官方 CDN）',
-    pattern: /^upload\/image\/\d{8}\/[0-9a-f]{32}\.(?:png|jpe?g|webp)$/,
-    toPath: (path: string) => `/${path}`,
-  },
-} satisfies Record<string, ImageSource>
+/**
+ * 白名单本身在 shared/images.json：桌面版的 Python 后端读同一份文件（桌面版的图片由本机直接拉取，不经过 Worker）。
+ * pattern 是正则表达式的源码；path 里的 {target} 换成请求的路径。
+ */
+export const IMAGE_SOURCES = Object.fromEntries(
+  Object.entries(IMAGE_SOURCE_DATA).map(([name, source]) => [
+    name,
+    {
+      host: source.host,
+      purpose: source.purpose,
+      pattern: new RegExp(source.pattern),
+      toPath: (target: string) => source.path.replace('{target}', target),
+    },
+  ]),
+) as Record<keyof typeof IMAGE_SOURCE_DATA, ImageSource>
 
 export type ImageSourceName = keyof typeof IMAGE_SOURCES
 
