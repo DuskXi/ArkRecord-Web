@@ -313,8 +313,8 @@ const FAKE_MHY = `
 
 /** 在页面里点某个分段切换（厂商或游戏）里的一项，等页面切过去 */
 const clickSegment = (group: '切换厂商' | '切换游戏', name: string) => `
-  [...document.querySelectorAll('[aria-label="${group}"] [role="radio"]')].find((b) => b.textContent.trim() === ${JSON.stringify(name)})?.click()
-  await new Promise((resolve) => setTimeout(resolve, 800))
+  ;[...document.querySelectorAll('[aria-label="${group}"] [role="radio"]')].find((b) => b.textContent.trim() === ${JSON.stringify(name)})?.click();
+  await new Promise((resolve) => setTimeout(resolve, 800));
 `
 
 /** 侧边栏现在的样子：两层切换的选项和选中项、有没有米哈游 / 鹰角的导航、页面路径和内容 */
@@ -332,6 +332,7 @@ const SIDEBAR_STATE = `
     hgNav: navText('[aria-label="鹰角导航"]').includes('寻访记录'),
     read: document.body.innerText.includes('从游戏缓存读取'),
     empty: document.body.innerText.includes('还没有原神的抽卡记录'),
+    warp: document.body.innerText.includes('跃迁记录'),
   }
 `
 
@@ -343,11 +344,13 @@ interface SidebarState {
   hgNav: boolean
   read: boolean
   empty: boolean
+  warp: boolean
 }
 
 /**
  * 侧边栏的两层切换（厂商 → 游戏，src/platform/active.ts）：先在鹰角选终末地，切到米哈游看到原神和米哈游自己的侧边栏，
- * 点“记录”进记录页，切回鹰角还是终末地，再选回明日方舟。不点任何读取按钮，不发请求。
+ * 点“记录”进记录页，再切到星铁；切回鹰角还是终末地，再切到米哈游回到上次看的星铁，最后选回明日方舟。
+ * 不点任何读取按钮，不发请求。
  * 网页版没有米哈游，由网页构建的检查保证（vite.config.ts 的 webWithoutDesktopCode）
  */
 async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>> {
@@ -376,21 +379,27 @@ async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>
       await mhyDb.pulls.where('accountId').equals(accountId).delete()
       await mhyDb.accounts.delete(accountId)`)
   }
+  const starrail = await state(clickSegment('切换游戏', '星铁'))
   const hgBack = await state(clickSegment('切换厂商', '鹰角'))
-  await run(clickSegment('切换游戏', '明日方舟'))
-  console.log(`[smoke] 侧边栏：${JSON.stringify({ hgStart, mhy, records, hgBack })}`)
+  const mhyAgain = await state(clickSegment('切换厂商', '米哈游'))
+  await run(`${clickSegment('切换厂商', '鹰角')}${clickSegment('切换游戏', '明日方舟')}`)
+  console.log(`[smoke] 侧边栏：${JSON.stringify({ hgStart, mhy, records, starrail, hgBack, mhyAgain })}`)
 
   return {
     '厂商切换有鹰角和米哈游两项': mhy.vendor.items.join('/') === '鹰角/米哈游',
-    '切到米哈游：游戏切换里是原神，侧边栏是米哈游的（统计 / 记录，没有鹰角的导航）':
+    '切到米哈游：游戏切换里是原神和星铁，先进原神，侧边栏是米哈游的（统计 / 记录，没有鹰角的导航）':
       mhy.path === '/genshin' &&
       mhy.vendor.active === '米哈游' &&
-      mhy.game.items.join('/') === '原神' &&
+      mhy.game.items.join('/') === '原神/星铁' &&
+      mhy.game.active === '原神' &&
       mhy.mhyNav.includes('统计') &&
       mhy.mhyNav.includes('记录') &&
       !mhy.hgNav &&
       mhy.read,
     '米哈游的“记录”页（也有读取面板）': records.path === '/genshin/records' && records.read,
+    '星铁：/starrail，界面说的是“跃迁记录”，侧边栏是米哈游的':
+      starrail.path === '/starrail' && starrail.game.active === '星铁' && starrail.warp && starrail.read && starrail.mhyNav.includes('统计'),
+    '再切到米哈游，回到上次看的星铁': mhyAgain.path === '/starrail' && mhyAgain.game.active === '星铁',
     '切回鹰角：回到总览，还是之前选的终末地，侧边栏是鹰角的':
       hgStart.game.active === '终末地' &&
       hgBack.path === '/' &&

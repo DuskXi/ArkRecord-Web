@@ -13,7 +13,10 @@ export const EXTRA_VENDORS: ExtraVendor[] = [
     id: 'mhy',
     label: '米哈游',
     short: '米',
-    games: [{ id: 'genshin', label: '原神', short: '原神', to: '/genshin' }],
+    games: [
+      { id: 'genshin', label: '原神', short: '原神', to: '/genshin' },
+      { id: 'starrail', label: '星铁', short: '星铁', to: '/starrail' },
+    ],
     sidebar: defineAsyncComponent(() => import('@/components/mhy/MhySidebar.vue')),
   },
 ]
@@ -21,4 +24,6 @@ export const EXTRA_VENDORS: ExtraVendor[] = [
 export const EXTRA_ROUTES: RouteRecordRaw[] = [
   { path: '/genshin', name: 'genshin', component: MhyGamePage, props: { game: 'genshin', view: 'stats' } },
   { path: '/genshin/records', name: 'genshin-records', component: MhyGamePage, props: { game: 'genshin', view: 'records' } },
+  { path: '/starrail', name: 'starrail', component: MhyGamePage, props: { game: 'starrail', view: 'stats' } },
+  { path: '/starrail/records', name: 'starrail-records', component: MhyGamePage, props: { game: 'starrail', view: 'records' } },
 ]

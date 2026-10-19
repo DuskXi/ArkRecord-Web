@@ -2,6 +2,7 @@
 /**
  * 原神 / 星铁的基础统计（src/lib/mhy/stats.ts）：每组卡池的抽数、5★ 列表和各自用了多少抽、上一个 5★ / 4★ 之后的抽数。
  * 只显示数出来的事实；保底上限、“小保底 / 大保底”等规则还没按官方公示核对，这里不写。
+ * 抽数都只在同一组卡池里数（原神 301 和 400 是一组；星铁的联动跃迁各自一组），界面上写明“本卡池内”，不暗示和别的池共用。
  */
 import { computed } from 'vue'
 import { type MhyPoolSummary, summarizeMhy } from '@/lib/mhy/stats'
@@ -12,7 +13,7 @@ const props = defineProps<{ game: MhyGame; pulls: readonly MhyPull[] }>()
 const summaries = computed(() => summarizeMhy(props.game, props.pulls).filter((s) => s.total > 0))
 
 /** 每个 5★ 用的抽数的平均值（只是数出来的平均，不是概率） */
-const average =(s: MhyPoolSummary) => (s.fiveStars.length ? (s.fiveStars.reduce((n, f) => n + f.pity, 0) / s.fiveStars.length).toFixed(1) : '—')
+const average = (s: MhyPoolSummary) => (s.fiveStars.length ? (s.fiveStars.reduce((n, f) => n + f.pity, 0) / s.fiveStars.length).toFixed(1) : '—')
 /** 5★ 从新到旧显示 */
 const newestFirst = (s: MhyPoolSummary) => s.fiveStars.toReversed()
 </script>
@@ -42,8 +43,9 @@ const newestFirst = (s: MhyPoolSummary) => s.fiveStars.toReversed()
           <dd class="font-medium tabular-nums">{{ s.sinceFive }} 抽</dd>
         </div>
       </dl>
-      <p class="text-xs text-muted">上一个 4★ 或 5★ 之后已经抽了 {{ s.sinceFour }} 抽。</p>
-      <div v-if="s.fiveStars.length" class="flex flex-wrap gap-1.5">
+      <p class="text-xs text-muted">上一个 4★ 或 5★ 之后已经抽了 {{ s.sinceFour }} 抽。以上抽数都只在本卡池内计算。</p>
+      <div v-if="s.fiveStars.length" class="flex flex-wrap items-center gap-1.5">
+        <span class="text-xs text-muted">每个 5★ 用了多少抽（本卡池内）：</span>
         <span
           v-for="f in newestFirst(s)"
           :key="f.pull.id"

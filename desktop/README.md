@@ -84,7 +84,7 @@ uv run --project desktop/backend python -m arkrecord_backend
 - 请求由本机直连米哈游官方接口，只发 [`shared/upstreams/mhy.json`](../shared/upstreams/mhy.json) 白名单里的抽卡记录接口；两次请求至少间隔 0.5 秒；日志不记地址。
 - `gachaType`：原神 100、200、301（会同时返回 400）、302、500；星铁 1、2、11、12、21、22（21、22 走联动池接口）。
 - 业务错误（-32000）的 `data.kind`：`game_not_found`、`no_link`（先在游戏里打开抽卡记录）、`link_expired`、`link_invalid`、`bad_link`、`handle_expired`、`rate_limited`（-110，稍后重试）、`network`、`upstream_error`、`unsupported`。
-- 页面：`/genshin`（统计）和 `/genshin/records`（记录），都是 `src/components/mhy/MhyGamePage.vue`（星铁复用），最上面都有读取面板；账号（UID）在侧边栏 `MhySidebar` 里切换，和页面共用 `accounts.ts`，选中的记在本机。读取面板：从游戏缓存读取（先 `mhy.locate`，找不到时用 `app.pickDirectory` 手动选，选过的目录记在本机）、等待读取（每 3 秒查 `mhy.cacheStamp`，变了就读，最多 10 分钟）、粘贴链接（输入框不回显、不保存，提交后马上清空）、同步进度、出错时按 `kind` 给出下一步、中途出错时显示已经保存的部分；统计和记录列表只数事实，不写保底规则。
+- 页面：原神 `/genshin`（统计）和 `/genshin/records`（记录），星铁 `/starrail` 和 `/starrail/records`，都是 `src/components/mhy/MhyGamePage.vue`（星铁的界面文字是“跃迁记录”）。统计按 `MHY_POOLS[game]` 的卡池组（星铁的联动跃迁各自一组），抽数都只在本卡池内计算，界面上写明“本卡池内”。最上面都有读取面板；账号（UID）在侧边栏 `MhySidebar` 里切换，和页面共用 `accounts.ts`，选中的记在本机。读取面板：从游戏缓存读取（先 `mhy.locate`，找不到时用 `app.pickDirectory` 手动选，选过的目录记在本机）、等待读取（每 3 秒查 `mhy.cacheStamp`，变了就读，最多 10 分钟）、粘贴链接（输入框不回显、不保存，提交后马上清空）、同步进度、出错时按 `kind` 给出下一步、中途出错时显示已经保存的部分；统计和记录列表只数事实，不写保底规则。
 - 本机只读检查（不输出参数值、不发请求）：`uv run --project desktop/backend python -m arkrecord_backend.mhy.inspect genshin`。
 - 本机真实请求实验：`uv run --project desktop/backend python -m arkrecord_backend.mhy.probe genshin`。不加 `--yes` 只列出会发哪些请求；加 `--yes` 后走和应用相同的代码（校验链接、每个卡池拉到最后一页），只输出页数、条数、字段名和格式检查，不输出 authkey、UID 和记录内容。要先在游戏里打开一次抽卡记录，并经维护者同意（见 docs/desktop/plan.md 的调试规则）。
 
