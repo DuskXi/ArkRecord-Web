@@ -1,5 +1,5 @@
 /**
- * 通过本站 Worker 调用鹰角接口。
+ * 调用鹰角接口（请求经 transport.ts 发出：网页版经本站 Worker 转发）。
  *
  * 浏览器不能直接请求鹰角接口（不允许 CORS，且依赖浏览器无法设置的 Cookie），所以经由同源的
  * /api/hg/* 转发。Worker 只做转发，所有解析都在这里、在用户浏览器里完成。
@@ -7,6 +7,8 @@
  * 发给 Worker 的请求一律是 POST，查询参数、请求体、角色 token、Cookie 都放在请求体里：
  * token 不出现在网址和请求头里（见 worker/proxy.ts 的 ProxyEnvelope）。
  */
+
+import { postHg } from '../transport'
 
 export type Upstream = 'as' | 'binding' | 'ak' | 'u8' | 'ef'
 
@@ -74,8 +76,6 @@ export async function hg<T>(upstream: Upstream, path: string, request: HgRequest
   for (const [key, value] of Object.entries(request.query ?? {})) {
     if (value !== undefined) query[key] = String(value)
   }
-  const url = `/api/hg/${upstream}${path}`
-  const headers = { 'x-arkrecord-client': '1', accept: 'application/json', 'content-type': 'application/json' }
   const body = JSON.stringify({
     ...(Object.keys(query).length ? { query } : {}),
     ...(request.body === undefined ? {} : { body: request.body }),
@@ -87,7 +87,7 @@ export async function hg<T>(upstream: Upstream, path: string, request: HgRequest
     await pace()
     let response: Response
     try {
-      response = await fetch(url, { method: 'POST', headers, body, credentials: 'same-origin' })
+      response = await postHg(upstream, path, body)
     } catch {
       throw new HgError('network', '网络连接失败，请检查网络后重试')
     }

@@ -19,7 +19,7 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 
 | 位置 | 什么时候 | 做什么 |
 |---|---|---|
-| [`worker/proxy.ts`](worker/proxy.ts)、[`worker/upstreams.ts`](worker/upstreams.ts) | 从鹰角同步记录时 | 浏览器不能直接请求鹰角接口（没有 CORS），所以经 Worker 转发。浏览器把参数（包括 token）放在请求体里，Worker 按白名单拼成上游请求，转给鹰角接口，**不记录、不存储** |
+| [`worker/proxy.ts`](worker/proxy.ts)、[`worker/upstreams.ts`](worker/upstreams.ts)（白名单在 [`shared/upstreams/hg.json`](shared/upstreams/hg.json)） | 从鹰角同步记录时 | 浏览器不能直接请求鹰角接口（没有 CORS），所以经 Worker 转发。浏览器把参数（包括 token）放在请求体里，Worker 按白名单拼成上游请求，转给鹰角接口，**不记录、不存储** |
 | [`worker/hg-verify.ts`](worker/hg-verify.ts) | 云同步：检测云端状态、开通 / 覆盖、忘记密码时删除、开关双重验证、开启双重验证的账号的每个请求、无密码模式的每个请求 | 用 OAuth token 查询鹰角的角色绑定列表，确认这个 UID 属于你；**核实完立即丢弃**，不写入存储、不写日志、不出现在返回值里 |
 
 ### token 只存在于 Worker 处理请求时的内存里

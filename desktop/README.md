@@ -40,7 +40,7 @@ uv run --project desktop/backend python -m arkrecord_backend
 |---|---|---|---|
 | `ping` | 无 | `{"pong": true, "protocol": 1, "backend": "0.1.0", "python": "3.12.x"}` | 启动后先调用一次，确认后端可用、协议版本一致 |
 
-M1 会加 `hg.request`（按 `shared/upstreams.json` 的白名单执行鹰角请求信封）。
+M1 会加 `hg.request`（按 `shared/upstreams/hg.json` 的白名单执行鹰角请求信封）。
 
 ### 错误
 

@@ -32,7 +32,7 @@
 
 - **渲染进程**复用现有的页面、统计、合并规则和 IndexedDB 存储（Electron 里 IndexedDB 存在应用数据目录）。
 - **请求层抽象**：新增 `src/lib/transport.ts`。网页版照旧发到 `/api/hg/*`（Worker）；桌面版调用 `window.arkrecord.request(...)`，经主进程交给 Python。`src/lib/hg/client.ts` 的请求信封格式不变。
-- **白名单共用**：把 `worker/upstreams.ts` 里的上游和路由抽成 `shared/upstreams.json`（Worker 直接 import），Python 读同一份文件，只发白名单内的请求。米哈游的上游也写在这里，只放行抽卡记录接口（原神、星铁的 `getGachaLog`，星铁联动池的 `getLdGachaLog`，国服和国际服域名），不放行流水等其他接口。
+- **白名单共用**：把 `worker/upstreams.ts` 里的上游和路由抽成 `shared/upstreams/hg.json`（Worker 直接 import），Python 读同一份文件，只发白名单内的请求。米哈游的上游单独放在 `shared/upstreams/mhy.json`（只有桌面版用，网页版和 Worker 不引用），只放行抽卡记录接口（原神、星铁的 `getGachaLog`，星铁联动池的 `getLdGachaLog`，国服和国际服域名），不放行流水等其他接口。
 - **构建目标**：`vite build`（网页，只有鹰角两款）和 `vite build --mode desktop`（四款）。游戏列表用构建常量控制；网页版的构建清单里检查不能出现米哈游的模块。
 
 ### 建议的目录
@@ -45,7 +45,7 @@ desktop/
       rpc.py           stdio JSON-RPC
       redact.py        日志脱敏
       secrets.py       系统钥匙串（keyring，只给鹰角 token 用）
-      hg.py            鹰角请求信封（按 shared/upstreams.json）
+      hg.py            鹰角请求信封（按 shared/upstreams/hg.json）
       mhy/
         locate.py      从游戏日志找游戏目录；找不到时用用户手动选的目录
         cache.py       从 webCaches 的 data_2 里取最新的抽卡链接，只保留必要参数
@@ -55,7 +55,8 @@ desktop/
   electron-builder.yml
 src/lib/transport.ts
 src/lib/mhy/           原神、星铁的类型、同步、合并、保底规则
-shared/upstreams.json
+shared/upstreams/hg.json   鹰角白名单（Worker 和 Python 共用）
+shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 ```
 
 ## 登录和取数
@@ -101,7 +102,7 @@ shared/upstreams.json
 ## 里程碑
 
 1. **M0 骨架**：Electron + Python 子进程跑通（ping），一条命令启动开发环境；渲染进程加载现有应用（desktop 构建）。
-2. **M1 鹰角两款**：`transport.ts` + `shared/upstreams.json` + Python 执行请求信封；应用内登录窗口取 token；明日方舟、终末地同步跑通，不经过 Worker。
+2. **M1 鹰角两款**：`transport.ts` + `shared/upstreams/hg.json` + Python 执行请求信封；应用内登录窗口取 token；明日方舟、终末地同步跑通，不经过 Worker。
 3. **M2 原神**：读日志找目录 → 读缓存取链接 → 校验 → 分页拉取抽卡记录；粘贴链接；手动选择目录；存储、统计页面。
 4. **M3 星铁**（含联动池）；UIGF 导入导出；Linux 下的路径处理。
 5. **M4 打包**：三平台安装包，每个安装包签发构建证明（签名另议：macOS 需要 Apple 开发者年费，Windows 可申请 SignPath 开源免费签名）。

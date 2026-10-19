@@ -64,7 +64,7 @@ const sources = [
       <section>
         <SectionHeader index="01" eyebrow="FORWARDED HOSTS" title="转发清单" />
         <p class="mb-3 text-sm text-muted">
-          以下是本站 Worker 允许转发的全部上游，以及需要转发的原因。清单与源码中的白名单（<code class="font-mono text-xs">worker/upstreams.ts</code>）是同一份数据。
+          以下是本站 Worker 允许转发的全部上游，以及需要转发的原因。清单与源码中的白名单（<code class="font-mono text-xs">shared/upstreams/hg.json</code>）是同一份数据。
         </p>
         <div class="divide-y divide-default rounded-(--ui-radius) border border-default">
           <div v-for="u in upstreams" :key="u.host" class="p-4">
