@@ -7,9 +7,11 @@ import logging
 import os
 import platform
 import sys
+import threading
 from typing import Any
 
 from . import PROTOCOL_VERSION, __version__
+from .hg import HgClient
 from .redact import RedactingFormatter
 from .rpc import Handler, Params, no_params, serve
 
@@ -19,8 +21,18 @@ def ping(params: Params) -> dict[str, Any]:
     return {"pong": True, "protocol": PROTOCOL_VERSION, "backend": __version__, "python": platform.python_version()}
 
 
-def build_methods() -> dict[str, Handler]:
-    return {"ping": ping}
+def build_methods(hg: HgClient | None = None) -> dict[str, Handler]:
+    hg_client: list[HgClient] = [hg] if hg else []
+    hg_lock = threading.Lock()
+
+    def hg_request(params: Params) -> Any:
+        # 第一次调用时才读白名单文件：文件有问题也不影响 ping
+        with hg_lock:
+            if not hg_client:
+                hg_client.append(HgClient())
+        return hg_client[0].request(params)
+
+    return {"ping": ping, "hg.request": hg_request}
 
 
 def _setup_logging(stream: io.TextIOBase | Any) -> None:

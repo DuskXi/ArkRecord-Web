@@ -3,14 +3,17 @@
 - stdout 只输出协议消息；日志写到 stderr（经过脱敏）。
 - 不支持批量请求（数组）。
 - 通知（没有 id 的请求）不回复，出错也不回复。
-- stdin 关闭（EOF）时 serve 返回，进程退出。
+- 请求交给线程池并发处理（耗时的网络请求不会挡住 ping），回复的顺序可能和请求不同，按 id 对应。
+- stdin 关闭（EOF）时，等已收到的请求都处理完，serve 返回，进程退出。
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Callable, Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, TextIO
 
 log = logging.getLogger(__name__)
@@ -103,14 +106,29 @@ def encode(response: dict[str, Any]) -> str:
     return json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n"
 
 
-def serve(methods: Mapping[str, Handler], lines: Iterable[str], out: TextIO) -> None:
-    """逐行处理请求，直到输入结束。"""
-    for raw in lines:
-        # 去掉 BOM：Windows PowerShell 5.1 用管道传给后端时会在开头加 U+FEFF
-        line = raw.strip().lstrip("\ufeff").strip()
-        if not line:
-            continue
+def serve(methods: Mapping[str, Handler], lines: Iterable[str], out: TextIO, workers: int = 4) -> None:
+    """逐行读取请求，交给线程池处理；输入结束后等所有请求处理完再返回。"""
+    lock = threading.Lock()
+
+    def run(line: str) -> None:
         response = handle_line(line, methods)
-        if response is not None:
-            out.write(encode(response))
-            out.flush()
+        if response is None:
+            return
+        try:
+            text = encode(response)
+        except (TypeError, ValueError):
+            log.exception("结果不能转成 JSON")
+            text = encode(_error(response.get("id"), RpcError(INTERNAL_ERROR, "Internal error")))
+        with lock:
+            try:
+                out.write(text)
+                out.flush()
+            except OSError:
+                log.warning("写回复失败（主进程可能已退出）")
+
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="rpc") as pool:
+        for raw in lines:
+            # 去掉 BOM：Windows PowerShell 5.1 用管道传给后端时会在开头加 U+FEFF
+            line = raw.strip().lstrip("\ufeff").strip()
+            if line:
+                pool.submit(run, line)

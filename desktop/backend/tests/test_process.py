@@ -32,10 +32,10 @@ def test_ping_over_stdio_and_exit_on_eof():
     assert proc.returncode == 0
     # stdout 只有协议消息，每行一个，UTF-8，换行是 \n
     assert b"\r" not in proc.stdout
-    responses = [json.loads(line) for line in proc.stdout.decode("utf-8").splitlines()]
-    assert responses[0]["result"]["pong"] is True
-    assert responses[1]["id"] == "两" and responses[1]["error"]["code"] == -32601
-    assert len(responses) == 2
+    responses = {r["id"]: r for r in map(json.loads, proc.stdout.decode("utf-8").splitlines())}
+    assert set(responses) == {1, "两"}
+    assert responses[1]["result"]["pong"] is True
+    assert responses["两"]["error"]["code"] == -32601
     # 启动日志在 stderr
     assert "后端已启动" in proc.stderr.decode("utf-8")
 

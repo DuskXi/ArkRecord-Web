@@ -48,15 +48,23 @@ uv run --project desktop/backend python -m arkrecord_backend
 - stdout 只输出协议消息；日志写到 stderr，已经脱敏（`redact.py`），主进程可以原样写进日志文件。
 - 不支持批量请求。通知（没有 `id`）不回复。
 - stdin 关闭时后端退出，退出码 0。
-- 目前按顺序处理请求。M1 加入耗时的网络请求时再改成并发。
+- 请求交给线程池并发处理（最多 4 个），耗时的网络请求不会挡住 ping；回复顺序可能和请求不同，按 `id` 对应。stdin 关闭后，等已收到的请求处理完再退出。
 
 ### 方法
 
 | 方法 | 参数 | 结果 | 说明 |
 |---|---|---|---|
 | `ping` | 无 | `{"pong": true, "protocol": 1, "backend": "0.1.0", "python": "3.12.x"}` | 启动后先调用一次，确认后端可用、协议版本一致 |
+| `hg.request` | `{upstream, path, envelope}` | `{status, headers, body}` | 执行鹰角请求信封，代替网页版的 Worker 转发（见下） |
 
-M1 会加 `hg.request`（按 `shared/upstreams/hg.json` 的白名单执行鹰角请求信封）。
+### `hg.request`
+
+- `upstream`、`path`：和网页版请求 `/api/hg/{upstream}{path}` 相同，必须在 [`shared/upstreams/hg.json`](../shared/upstreams/hg.json) 的白名单里（路径精确匹配）。
+- `envelope`：字符串，和网页版发给 Worker 的请求体完全相同（`{query?, body?, roleToken?, akCookie?}`，见 `worker/proxy.ts` 的 `ProxyEnvelope`），校验规则和大小上限也相同。
+- 结果：`status` 是上游的状态码；`headers` 只有 `content-type`、`x-ak-user-center`（明日方舟登录下发的 Cookie）、`x-arkrecord-proxy`（转发层自己的错误，和 Worker 相同：`route_not_allowed`、`bad_request`、`body_too_large`、`upstream_unreachable`）；`body` 是响应内容（字符串）。前端用 `new Response(body, { status, headers })` 还原，`src/lib/hg/client.ts` 的解析不用改。
+- 不跟随重定向，20 秒超时。请求头带 `user-agent: ArkRecord-Desktop/<版本>`，如实标明是桌面版。
+- 日志只记上游名、路径、状态码和耗时，不记查询参数、请求体和响应内容。
+- 参数格式不对（不是这三个字符串）时返回 JSON-RPC 错误 -32602；其余情况都按上表返回结果，和网页版的处理路径一致。
 
 ### 错误
 

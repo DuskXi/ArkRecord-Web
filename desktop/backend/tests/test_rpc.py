@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import threading
 
 import pytest
 
@@ -118,7 +119,8 @@ def test_serve_handles_crlf_and_blank_lines():
     output = out.getvalue()
     assert output.endswith("\n") and "\r" not in output
     responses = [json.loads(line) for line in output.splitlines()]
-    assert [r["id"] for r in responses] == [1, 2]
+    # 并发处理，回复顺序不固定
+    assert sorted(r["id"] for r in responses) == [1, 2]
 
 
 def test_serve_keeps_non_ascii():
@@ -134,3 +136,26 @@ def test_serve_ignores_bom():
     out = io.StringIO()
     serve(build_methods(), ["\ufeff" + request("ping") + "\r\n"], out)
     assert json.loads(out.getvalue())["result"]["pong"] is True
+
+
+def test_slow_request_does_not_block_ping():
+    ping_done = threading.Event()
+
+    def slow(params):
+        # 顺序处理时 ping 要等这里返回，Event 永远等不到
+        return "ok" if ping_done.wait(timeout=5) else "blocked"
+
+    def fast_ping(params):
+        ping_done.set()
+        return "pong"
+
+    out = io.StringIO()
+    serve({"slow": slow, "ping": fast_ping}, [request("slow", id_=1) + "\n", request("ping", id_=2) + "\n"], out)
+    responses = {r["id"]: r["result"] for r in map(json.loads, out.getvalue().splitlines())}
+    assert responses == {1: "ok", 2: "pong"}
+
+
+def test_unserializable_result_becomes_internal_error():
+    out = io.StringIO()
+    serve({"bad": lambda params: {1, 2}}, [request("bad") + "\n"], out)
+    assert json.loads(out.getvalue())["error"]["code"] == INTERNAL_ERROR
