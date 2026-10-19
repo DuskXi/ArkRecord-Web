@@ -96,6 +96,8 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 星铁（2026-10-19）：游戏开着时，用普通的 `open()` 读不了最新版本目录的 `data_2`（PermissionError），后端原来会悄悄退回旧目录的过期链接。现在按上面的只读规则打开，仍然读不了时报 `cache_locked`。实测（同一天，游戏开着）：按只读规则打开能读到最新版本目录（2.54.0.0 里 2 条链接，接口路径是 `hkrpg_gacha_record`），不需要关游戏；可见游戏打开 `data_2` 时允许别人共享，只是要求对方也允许删除，普通的 `open()` 不满足。
 
+星铁第一次真实请求（2026-10-19，国服 `prod_gf_cn`，`mhy.probe starrail --yes`，维护者同意后由本地会话运行，游戏开着）：链接有效，所有格式检查都通过。字段是 `count, gacha_id, gacha_type, id, item_id, item_type, lang, name, rank_type, time, uid`：`item_id` 有值（和原神不同），每条都有 `gacha_id`，**没有** `op_gacha_type`；每一页都返回 `region_time_zone`（国服是 8）；记录的 `gacha_type` 和查询的卡池一致。联动池（21、22）走 `getLdGachaLog` 正常返回，但维护者没有联动记录，格式还没验证到。
+
 第一次真实请求（2026-10-19，原神国服，`mhy.probe genshin --yes`，维护者同意后由本地会话运行）：缓存里第一条链接就有效；每个卡池按 `end_id` 翻页到最后一页，所有格式检查都通过（id 都是 19 位数字字符串、时间是 `YYYY-MM-DD HH:MM:SS`、从新到旧、没有重复、uid 和链接一致）。字段是 `count, gacha_type, id, item_id, item_type, lang, name, op_gacha_type, rank_type, time, uid`；`item_id` 全部为空（要按名称映射）；查 301 时同时返回 301 和 400 的记录；原神的接口不返回 `region_time_zone`（时区按区服推断）。`op_gacha_type` 的含义还没确认，`mhy.probe` 已经会输出 `gacha_type → op_gacha_type` 的对应，下次实验时确认。空卡池第 1 页就结束。整个过程十几秒，没有遇到 -101、-110。
 
 - **只读**：不写、不改任何游戏文件，不注入、不挂代理、不请求管理员权限。缓存里除抽卡链接以外的内容不读取、不保存、不上传。
