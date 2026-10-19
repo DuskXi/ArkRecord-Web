@@ -3,173 +3,36 @@
  * 原神 / 星铁的“读取”：从游戏缓存读抽卡链接（找不到目录时手动选择）、等待读取（轮询缓存的修改时间）、粘贴链接，
  * 然后由 syncMhy 同步（src/lib/mhy/sync.ts）。请求全部由本机后端直连米哈游官方接口。
  *
+ * 读取的状态和操作在 reader.ts，每个游戏一份：切换原神 / 星铁时这个面板是复用的，状态放在这里会串到另一个游戏。
+ * 一个游戏在读取时，可以切到另一个游戏同时读取；“等待读取”离开页面后也继续。
+ *
  * 抽卡链接里有 authkey，当凭据处理：粘贴框不回显、不保存，交给后端后马上清空；界面上任何地方都不显示链接内容。
  */
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watchEffect } from 'vue'
 import { MHY_GAME_LABEL, MHY_POOLS, type MhyGame } from '@/lib/mhy/types'
-import {
-  type MhyLinkSource,
-  type MhyRpc,
-  MhySyncError,
-  type MhySyncProgress,
-  type MhySyncResult,
-  mhyCacheStamp,
-  mhyLocate,
-  syncMhy,
-} from '@/lib/mhy/sync'
-import { desktopBridge } from '@/lib/transport'
+import { mhyRecordName, useMhyReader } from './reader'
 
 const props = defineProps<{ game: MhyGame }>()
-const emit = defineEmits<{ synced: [accountId: string] }>()
-const toast = useToast()
 
-const bridge = desktopBridge()
-const rpc: MhyRpc = (method, params) => (bridge ? bridge.rpc(method, params) : Promise.reject({ code: -32000, message: '只有桌面版能读取' }))
+const reader = useMhyReader()
+const state = computed(() => reader.states[props.game])
 const label = computed(() => MHY_GAME_LABEL[props.game])
-/** 原神叫“祈愿记录”，星铁叫“跃迁记录” */
-const recordName = computed(() => (props.game === 'genshin' ? '祈愿记录' : '跃迁记录'))
+const recordName = computed(() => mhyRecordName(props.game))
+const running = computed(() => state.value.running)
+const waiting = computed(() => state.value.waiting)
+const progress = computed(() => state.value.progress)
+const problem = computed(() => state.value.problem)
+const dataDir = computed(() => state.value.dataDir)
 
-// ───── 手动选择的游戏目录（记在本机，不是敏感信息） ─────
-const dirKey = computed(() => `arkrecord:mhy:${props.game}:dataDir`)
-function readDir(): string | null {
-  try {
-    return localStorage.getItem(dirKey.value)
-  } catch {
-    return null
-  }
-}
-const dataDir = ref<string | null>(readDir())
-function setDir(value: string | null) {
-  dataDir.value = value
-  try {
-    if (value) localStorage.setItem(dirKey.value, value)
-    else localStorage.removeItem(dirKey.value)
-  } catch {
-    // 存不了也不影响这次使用
-  }
-}
+// 告诉 reader 现在显示的是哪个游戏：别的游戏读完或出错时才弹提示
+watchEffect(() => (reader.shown.value = props.game))
+onBeforeUnmount(() => (reader.shown.value = null))
 
-// ───── 状态 ─────
-const running = ref(false)
-const progress = ref<MhySyncProgress | null>(null)
-interface Problem {
-  kind: string
-  message: string
-  partial?: MhySyncResult
-}
-const problem = ref<Problem | null>(null)
-
-const cacheSource = (): MhyLinkSource => ({ kind: 'cache', ...(dataDir.value ? { dataDir: dataDir.value } : {}) })
-
-async function run(source: MhyLinkSource) {
-  if (running.value) return
-  running.value = true
-  problem.value = null
-  progress.value = { stage: '准备中', fetched: 0 }
-  try {
-    const result = await syncMhy(rpc, props.game, source, { onProgress: (p) => (progress.value = p) })
-    toast.add({
-      title: result.added ? `同步完成，新增 ${result.added} 条记录` : '同步完成，没有新记录',
-      description: result.account ? `${label.value} · UID ${result.account.uid}` : `${label.value}的这个账号还没有任何${recordName.value}`,
-      color: 'success',
-      icon: 'i-lucide-circle-check',
-    })
-    if (result.warnings.length) {
-      toast.add({ title: '有些地方需要注意', description: result.warnings.join('；'), color: 'warning', icon: 'i-lucide-triangle-alert', duration: 10_000 })
-    }
-    if (result.account) emit('synced', result.account.id)
-  } catch (error) {
-    if (error instanceof MhySyncError) {
-      problem.value = { kind: error.kind, message: error.message, partial: error.partial }
-      if (error.partial?.account) emit('synced', error.partial.account.id)
-    } else {
-      problem.value = { kind: 'unknown', message: error instanceof Error ? error.message : String(error) }
-    }
-  } finally {
-    running.value = false
-    progress.value = null
-  }
-}
-
-/** 从游戏缓存读取：没有手动选过目录时先找目录，找不到就提示手动选择 */
-async function readFromCache() {
-  stopWaiting()
-  problem.value = null
-  if (!dataDir.value) {
-    try {
-      const located = await mhyLocate(rpc, props.game)
-      if (!located.dataDirs.length) {
-        problem.value = { kind: 'game_not_found', message: `没有找到${label.value}的游戏目录。` }
-        return
-      }
-    } catch (error) {
-      problem.value = { kind: error instanceof MhySyncError ? error.kind : 'unknown', message: error instanceof Error ? error.message : String(error) }
-      return
-    }
-  }
-  await run(cacheSource())
-}
-
-async function pickDir() {
-  if (!bridge) return
-  try {
-    const result = (await bridge.rpc('app.pickDirectory', { title: `选择${label.value}的游戏目录` })) as { path?: unknown } | null
-    if (typeof result?.path !== 'string') return
-    setDir(result.path)
-    await run(cacheSource())
-  } catch {
-    problem.value = { kind: 'unknown', message: '打不开选择目录的窗口' }
-  }
-}
-
-// ───── 等待读取：在游戏里打开抽卡记录后，缓存的修改时间会变，变了就自动读取 ─────
-const WAIT_INTERVAL_MS = 3000
-const WAIT_LIMIT_MS = 10 * 60_000
-/** 缓存刚变时链接可能还没写完，稍等一下再读 */
-const SETTLE_MS = 1500
-const waiting = ref(false)
-let waitTimer: ReturnType<typeof setTimeout> | undefined
-
-function stopWaiting() {
-  waiting.value = false
-  clearTimeout(waitTimer)
-}
-
-async function startWaiting() {
-  if (waiting.value || running.value) return
-  problem.value = null
-  waiting.value = true
-  const deadline = Date.now() + WAIT_LIMIT_MS
-  let baseline: number | null
-  try {
-    baseline = await mhyCacheStamp(rpc, props.game, dataDir.value ?? undefined)
-  } catch (error) {
-    stopWaiting()
-    problem.value = { kind: error instanceof MhySyncError ? error.kind : 'unknown', message: error instanceof Error ? error.message : String(error) }
-    return
-  }
-  const tick = () => {
-    waitTimer = setTimeout(async () => {
-      if (!waiting.value) return
-      if (Date.now() > deadline) {
-        stopWaiting()
-        problem.value = { kind: 'wait_timeout', message: `等了 10 分钟，没有发现新的${recordName.value}。` }
-        return
-      }
-      const stamp = await mhyCacheStamp(rpc, props.game, dataDir.value ?? undefined).catch(() => undefined)
-      if (!waiting.value) return
-      if (stamp != null && stamp !== baseline) {
-        stopWaiting()
-        await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
-        await run(cacheSource())
-        return
-      }
-      tick()
-    }, WAIT_INTERVAL_MS)
-  }
-  tick()
-}
-onBeforeUnmount(stopWaiting)
+const readFromCache = () => reader.readFromCache(props.game)
+const pickDir = () => reader.pickDir(props.game)
+const startWaiting = () => reader.startWaiting(props.game)
+const stopWaiting = () => reader.stopWaiting(props.game)
+const setDir = (value: string | null) => reader.setDir(props.game, value)
 
 // ───── 粘贴链接：不回显、不保存，交给后端后马上清空 ─────
 const pasteOpen = ref(false)
@@ -179,8 +42,7 @@ function submitPaste() {
   pasteUrl.value = ''
   pasteOpen.value = false
   if (!url) return
-  stopWaiting()
-  void run({ kind: 'url', url })
+  void reader.readUrl(props.game, url)
 }
 function closePaste(open: boolean) {
   pasteOpen.value = open

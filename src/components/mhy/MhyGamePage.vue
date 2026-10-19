@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 原神 / 星铁的页面（只在桌面版，路由见 src/platform/desktop.ts）：统计（/genshin）和记录（/genshin/records）两页，
- * 最上面都是读取面板。账号在侧边栏（MhySidebar）里切换，和这里共用（accounts.ts）。
+ * 最上面都是读取面板（状态按游戏分开，见 reader.ts）。账号在侧边栏（MhySidebar）里切换，和这里共用（accounts.ts）。
  * 数据在单独的库 arkrecord-mhy（src/lib/mhy/db.ts），和鹰角两款的页面互不影响。
  */
 import { computed } from 'vue'
@@ -19,7 +19,7 @@ const props = defineProps<{ game: MhyGame; view: 'stats' | 'records' }>()
 
 const EYEBROW: Record<MhyGame, string> = { genshin: 'GENSHIN IMPACT', starrail: 'HONKAI: STAR RAIL' }
 
-const { account, select } = useMhyAccounts(() => props.game)
+const { account } = useMhyAccounts(() => props.game)
 const pulls = useLiveQuery(
   () => (account.value ? mhyDb.pulls.where('accountId').equals(account.value.id).toArray() : []),
   [() => account.value?.id],
@@ -41,7 +41,7 @@ const lastSync = computed(() => (account.value?.lastSyncAt ? new Date(account.va
     <div class="space-y-8 p-4 sm:p-6">
       <section>
         <SectionHeader index="01" eyebrow="READ" title="读取抽卡记录" />
-        <MhySyncPanel :game="game" @synced="select" />
+        <MhySyncPanel :game="game" />
       </section>
 
       <section v-if="account">
