@@ -46,6 +46,8 @@ export interface PoolSummary {
 }
 
 export interface Analysis {
+  /** 最高星级（来自 PityModel.topStar）：hits、mainIntervals 等“6★”都指这个星级 */
+  topStar: number
   total: number
   stars: Record<3 | 4 | 5 | 6, number>
   hits: SixStarHit[]
@@ -70,6 +72,10 @@ export interface PityModel {
   dist: Distribution | null
   softPity: number
   hardPity: number
+  /** 最高星级：鹰角两款 6★（默认），米哈游 5★。保底计数、运气都按它算 */
+  topStar?: number
+  /** dist 是按官方公布的数字推算的，不是官方公布的曲线（米哈游）：界面上要标“推算，非官方” */
+  derived?: boolean
 }
 
 const DAY_FORMAT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -83,6 +89,7 @@ function emptyStars(): Record<3 | 4 | 5 | 6, number> {
 }
 
 export function analyze(events: PullEvent[], model: PityModel): Analysis {
+  const top = model.topStar ?? 6
   const stars = emptyStars()
   const hits: SixStarHit[] = []
   const counters = new Map<string, { count: number; label: string; isolated: boolean; lastPool: string; lastTs: number; main: boolean }>()
@@ -135,7 +142,7 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
     counter.count++
     counter.lastPool = e.poolName
     counter.lastTs = e.ts
-    if (e.star === 6) {
+    if (e.star === top) {
       const hit = { event: e, pity: counter.count, poolPull: pool.paid }
       hits.push(hit)
       pool.sixStars.push(hit)
@@ -165,6 +172,7 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
   const mainIntervals = hits.filter((h) => h.event.mainModel).map((h) => h.pity)
   const known = hits.filter((h) => h.event.isUp !== null)
   return {
+    topStar: top,
     total,
     stars,
     hits,

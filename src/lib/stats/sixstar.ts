@@ -148,7 +148,8 @@ function hazards(dist: Distribution): number[] {
   return dist.pmf.map((p, i) => (tail[i]! > 0 ? Math.min(1, p / tail[i]!) : 1))
 }
 
-export function luckTrend(events: PullEvent[], dist: Distribution | null, maxPoints = 300): TrendPoint[] {
+/** topStar：最高星级（鹰角 6★，米哈游 5★） */
+export function luckTrend(events: PullEvent[], dist: Distribution | null, maxPoints = 300, topStar = 6): TrendPoint[] {
   if (!dist) return []
   const h = hazards(dist)
   const counters = new Map<string, number>()
@@ -161,7 +162,7 @@ export function luckTrend(events: PullEvent[], dist: Distribution | null, maxPoi
     const count = counters.get(e.family) ?? 0
     expected += h[Math.min(count, h.length - 1)] ?? 1
     pulls++
-    if (e.star === 6) {
+    if (e.star === topStar) {
       actual++
       counters.set(e.family, 0)
     } else {

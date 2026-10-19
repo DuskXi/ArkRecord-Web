@@ -78,6 +78,8 @@ export interface Insights {
 const CN_OFFSET_MS = 8 * 3600 * 1000
 
 export function computeInsights(events: PullEvent[], analysis: Analysis): Insights {
+  // 最高星级（鹰角 6★，米哈游 5★）；下面的 six / five 指最高星级和次一级
+  const top = analysis.topStar
   const batches = groupBatches(events)
   const tenByBest: Record<3 | 4 | 5 | 6, number> = { 3: 0, 4: 0, 5: 0, 6: 0 }
   const multiSixTens: Batch[] = []
@@ -91,8 +93,8 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
     tenPulls++
     const best = bestStar(b)
     if (best >= 3 && best <= 6) tenByBest[best as 3 | 4 | 5 | 6]++
-    const six = b.events.filter((e) => e.star === 6).length
-    const five = b.events.filter((e) => e.star === 5).length
+    const six = b.events.filter((e) => e.star === top).length
+    const five = b.events.filter((e) => e.star === top - 1).length
     if (six >= 2) multiSixTens.push(b)
     const score = six * 100 + five
     if (score > bestScore) {
@@ -110,7 +112,7 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
   for (const e of events) {
     if (!e.countsForPity || e.weapon) continue
     gap++
-    if (e.star >= 5) {
+    if (e.star >= top - 1) {
       fivePlusCount++
       gapTotal += gap
       gapCount++
@@ -129,17 +131,17 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
     const day = dayKey(e.ts)
     const d = days.get(day) ?? { pulls: 0, six: 0 }
     d.pulls++
-    if (e.star === 6 && !e.weapon) d.six++
+    if (e.star === top && !e.weapon) d.six++
     days.set(day, d)
     // 中国没有夏令时，固定 +8 小时即可得到北京时间
     const local = new Date(e.ts + CN_OFFSET_MS)
     const weekday = (local.getUTCDay() + 6) % 7
     const hour = local.getUTCHours()
     hourWeek[weekday]![hour]!++
-    if (e.star === 6) sixHourWeek[weekday]![hour]!++
+    if (e.star === top) sixHourWeek[weekday]![hour]!++
     if (e.countsForPity) {
       byHour[hour]!.pulls++
-      if (e.star === 6) byHour[hour]!.six++
+      if (e.star === top) byHour[hour]!.six++
     }
   }
   let busiestDay: Insights['busiestDay'] = null
@@ -154,7 +156,7 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
   // 收集
   const collection = new Map<string, CollectionEntry>()
   for (const e of events) {
-    if (e.star < 5) continue
+    if (e.star < top - 1) continue
     const id = `${e.weapon ? 'w' : 'c'}:${e.itemId ?? e.name}`
     const c = collection.get(id) ?? {
       id,
