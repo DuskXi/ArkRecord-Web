@@ -94,9 +94,11 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 ## 凭据和隐私
 
 - 抽卡链接里的 authkey 只在 Python 进程内存里，大约 24 小时就过期，不保存，每次从缓存重新读。页面只拿到随机句柄，拉记录时传句柄（`mhy.*` 方法，见 desktop/README.md），authkey 不进渲染进程；用户粘贴的链接除外（粘贴时已经在页面里了）。
-- 鹰角 token 分两步：
-  - **M1**：和网页版一样交给页面（拼进请求信封；“记住登录”时存在 IndexedDB），改动最小。
-  - **之后**：改成句柄。token 由主进程交给后端保存（记住登录时存系统钥匙串：Windows 凭据管理器、macOS 钥匙串、Linux Secret Service），页面和请求信封里只有句柄，由后端换成真的 token，token 不进渲染进程。要同时改后端、`client.ts`、`auth.ts`，单独做。
+- **鹰角 token 的“记住登录”只用系统钥匙串**（维护者 2026-10-19：“yj的key要保留，但是用系统的钥匙串加密，系统没钥匙串的，比如说Linux，那么就不保留”）：
+  - 主进程用 Electron 的 `safeStorage` 加密（Windows DPAPI、macOS 钥匙串、Linux Secret Service / KWallet），密文存在应用数据目录里；
+  - 系统没有可用的钥匙串（Linux 上 `safeStorage` 退回 `basic_text`，或者加密不可用）就**不保存**，token 只留在内存里，关闭应用就没了；界面上“记住登录”不可选并说明原因；
+  - 桌面版的 token **永远不写进 IndexedDB**：账号表上装了钩子（`src/lib/token-vault.ts`），写入时转给主进程、读取时从内存补回，其余代码不用改。网页版不变。
+  - 以后可以再进一步改成句柄：token 只在主进程或后端，页面和请求信封里只有句柄。要同时改 `client.ts`、`auth.ts`，单独做。
 - 抽卡链接当凭据处理：界面上不完整显示，不写日志，不写文件。
 - 所有日志经过 `redact.py`：token、cookie、authkey、ticket 等字段的值一律替换成 `***`，有测试检查。
 - 凭据不经过任何服务器（桌面版不需要 Worker 转发）。云同步只上传加密后的记录，和网页版一样不上传凭据。

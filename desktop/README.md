@@ -136,6 +136,21 @@ interface ArkrecordBridge {
 | -32603 | 主进程内部错误 |
 | -32000 | `data.kind` = `backend_unavailable`（没装 uv、后端启动失败或已退出）、`timeout`（超时）；`app.hgLogin` 还有 `cancelled`、`login_failed` |
 
+## 鹰角 token 的保存（主进程，`app.tokens.*`）
+
+维护者的要求：要记住，但只能用系统钥匙串加密；没有钥匙串就不记住。页面这一侧在 `src/lib/token-vault.ts`（账号表的钩子，token 不进 IndexedDB），主进程这一侧的约定：
+
+| 方法 | 参数 | 结果 | 说明 |
+|---|---|---|---|
+| `app.tokens.status` | 无 | `{available, backend}` | `available` 为 true 才保存。Linux 上 `safeStorage.getSelectedStorageBackend()` 是 `basic_text` / `unknown`，或者 `isEncryptionAvailable()` 为 false 时，一律 false |
+| `app.tokens.load` | 无 | `{tokens: {[accountId]: token}}` | 启动时读一次；解不开的条目（钥匙串变了）直接丢掉 |
+| `app.tokens.save` | `{accountId, token}` | `{ok}` | `safeStorage.encryptString` 后存到应用数据目录的 `hg-tokens.json`（base64 密文，先写临时文件再改名）。不可用时返回 -32000 + `keychain_unavailable` |
+| `app.tokens.delete` | `{accountId}` | `{ok}` | |
+
+- `app.` 开头的方法由主进程自己处理，不转给后端；同样只接受应用自己页面的请求。
+- `accountId` 形如 `arknights:<uid>` / `endfield:<uid>`；token 只能是可见 ASCII、长度有上限。
+- token 和密文都不写日志。
+
 ## Electron 的安全设置
 
 - 渲染进程：`contextIsolation`、`sandbox`（`app.enableSandbox()` 对所有页面生效），不开 Node，不允许 `<webview>`。
