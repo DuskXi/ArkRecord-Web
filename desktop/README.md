@@ -151,6 +151,8 @@ interface ArkrecordBridge {
 - `app.` 开头的方法由主进程自己处理，不转给后端；同样只接受应用自己页面的请求。
 - `accountId` 形如 `arknights:<uid>` / `endfield:<uid>`；token 只能是可见 ASCII、长度有上限。
 - token 和密文都不写日志。
+- 实现：`desktop/electron/keychain.ts`（safeStorage、四个方法）和 `token-store.ts`（文件格式、校验、读写按顺序排队，不依赖 Electron，有单元测试）。`backend` 在 Windows 上是 `dpapi`，macOS 是 `keychain`，Linux 是 safeStorage 选中的后端。一条都不剩时删掉 `hg-tokens.json`。钥匙串不可用时 `load` 返回空、`delete` 照常删文件里的条目。
+- 冒烟测试用假账号 `arknights:arkrecord-smoke-test` 和随机的假 token 走一遍 save → load → delete，并检查文件里只有密文、结束后没有残留。
 
 ## Electron 的安全设置
 

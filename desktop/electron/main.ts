@@ -10,6 +10,7 @@ import { Backend } from './backend.js'
 import { openExternal } from './external.js'
 import { checkHgLogin, hgLogin, isLoginSession } from './hg-login.js'
 import { OFFICIAL_LOGIN, fakeLoginTarget } from './hg-login-rules.js'
+import { deleteToken, keychainStatus, loadTokens, saveToken } from './keychain.js'
 import { INVALID_PARAMS, METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
 import { runSmokeTest } from './smoke.js'
 
@@ -151,6 +152,11 @@ const APP_METHODS = new Map<string, (parent: BrowserWindow, params: unknown) => 
   ['app.hgLogin', async (parent) => ({ token: await hgLogin(parent, hgLoginTarget) })],
   ['app.hgLoginCheck', async () => ({ checking: checkHgLogin() })],
   ['app.setTitleBar', setTitleBar],
+  // 鹰角 token 只用系统钥匙串加密保存（keychain.ts）
+  ['app.tokens.status', async () => keychainStatus()],
+  ['app.tokens.load', loadTokens],
+  ['app.tokens.save', async (_parent, params) => saveToken(params)],
+  ['app.tokens.delete', async (_parent, params) => deleteToken(params)],
 ])
 
 async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unknown): Promise<RpcReply> {

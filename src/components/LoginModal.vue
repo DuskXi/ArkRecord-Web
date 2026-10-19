@@ -4,6 +4,7 @@ import { makeAccountId } from '@/lib/archive'
 import { db } from '@/lib/db'
 import { type Binding, grantOAuthToken, listBindings, parseAccountToken } from '@/lib/hg/auth'
 import { HgError } from '@/lib/hg/client'
+import { canRememberTokens, tokensInKeychain } from '@/lib/token-vault'
 import { desktopBridge, isRpcErrorObject } from '@/lib/transport'
 import { GAME_LABEL } from '@/lib/types'
 import { useAppStore } from '@/stores/app'
@@ -23,8 +24,16 @@ const verifying = ref(false)
 const error = ref('')
 const bindings = ref<Binding[]>([])
 const selected = ref<string[]>([])
-const remember = ref(true)
+/** 桌面版要有系统钥匙串才能记住登录（token-vault.ts）；网页版总是可以 */
+const canRemember = canRememberTokens()
+const remember = ref(canRemember)
 const adding = ref(false)
+
+const rememberDescription = !desktop
+  ? 'token 保存在此浏览器中，下次可以直接同步。公用电脑请关闭。'
+  : tokensInKeychain()
+    ? 'token 用系统钥匙串加密后保存在这台电脑上。公用电脑请关闭。'
+    : '这台电脑没有可用的系统钥匙串，不能记住登录，关闭应用后需要重新登录。'
 
 const token = computed(() => loginToken.value || parseAccountToken(raw.value))
 const roleItems = computed(() =>
@@ -238,11 +247,7 @@ async function confirm() {
           variant="card"
           :ui="{ fieldset: 'gap-2' }"
         />
-        <USwitch
-          v-model="remember"
-          label="记住登录"
-          :description="desktop ? 'token 保存在本机的应用数据里，下次可以直接同步。公用电脑请关闭。' : 'token 保存在此浏览器中，下次可以直接同步。公用电脑请关闭。'"
-        />
+        <USwitch v-model="remember" label="记住登录" :disabled="!canRemember" :description="rememberDescription" />
       </div>
     </template>
 

@@ -3,10 +3,12 @@
  * 检查 ping、方法白名单、hg.request 的路由白名单、页面拿不到 Node、应用内登录窗口，结果写到终端，然后退出（退出码 0 表示通过）。
  * 不发出任何真实的网络请求：hg.request 只用白名单以外的路径，后端在发请求之前就会拒绝；登录窗口用本机的假登录页（fake-hg.mjs）。
  */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { type BrowserWindow, type WebContents, desktopCapturer, session } from 'electron'
+import { type BrowserWindow, type WebContents, app, desktopCapturer, session } from 'electron'
 import { currentLoginWindow, lastLoginPartition } from './hg-login.js'
+import { TOKEN_FILE } from './token-store.js'
 
 /** 截图目录（dev.mjs --smoke --shots <目录>）：看界面效果用，不设就不截图 */
 const SHOTS_DIR = process.env.ARKRECORD_SMOKE_SHOTS
@@ -160,6 +162,52 @@ async function probeLogin(win: BrowserWindow, expectedToken: string): Promise<Re
   }
 }
 
+interface RpcCall {
+  ok: boolean
+  r?: Record<string, unknown>
+  e?: { code?: number }
+}
+
+/** 在页面里调用 window.arkrecord.rpc（和页面自己的代码走同一条路） */
+const pageRpc = (win: BrowserWindow, method: string, params?: unknown) =>
+  win.webContents.executeJavaScript(
+    `window.arkrecord.rpc(${JSON.stringify(method)}${params === undefined ? '' : `, ${JSON.stringify(params)}`}).then((r) => ({ ok: true, r }), (e) => ({ ok: false, e }))`,
+  ) as Promise<RpcCall>
+
+/** 冒烟测试用的假账号，不会和真实账号重名 */
+const FAKE_ACCOUNT = 'arknights:arkrecord-smoke-test'
+const tokensOf = (call: RpcCall) => (call.r?.tokens ?? {}) as Record<string, unknown>
+
+/** token 保存：用假账号、假 token 走一遍 save → load → delete，结束后文件里没有残留。钥匙串不可用时只检查状态能查到 */
+async function probeTokens(win: BrowserWindow): Promise<Record<string, boolean>> {
+  const status = await pageRpc(win, 'app.tokens.status')
+  const backend = String(status.r?.backend)
+  if (!status.ok || status.r?.available !== true) {
+    console.log(`[smoke] 系统钥匙串不可用（${backend}），跳过 token 保存检查`)
+    return { '能查到系统钥匙串的状态': status.ok }
+  }
+  const token = `arkrecord-smoke-test-${randomUUID()}`
+  const file = join(app.getPath('userData'), TOKEN_FILE)
+  const readRaw = () => readFile(file, 'utf8').catch(() => '')
+
+  const saved = await pageRpc(win, 'app.tokens.save', { accountId: FAKE_ACCOUNT, token })
+  const raw = await readRaw()
+  const loaded = await pageRpc(win, 'app.tokens.load')
+  const deleted = await pageRpc(win, 'app.tokens.delete', { accountId: FAKE_ACCOUNT })
+  const after = await pageRpc(win, 'app.tokens.load')
+  const rawAfter = await readRaw()
+  const badId = await pageRpc(win, 'app.tokens.save', { accountId: 'genshin:1', token })
+  const badToken = await pageRpc(win, 'app.tokens.save', { accountId: FAKE_ACCOUNT, token: 'has space' })
+
+  console.log(`[smoke] token 保存：钥匙串 ${backend}`)
+  return {
+    'token 保存后能读回同样的值': saved.ok && loaded.ok && tokensOf(loaded)[FAKE_ACCOUNT] === token,
+    'hg-tokens.json 里只有密文': raw.includes(FAKE_ACCOUNT) && !raw.includes(token),
+    'token 删除后读不到，文件里没有残留': deleted.ok && after.ok && !(FAKE_ACCOUNT in tokensOf(after)) && !rawAfter.includes(FAKE_ACCOUNT),
+    '格式不对的 accountId 和 token 被拒绝（-32602）': badId.e?.code === -32602 && badToken.e?.code === -32602,
+  }
+}
+
 function report(result: ProbeResult, extra: Record<string, boolean>): boolean {
   const checks: Record<string, boolean> = {
     '页面有 window.arkrecord': result.bridge === 'object',
@@ -226,6 +274,13 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
       return
     }
     await shotPages(win).catch((error: unknown) => console.error(`[smoke] 截图失败：${(error as Error).message}`))
+    let tokens: Record<string, boolean>
+    try {
+      tokens = await probeTokens(win)
+    } catch (error) {
+      console.error(`[smoke] token 保存检查出错：${(error as Error).message}`)
+      tokens = { token保存检查没有跑完: false }
+    }
     // 只有带着假登录页启动时（dev.mjs --smoke）才检查登录窗口
     const fakeToken = process.env.ARKRECORD_FAKE_HG_TOKEN
     let login: Record<string, boolean> = {}
@@ -237,6 +292,6 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
         login = { 登录窗口检查没有跑完: false }
       }
     }
-    finish(report(result, login))
+    finish(report(result, { ...tokens, ...login }))
   })
 }
