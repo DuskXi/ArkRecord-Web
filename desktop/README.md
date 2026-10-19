@@ -20,7 +20,8 @@ desktop/
 - 需要 Node 22.12 以上、uv。Electron 版本写死在 `package.json`（目前 44.9.0）。
 - 第一次 `npm install` 之后如果没有 Electron 本体，运行 `node node_modules/electron/install.js`。网页版的 CI 和部署设置了 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`，不下载。
 - desktop 模式不加载 `cloudflare()` 和给搜索引擎的文件。
-- **只有桌面版才有的代码**（米哈游的数据层 `src/lib/mhy/`、页面 `src/pages/mhy/`、`src/components/mhy/`）只能从 `src/platform/desktop.ts` 引用：桌面构建把 `@/platform` 解析成它，网页构建用 `src/platform/index.ts`（空的）。网页构建和网页版开发服务器里只要有模块引用到这些文件就直接报错（`vite.config.ts` 的 `webWithoutDesktopCode`），所以网页版的产物里不会有米哈游的代码。游戏切换里的原神入口和 `/genshin` 页面也由它提供。
+- **只有桌面版才有的代码**（米哈游的数据层 `src/lib/mhy/`、页面 `src/pages/mhy/`、`src/components/mhy/`）只能从 `src/platform/desktop.ts` 引用：桌面构建把 `@/platform` 解析成它，网页构建用 `src/platform/index.ts`（空的）。网页构建和网页版开发服务器里只要有模块引用到这些文件就直接报错（`vite.config.ts` 的 `webWithoutDesktopCode`），所以网页版的产物里不会有米哈游的代码。
+- **侧边栏是两层切换**：最上面是厂商（鹰角 / 米哈游，`VendorSwitcher`），下面是这个厂商的游戏（`GameSwitcher`），再往下是这个游戏的账号和导航。米哈游这一层（`EXTRA_VENDORS`：游戏列表和侧边栏组件 `MhySidebar`）和它的页面（`EXTRA_ROUTES`）都由 `src/platform/desktop.ts` 提供；当前在哪个厂商、哪个游戏由页面路径决定（`src/platform/active.ts`）。切到米哈游进上次看的米哈游游戏（没有就进第一个），切回鹰角回到总览、还是上次的鹰角游戏（`app.game`）。网页版没有其他厂商，不显示厂商切换。米哈游页面用默认主题，不沿用上次鹰角游戏的。
 - 构建时常量 `__DESKTOP__`：桌面构建为 true。运行时判断是不是在桌面版里用 `isDesktop()`。
 - 桌面版没有 Worker：鹰角的请求经 `src/lib/transport.ts` 的 `postHg` 交给后端的 `hg.request`，由本机直连鹰角；其他调用 `/api/*` 的功能（统计、反馈、云同步）要等 M5。
 - 开发时主进程每次启动会清掉 HTTP 缓存：Vite 给依赖的地址带版本号并让浏览器长期缓存，上次运行留下的缓存会让依赖版本对不上（504，页面空白）。
@@ -83,7 +84,7 @@ uv run --project desktop/backend python -m arkrecord_backend
 - 请求由本机直连米哈游官方接口，只发 [`shared/upstreams/mhy.json`](../shared/upstreams/mhy.json) 白名单里的抽卡记录接口；两次请求至少间隔 0.5 秒；日志不记地址。
 - `gachaType`：原神 100、200、301（会同时返回 400）、302、500；星铁 1、2、11、12、21、22（21、22 走联动池接口）。
 - 业务错误（-32000）的 `data.kind`：`game_not_found`、`no_link`（先在游戏里打开抽卡记录）、`link_expired`、`link_invalid`、`bad_link`、`handle_expired`、`rate_limited`（-110，稍后重试）、`network`、`upstream_error`、`unsupported`。
-- 页面：`/genshin`（`src/pages/mhy/GenshinPage.vue` → `src/components/mhy/MhyGamePage.vue`，星铁以后复用）：从游戏缓存读取（先 `mhy.locate`，找不到时用 `app.pickDirectory` 手动选，选过的目录记在本机）、等待读取（每 3 秒查 `mhy.cacheStamp`，变了就读，最多 10 分钟）、粘贴链接（输入框不回显、不保存，提交后马上清空）、同步进度、出错时按 `kind` 给出下一步、中途出错时显示已经保存的部分；统计和记录列表只数事实，不写保底规则。
+- 页面：`/genshin`（统计）和 `/genshin/records`（记录），都是 `src/components/mhy/MhyGamePage.vue`（星铁复用），最上面都有读取面板；账号（UID）在侧边栏 `MhySidebar` 里切换，和页面共用 `accounts.ts`，选中的记在本机。读取面板：从游戏缓存读取（先 `mhy.locate`，找不到时用 `app.pickDirectory` 手动选，选过的目录记在本机）、等待读取（每 3 秒查 `mhy.cacheStamp`，变了就读，最多 10 分钟）、粘贴链接（输入框不回显、不保存，提交后马上清空）、同步进度、出错时按 `kind` 给出下一步、中途出错时显示已经保存的部分；统计和记录列表只数事实，不写保底规则。
 - 本机只读检查（不输出参数值、不发请求）：`uv run --project desktop/backend python -m arkrecord_backend.mhy.inspect genshin`。
 - 本机真实请求实验：`uv run --project desktop/backend python -m arkrecord_backend.mhy.probe genshin`。不加 `--yes` 只列出会发哪些请求；加 `--yes` 后走和应用相同的代码（校验链接、每个卡池拉到最后一页），只输出页数、条数、字段名和格式检查，不输出 authkey、UID 和记录内容。要先在游戏里打开一次抽卡记录，并经维护者同意（见 docs/desktop/plan.md 的调试规则）。
 

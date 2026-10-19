@@ -34,6 +34,7 @@ declare module 'vue' {
     LoginModal: typeof import('./src/components/LoginModal.vue')['default']
     MhyGamePage: typeof import('./src/components/mhy/MhyGamePage.vue')['default']
     MhyPullList: typeof import('./src/components/mhy/MhyPullList.vue')['default']
+    MhySidebar: typeof import('./src/components/mhy/MhySidebar.vue')['default']
     MhyStats: typeof import('./src/components/mhy/MhyStats.vue')['default']
     MhySyncPanel: typeof import('./src/components/mhy/MhySyncPanel.vue')['default']
     MobileNav: typeof import('./src/components/shell/MobileNav.vue')['default']
@@ -47,6 +48,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     ScopeSwitch: typeof import('./src/components/shell/ScopeSwitch.vue')['default']
     SectionHeader: typeof import('./src/components/ui/SectionHeader.vue')['default']
+    SegmentSwitch: typeof import('./src/components/shell/SegmentSwitch.vue')['default']
     ShareStudio: typeof import('./src/components/ShareStudio.vue')['default']
     SixStarPanel: typeof import('./src/components/stats/SixStarPanel.vue')['default']
     SixStarWall: typeof import('./src/components/ui/SixStarWall.vue')['default']
@@ -92,6 +94,7 @@ declare module 'vue' {
     UTabs: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Tabs.vue')['default']
     UTextarea: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Textarea.vue')['default']
     UTooltip: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Tooltip.vue')['default']
+    VendorSwitcher: typeof import('./src/components/shell/VendorSwitcher.vue')['default']
     WelcomeDialog: typeof import('./src/components/WelcomeDialog.vue')['default']
   }
 }

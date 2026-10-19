@@ -2,9 +2,10 @@
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 
-defineProps<{ collapsed?: boolean }>()
+/** subtitle：其他厂商的游戏页面上由 App.vue 传入（如 GENSHIN ARCHIVE），不跟着上次的鹰角游戏 */
+const props = defineProps<{ collapsed?: boolean; subtitle?: string }>()
 const app = useAppStore()
-const subtitle = computed(() => (app.game === 'endfield' ? 'ENDFIELD ARCHIVE' : 'RHODES ISLAND ARCHIVE'))
+const subtitle = computed(() => props.subtitle ?? (app.game === 'endfield' ? 'ENDFIELD ARCHIVE' : 'RHODES ISLAND ARCHIVE'))
 </script>
 
 <template>

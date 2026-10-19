@@ -311,25 +311,51 @@ const FAKE_MHY = `
   })
 `
 
-/**
- * 桌面版的游戏切换里有原神（src/platform/desktop.ts）：点了进原神页面（能看到“读取”），再点明日方舟回到总览。
- * 不点任何读取按钮，不发请求。网页版没有这个入口，由网页构建的检查保证（vite.config.ts 的 webWithoutDesktopCode）
- */
-/** 在页面里点游戏切换里的某个游戏，等页面切过去 */
-const clickGame = (name: string) => `
-  [...document.querySelectorAll('[aria-label="切换游戏"] [role="radio"]')].find((b) => b.textContent.trim() === ${JSON.stringify(name)})?.click()
+/** 在页面里点某个分段切换（厂商或游戏）里的一项，等页面切过去 */
+const clickSegment = (group: '切换厂商' | '切换游戏', name: string) => `
+  [...document.querySelectorAll('[aria-label="${group}"] [role="radio"]')].find((b) => b.textContent.trim() === ${JSON.stringify(name)})?.click()
   await new Promise((resolve) => setTimeout(resolve, 800))
 `
 
-async function probeGenshinEntry(win: BrowserWindow): Promise<Record<string, boolean>> {
-  const run = (code: string) => win.webContents.executeJavaScript(`(async () => { ${code} })()`) as Promise<unknown>
-  const games = (await run(`return [...document.querySelectorAll('[aria-label="切换游戏"] [role="radio"]')].map((b) => b.textContent.trim())`)) as string[]
-  const genshin = (await run(`${clickGame('原神')}
-    return { path: location.pathname, read: document.body.innerText.includes('从游戏缓存读取'), empty: document.body.innerText.includes('还没有原神的抽卡记录') }`)) as {
-    path: string
-    read: boolean
-    empty: boolean
+/** 侧边栏现在的样子：两层切换的选项和选中项、有没有米哈游 / 鹰角的导航、页面路径和内容 */
+const SIDEBAR_STATE = `
+  const segment = (group) => {
+    const buttons = [...document.querySelectorAll('[aria-label="' + group + '"] [role="radio"]')]
+    return { items: buttons.map((b) => b.textContent.trim()), active: buttons.find((b) => b.getAttribute('aria-checked') === 'true')?.textContent.trim() }
   }
+  const navText = (selector) => document.querySelector(selector)?.innerText ?? ''
+  return {
+    path: location.pathname,
+    vendor: segment('切换厂商'),
+    game: segment('切换游戏'),
+    mhyNav: navText('[aria-label="米哈游导航"]'),
+    hgNav: navText('[aria-label="鹰角导航"]').includes('寻访记录'),
+    read: document.body.innerText.includes('从游戏缓存读取'),
+    empty: document.body.innerText.includes('还没有原神的抽卡记录'),
+  }
+`
+
+interface SidebarState {
+  path: string
+  vendor: { items: string[]; active?: string }
+  game: { items: string[]; active?: string }
+  mhyNav: string
+  hgNav: boolean
+  read: boolean
+  empty: boolean
+}
+
+/**
+ * 侧边栏的两层切换（厂商 → 游戏，src/platform/active.ts）：先在鹰角选终末地，切到米哈游看到原神和米哈游自己的侧边栏，
+ * 点“记录”进记录页，切回鹰角还是终末地，再选回明日方舟。不点任何读取按钮，不发请求。
+ * 网页版没有米哈游，由网页构建的检查保证（vite.config.ts 的 webWithoutDesktopCode）
+ */
+async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>> {
+  const run = (code: string) => win.webContents.executeJavaScript(`(async () => { ${code} })()`) as Promise<unknown>
+  const state = (before = '') => run(`${before}${SIDEBAR_STATE}`) as Promise<SidebarState>
+
+  const hgStart = await state(clickSegment('切换游戏', '终末地'))
+  const mhy = await state(clickSegment('切换厂商', '米哈游'))
   if (SHOTS_DIR) {
     await shot(win.webContents, 'genshin-empty')
     // 只在开发服务器上能 import 页面用的模块
@@ -339,19 +365,40 @@ async function probeGenshinEntry(win: BrowserWindow): Promise<Record<string, boo
         await mhyDb.accounts.put({ id: accountId, game: 'genshin', uid: '100000000', region: 'cn_gf01', gameBiz: 'hk4e_cn', utcOffset: 8, createdAt: Date.now(), lastSyncAt: Date.now() })
         await mhyDb.pulls.bulkPut(pulls)`)
       await shot(win.webContents, 'genshin-data')
-      await run(`document.querySelector('table')?.scrollIntoView({ block: 'start' })`)
-      await shot(win.webContents, 'genshin-list')
-      await run(`${FAKE_MHY}
-        const { mhyDb } = await import('/src/lib/mhy/db.ts')
-        await mhyDb.pulls.where('accountId').equals(accountId).delete()
-        await mhyDb.accounts.delete(accountId)`)
     }
   }
-  const back = (await run(`${clickGame('明日方舟')} return location.pathname`)) as string
-  console.log(`[smoke] 游戏切换：${JSON.stringify({ games, genshin, back })}`)
+  const records = await state(`[...document.querySelectorAll('[aria-label="米哈游导航"] a')].find((a) => a.textContent.trim() === '记录')?.click()
+    await new Promise((resolve) => setTimeout(resolve, 800))`)
+  if (SHOTS_DIR && devPage(win)) {
+    await shot(win.webContents, 'genshin-list')
+    await run(`${FAKE_MHY}
+      const { mhyDb } = await import('/src/lib/mhy/db.ts')
+      await mhyDb.pulls.where('accountId').equals(accountId).delete()
+      await mhyDb.accounts.delete(accountId)`)
+  }
+  const hgBack = await state(clickSegment('切换厂商', '鹰角'))
+  await run(clickSegment('切换游戏', '明日方舟'))
+  console.log(`[smoke] 侧边栏：${JSON.stringify({ hgStart, mhy, records, hgBack })}`)
+
   return {
-    '桌面版的游戏切换里有原神，点了进原神页面（有读取、没有记录）': games.includes('原神') && genshin.path === '/genshin' && genshin.read && genshin.empty,
-    '从原神点明日方舟回到总览': back === '/',
+    '厂商切换有鹰角和米哈游两项': mhy.vendor.items.join('/') === '鹰角/米哈游',
+    '切到米哈游：游戏切换里是原神，侧边栏是米哈游的（统计 / 记录，没有鹰角的导航）':
+      mhy.path === '/genshin' &&
+      mhy.vendor.active === '米哈游' &&
+      mhy.game.items.join('/') === '原神' &&
+      mhy.mhyNav.includes('统计') &&
+      mhy.mhyNav.includes('记录') &&
+      !mhy.hgNav &&
+      mhy.read,
+    '米哈游的“记录”页（也有读取面板）': records.path === '/genshin/records' && records.read,
+    '切回鹰角：回到总览，还是之前选的终末地，侧边栏是鹰角的':
+      hgStart.game.active === '终末地' &&
+      hgBack.path === '/' &&
+      hgBack.vendor.active === '鹰角' &&
+      hgBack.game.items.join('/') === '明日方舟/终末地' &&
+      hgBack.game.active === '终末地' &&
+      hgBack.hgNav &&
+      !hgBack.mhyNav,
   }
 }
 
@@ -449,7 +496,7 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
     }
     let images: Record<string, boolean>
     try {
-      images = { ...(await probeImages(win)), ...(await probeStatsReports()), ...(await probeGenshinEntry(win)) }
+      images = { ...(await probeImages(win)), ...(await probeStatsReports()), ...(await probeVendors(win)) }
     } catch (error) {
       console.error(`[smoke] 图片检查出错：${(error as Error).message}`)
       images = { 图片检查没有跑完: false }
