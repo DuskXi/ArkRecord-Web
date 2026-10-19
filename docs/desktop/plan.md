@@ -8,7 +8,8 @@
 - **Electron 做界面，Python 做后端**（维护者的决定）。平台：Windows、Linux（RHEL 系、Ubuntu 系）、macOS（x64、arm64）。
 - **第一版就支持四款游戏**：明日方舟、明日方舟：终末地、原神、崩坏：星穹铁道。绝区零暂不做（维护者没有账号，无法测试）。
 - **原神、星铁的取数方式**（2026-10-19 维护者决定）：读本机游戏日志找到游戏目录，再从游戏的网页缓存里取出抽卡链接；另外支持粘贴链接、UIGF 导入。**不做米游社登录**（扫码或密码都不做），也就不需要 stoken、genAuthKey 和 DS 签名。以后要改，先改这份计划。
-- **云同步分开**：鹰角两款继续用 ark.kaltsit.dev；米哈游的用单独的 `mhy.<域名>`（独立 Worker、独立 Durable Object、独立 `SYNC_PEPPER`）。
+- **游戏数据的请求一律由本机直连**（维护者 2026-10-19：“米哈游这边不需要worker转发，老用cf地址请求米哈游的抽卡记录也不好，甚至对于国内用户来说还绕路，所以用python直连请求即可”）：桌面版的鹰角请求（`hg.request`）和米哈游请求（校验抽卡链接、分页拉取抽卡记录）都由本机的 Python 后端直接发给官方接口，**不经过 Cloudflare 或任何 Worker**。Cloudflare 只用于加密云同步（M5）。不做经 Worker 转发抽卡请求的米哈游网页版。
+- **云同步分开**：鹰角两款继续用 ark.kaltsit.dev；米哈游的用单独的 `mhy.<域名>`（独立 Worker、独立 Durable Object、独立 `SYNC_PEPPER`），这个 Worker 只做加密云同步，不转发米哈游的接口。
 - **网页版 ark.kaltsit.dev 不变**：只有鹰角两款，产物里不能出现米哈游的代码。
 
 ## 架构
@@ -92,10 +93,25 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 ## 凭据和隐私
 
-- 鹰角 token、抽卡链接里的 authkey 默认只在 Python 进程内存里。鹰角 token 在用户勾选“记住登录”时存系统钥匙串（Windows 凭据管理器、macOS 钥匙串、Linux Secret Service），不写普通文件。authkey 大约 24 小时就过期，不保存，每次从缓存重新读。
+- 抽卡链接里的 authkey 只在 Python 进程内存里，大约 24 小时就过期，不保存，每次从缓存重新读。
+- 鹰角 token 分两步：
+  - **M1**：和网页版一样交给页面（拼进请求信封；“记住登录”时存在 IndexedDB），改动最小。
+  - **之后**：改成句柄。token 由主进程交给后端保存（记住登录时存系统钥匙串：Windows 凭据管理器、macOS 钥匙串、Linux Secret Service），页面和请求信封里只有句柄，由后端换成真的 token，token 不进渲染进程。要同时改后端、`client.ts`、`auth.ts`，单独做。
 - 抽卡链接当凭据处理：界面上不完整显示，不写日志，不写文件。
 - 所有日志经过 `redact.py`：token、cookie、authkey、ticket 等字段的值一律替换成 `***`，有测试检查。
 - 凭据不经过任何服务器（桌面版不需要 Worker 转发）。云同步只上传加密后的记录，和网页版一样不上传凭据。
+
+## 应用内鹰角登录窗口（设计，2026-10-19）
+
+- 页面调用 `rpc('app.hgLogin')`（`app.` 开头的方法由主进程自己处理，不转给后端）。成功返回 `{ token }`；用户关闭窗口返回 -32000 + `cancelled`，失败或超时返回 `login_failed`。同一时间只开一个登录窗口。
+- 每次登录用新的内存分区（`session.fromPartition('hg-login-<随机>')`，不带 `persist:`），和应用的会话完全分开。窗口：沙盒、上下文隔离、不开 Node、**没有 preload**、不允许 `<webview>`、安装版关掉开发者工具；标题显示当前域名。这个会话的权限请求和下载一律拒绝。
+- 顶层页面只允许 `https://*.hypergryph.com`，子框架另外放行极验的域名（真机测试时确认列表）；其他链接交给系统浏览器，`window.open` 一律拒绝。不注入脚本、不读页面内容、不用 debugger 或 webRequest 读响应。
+- 取 token：主进程在登录会话里请求 `https://web-api.hypergryph.com/account/info/hg`（带这个会话的 Cookie），时机是 `*.hypergryph.com` 上每次跳转后防抖 1 秒，或用户点“我已登录”；每个窗口最多查 20 次。`code === 0` 且 `data.content` 是非空字符串才算成功。token 不写日志、不进报错。
+- token 只作为这次 `rpc` 调用的返回值交给登录弹窗，之后和粘贴的 token 走同一条路；不挂在 `window` 上，主进程交出后不保存。
+- 结束时（拿到 token、用户关窗或 10 分钟超时）清掉这个会话的全部存储、缓存和认证缓存，再销毁窗口。**不调用鹰角的退出接口**（可能让刚拿到的 token 失效）。
+- 界面上说明：在应用内窗口输入密码，理论上应用能读到；ArkRecord 不注入脚本、代码开源，不想在应用里输密码可以用扫码或粘贴 token。
+- 极验：先用 Electron 默认的 User-Agent 真机测试；如果被拦，是否只对登录会话去掉 `Electron/…` 由维护者决定。备选：森空岛 / 鹰角 App 扫码（`gen_scan/login`），粘贴 token 一直保留。
+- 先用本机的假登录页把窗口、跳转限制、取 token、清会话整套流程跑通（不发真实请求），再由维护者本人真机登录测试。
 
 ## 数据（米哈游）
 
