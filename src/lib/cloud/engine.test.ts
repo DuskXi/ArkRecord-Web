@@ -70,12 +70,14 @@ async function device(factory = new IDBFactory()) {
   const { readLocalDataset } = await import('./dataset')
   const { fingerprint } = await import('./codec')
   const { mergeRoster } = await import('../roster')
+  const syncUser = await import('../sync-user')
   const accountId = `arknights:${UID}`
   return {
     factory,
     engine,
     db,
     mergeRoster,
+    syncUser,
     accountId,
     async createAccount(nickName = '博士') {
       await db.accounts.put({ id: accountId, game: 'arknights', uid: UID, nickName, createdAt: 1, metaAt: 1 })
@@ -453,5 +455,65 @@ describe('云同步端到端', () => {
     const gAccount = await g.createAccount()
     await g.addPulls(0, 1)
     expect(await g.engine.switchCloudMode(gAccount, { to: 'hg', oauthToken: VALID_OAUTH })).toMatchObject({ created: true })
+  })
+
+  it('同步识别码：开通时生成、新设备沿用；对不上时记下冲突、不改；回答“是同一个人”后各设备收敛到先生成的；“不是”的设备不写入', async () => {
+    cloud = makeCloud(PEPPER)
+    const a = await device()
+    const account = await a.createAccount()
+    await a.addPulls(0, 2)
+    await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+    const first = (await a.syncUser.loadDeviceUser())!
+    expect(first).toBeDefined()
+    expect((await a.db.accounts.get(a.accountId))!.syncUser).toEqual(first)
+
+    // B：新设备，沿用云端的识别码
+    const b = await device()
+    await b.engine.unlockCloud(target, { password: PASSWORD, remember: true })
+    expect(await b.syncUser.loadDeviceUser()).toEqual(first)
+    expect(await b.print()).toBe(await a.print())
+
+    // C：本机早就有一个（更早生成的）识别码 → 冲突，两边都不改，也不上传
+    const c = await device()
+    const earlier = { id: 'c'.repeat(32), createdAt: 1 }
+    await c.db.kv.put({ key: 'sync-user', value: earlier })
+    await c.engine.unlockCloud(target, { password: PASSWORD, remember: true })
+    expect(await c.syncUser.loadConflicts()).toEqual([{ accountId: c.accountId, user: first }])
+    expect(await c.syncUser.loadDeviceUser()).toEqual(earlier)
+    expect((await c.db.accounts.get(c.accountId))!.syncUser).toEqual(first)
+    expect(await c.print()).toBe(await a.print())
+
+    // C 回答“是同一个人”：保留先生成的，同步后其他设备自动改用，不会再问
+    expect(await c.syncUser.resolveConflict(c.accountId, 'same')).toEqual([c.accountId])
+    const merged = { id: earlier.id, createdAt: 1, merged: [first.id] }
+    expect(await c.syncUser.loadDeviceUser()).toEqual(merged)
+    expect((await c.engine.syncCloud(c.accountId)).uploaded).toBe(0)
+    for (const other of [a, b]) {
+      await other.engine.syncCloud(other.accountId)
+      expect(await other.syncUser.loadDeviceUser()).toEqual(merged)
+      expect((await other.db.accounts.get(other.accountId))!.syncUser).toEqual(merged)
+      expect(await other.syncUser.loadConflicts()).toEqual([])
+      expect(await other.print()).toBe(await c.print())
+    }
+
+    // D：别人的设备（借用账号）回答“不是”：本机识别码不变，也不写进这个账号
+    const d = await device()
+    const stranger = { id: 'd'.repeat(32), createdAt: 0 }
+    await d.db.kv.put({ key: 'sync-user', value: stranger })
+    await d.engine.unlockCloud(target, { password: PASSWORD, remember: true })
+    expect(await d.syncUser.loadConflicts()).toHaveLength(1)
+    expect(await d.syncUser.resolveConflict(d.accountId, 'other')).toEqual([])
+    await d.engine.syncCloud(d.accountId)
+    expect(await d.syncUser.loadConflicts()).toEqual([])
+    expect(await d.syncUser.loadDeviceUser()).toEqual(stranger)
+    expect((await d.db.accounts.get(d.accountId))!.syncUser).toEqual(merged)
+    await a.engine.syncCloud(a.accountId)
+    expect(await a.syncUser.loadDeviceUser()).toEqual(merged)
+
+    // 关闭云同步、删除云端数据都不删本机识别码
+    await a.engine.forgetCloud(a.accountId)
+    await b.engine.deleteCloud(target)
+    expect(await a.syncUser.loadDeviceUser()).toEqual(merged)
+    expect(await b.syncUser.loadDeviceUser()).toEqual(merged)
   })
 })

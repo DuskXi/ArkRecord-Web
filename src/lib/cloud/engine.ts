@@ -34,6 +34,7 @@ import {
 } from '../../../shared/cloud-protocol'
 import { makeAccountId } from '../archive'
 import { db } from '../db'
+import { reconcileAccountUser } from '../sync-user'
 import type { Account } from '../types'
 import {
   apiClaim,
@@ -177,7 +178,9 @@ export async function enableCloud(
   const dek = await generateDek()
   const kid = randomKid()
   const wrapped = await wrapDek(dek, kek, locator, kid)
-  const ds = await readLocalDataset(account)
+  // 同步识别码：开通时对账（第一次开通云同步时在这里生成，见 sync-user.ts）
+  await reconcileAccountUser(account.id)
+  const ds = await readLocalDataset((await db.accounts.get(account.id)) ?? account)
   const envelope = await sealDataset(dek, locator, kid, 'snapshot', ds)
   const requireHg = mode === 'hg' || Boolean(options.requireHg)
   const { seq } = await apiClaim(
@@ -430,6 +433,8 @@ async function runSync(
   }
 
   // ── 2. 本地现状：云端已经有了哪些版本 ──
+  // 同步识别码：和本机对账，对不上时记下冲突（同步结束后问用户），两边都不改
+  await reconcileAccountUser(state.accountId)
   const account = await db.accounts.get(state.accountId)
   if (!account) throw new CloudSyncError('corrupt', '本地找不到这个账号。')
   const local = await readLocalDataset(account)
@@ -466,7 +471,7 @@ async function runSync(
       try {
         for (const envelope of await sealDeltas(keys.dek, state.locator, state.kid, local, changed)) advance((await apiPush(proof, envelope)).seq)
         for (const id of changed) remote[id] = localHashes.get(id)!
-        uploaded = changed.filter((id) => id !== 'a').length
+        uploaded = changed.filter((id) => id !== 'a' && id !== 'u').length
       } catch (error) {
         if (!(error instanceof CloudApiError && error.code === 'compact_required')) throw error
         await snapshot()

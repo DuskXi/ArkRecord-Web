@@ -14,6 +14,7 @@ import { mergeEfPools, mergeEfPulls, repairEfRarity } from '../sync/endfield'
 import { mergeLegacyPulls, makeAccountId } from '../archive'
 import { mergeRoster } from '../roster'
 import type { Account, AkLedgerEntry, AkPull, EfPull } from '../types'
+import { mergeAccountUser } from '../sync-user'
 import type { CloudAccountInfo, CloudDataset, RosterRecord } from './codec'
 
 /** 去掉 accountId，以及值为 undefined 的字段（编码规范里它们等同于缺省） */
@@ -37,19 +38,21 @@ export async function readLocalDataset(account: Account): Promise<CloudDataset> 
   const rosterRows = await db.roster.where('accountId').equals(account.id).toArray()
   // 没有已拥有干员时省略（编码为格式版本 1，以前的网页也能读）
   const roster = rosterRows.length ? { roster: rosterRows.map((r): RosterRecord => strip(r)) } : {}
+  // 同步识别码（sync-user.ts）：有的话写成格式版本 3
+  const user = account.syncUser ? { user: account.syncUser } : {}
   if (account.game === 'arknights') {
     const pulls = await db.akPulls.where('accountId').equals(account.id).toArray()
     const ledger = await db.akLedger.where('accountId').equals(account.id).toArray()
     // poolId、charId 在本地可能是 undefined（很早期的导入文件），与 null 同义：都表示“没有”
     const shaped = pulls.map((p) => ({ ...strip(p), poolId: p.poolId ?? null, charId: p.charId ?? null }))
-    return { game: 'arknights', uid: account.uid, account: info, pulls: shaped, ledger: ledger.map(strip), ...roster }
+    return { game: 'arknights', uid: account.uid, account: info, ...user, pulls: shaped, ledger: ledger.map(strip), ...roster }
   }
   // 之前的版本可能原样保存了接口给的非整数星级，先修正本地数据
   await repairEfRarity(account.id)
   const pulls = await db.efPulls.where('accountId').equals(account.id).toArray()
   const poolIds = [...new Set(pulls.map((p) => p.poolId))]
   const pools = (await db.efPools.bulkGet(poolIds)).filter((p) => p !== undefined)
-  return { game: 'endfield', uid: account.uid, account: info, pulls: pulls.map(strip), pools, ...roster }
+  return { game: 'endfield', uid: account.uid, account: info, ...user, pulls: pulls.map(strip), pools, ...roster }
 }
 
 /** 账号信息：metaAt 新的优先，相同时取规范编码更小的（与顺序无关） */
@@ -63,8 +66,11 @@ export async function applyDataset(ds: CloudDataset): Promise<number> {
   const accountId = makeAccountId(ds.game, ds.uid)
   const existing = await db.accounts.get(accountId)
   if (!existing) {
-    await db.accounts.put({ id: accountId, game: ds.game, uid: ds.uid, createdAt: Date.now(), ...ds.account })
+    await db.accounts.put({ id: accountId, game: ds.game, uid: ds.uid, createdAt: Date.now(), ...ds.account, ...(ds.user ? { syncUser: ds.user } : {}) })
   } else {
+    // 同步识别码：和本地的合并（保留先生成的，见 sync-user.ts）
+    const user = mergeAccountUser(existing.syncUser, ds.user)
+    if (user !== existing.syncUser) await db.accounts.update(accountId, { syncUser: user })
     const local = accountInfo(existing)
     const winner = pickAccountInfo(local, ds.account)
     if (winner !== local) {
@@ -114,10 +120,11 @@ function cyrb53(text: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
 }
 
-/** 每条记录的标识 → 内容哈希。标识：寻访 p:key，源石/充值 l:kind:key，卡池 o:poolId，已拥有干员 r:itemId，账号信息 a */
+/** 每条记录的标识 → 内容哈希。标识：寻访 p:key，源石/充值 l:kind:key，卡池 o:poolId，已拥有干员 r:itemId，账号信息 a，同步识别码 u */
 export function recordHashes(ds: CloudDataset): Map<string, string> {
   const out = new Map<string, string>()
   out.set('a', cyrb53(jcs(ds.account)))
+  if (ds.user) out.set('u', cyrb53(jcs(ds.user)))
   for (const p of ds.pulls) out.set(`p:${p.key}`, cyrb53(jcs(p)))
   if (ds.game === 'arknights') for (const e of ds.ledger) out.set(`l:${e.kind}:${e.key}`, cyrb53(jcs(e)))
   else for (const p of ds.pools) out.set(`o:${p.poolId}`, cyrb53(jcs(p)))
@@ -125,7 +132,7 @@ export function recordHashes(ds: CloudDataset): Map<string, string> {
   return out
 }
 
-/** 从数据集里挑出标识在 ids 里的记录（账号信息总是带上） */
+/** 从数据集里挑出标识在 ids 里的记录（账号信息、同步识别码总是带上） */
 export function subset(ds: CloudDataset, ids: ReadonlySet<string>): CloudDataset {
   const kept = (ds.roster ?? []).filter((r) => ids.has(`r:${r.itemId}`))
   const { roster: _roster, ...rest } = ds

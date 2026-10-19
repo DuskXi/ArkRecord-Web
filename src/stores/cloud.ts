@@ -14,6 +14,7 @@ import { cloudStatus, CloudSyncError, enableCloud, switchCloudMode, syncCloud, t
 import { loadProfile, profileInfo, type SyncProfile, type SyncProfileInfo } from '@/lib/cloud/profile'
 import { type CloudState, isReady } from '@/lib/cloud/state'
 import { db } from '@/lib/db'
+import { loadConflicts, loadDeviceUser, resolveConflict, type SyncUserConflict } from '@/lib/sync-user'
 import type { Account, Game } from '@/lib/types'
 import type { CloudMode } from '../../shared/cloud-protocol'
 
@@ -78,6 +79,15 @@ export function describeError(error: unknown): string {
 export const useCloudStore = defineStore('cloud', () => {
   const toast = useToast()
   const states = useLiveQuery(() => db.cloud.toArray(), [], [] as CloudState[])
+  /** 同步识别码对不上、要问用户的账号（同步时记下，见 src/lib/sync-user.ts），以及本机识别码的生成时间 */
+  const userConflicts = useLiveQuery(
+    async () => {
+      const [conflicts, device] = await Promise.all([loadConflicts(), loadDeviceUser()])
+      return { conflicts: conflicts as SyncUserConflict[], deviceCreatedAt: device?.createdAt }
+    },
+    [],
+    { conflicts: [] as SyncUserConflict[], deviceCreatedAt: undefined as number | undefined },
+  )
   /** 内存里的钥匙不在数据库里，变化时手动通知界面 */
   const keysVersion = ref(0)
   const byAccount = computed(() => {
@@ -474,8 +484,27 @@ export const useCloudStore = defineStore('cloud', () => {
     if (failed.length) toast.add({ title: '切换失败', description: failed.join('；'), color: 'error', icon: 'i-lucide-cloud-off', duration: 15_000 })
   }
 
+  /** 回答同步识别码冲突。“是同一个人”改过的账号在下次云同步时上传 */
+  async function answerUserConflict(accountId: string, answer: 'same' | 'other' | 'later'): Promise<void> {
+    try {
+      const changed = await resolveConflict(accountId, answer)
+      if (answer === 'same') {
+        toast.add({
+          title: '已改用先生成的同步识别码',
+          description: changed.length ? `下次云同步时随数据上传（${changed.length} 个账号）。` : '这台设备上的账号已经在用它。',
+          color: 'success',
+          icon: 'i-lucide-user-check',
+        })
+      }
+    } catch (error) {
+      toast.add({ title: '保存失败', description: describeError(error), color: 'error', icon: 'i-lucide-circle-x' })
+    }
+  }
+
   return {
     states,
+    userConflicts,
+    answerUserConflict,
     byAccount,
     busy,
     progress,

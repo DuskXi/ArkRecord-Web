@@ -9,6 +9,7 @@ import WelcomeDialog from '@/components/WelcomeDialog.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import CloudDialog from '@/components/cloud/CloudDialog.vue'
 import TokenConsentDialog from '@/components/cloud/TokenConsentDialog.vue'
+import SyncUserConflictDialog from '@/components/cloud/SyncUserConflictDialog.vue'
 import LegacyMigration from '@/components/LegacyMigration.vue'
 import AnnouncementDialog from '@/components/announcements/AnnouncementDialog.vue'
 import DesktopTitleBar from '@/components/shell/DesktopTitleBar.vue'
@@ -79,6 +80,7 @@ const navItems = computed(() =>
     <LoginModal />
     <CloudDialog />
     <TokenConsentDialog />
+    <SyncUserConflictDialog />
     <LegacyMigration />
     <AnnouncementDialog />
     <WelcomeDialog />

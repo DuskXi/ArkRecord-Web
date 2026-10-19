@@ -17,10 +17,11 @@ import type { RosterEntry } from '../roster'
 import type { AkLedgerEntry, AkPull, EfPoolInfo, EfPull, Game } from '../types'
 
 /**
- * 格式版本：1 是只有寻访记录（以及源石/充值、卡池信息）的格式；2 增加了截图识别的已拥有干员（roster）。
- * 规范唯一：没有已拥有干员时一律写成版本 1（以前的网页也能读），有的时候写成版本 2。
+ * 格式版本：1 是只有寻访记录（以及源石/充值、卡池信息）的格式；2 增加了截图识别的已拥有干员（roster）；
+ * 3 增加了同步识别码（user，见 docs/rewrite/sync-user-id.md），roster 在版本 3 里可有可无。
+ * 规范唯一：有识别码时写成版本 3；没有识别码时，有已拥有干员写成版本 2，否则写成版本 1（以前的网页也能读）。
  */
-export const FORMAT_VERSION = 2
+export const FORMAT_VERSION = 3
 
 export class CodecError extends Error {
   constructor(message: string) {
@@ -37,6 +38,20 @@ export interface CloudAccountInfo {
   metaAt: number
 }
 
+/**
+ * 同步识别码（docs/rewrite/sync-user-id.md）：128 位随机数（32 位十六进制）和生成时间。
+ * merged：用户确认过是同一个人、或者同一个账号上合并到一起的其他识别码（升序、不含 id 本身）。
+ */
+export interface SyncUser {
+  id: string
+  createdAt: number
+  merged?: string[]
+}
+
+export const SYNC_USER_ID = /^[0-9a-f]{32}$/
+/** merged 最多记这么多个 */
+export const MAX_MERGED_USERS = 64
+
 export type AkRecord = Omit<AkPull, 'accountId'>
 export type EfRecord = Omit<EfPull, 'accountId'>
 export type LedgerRecord = Omit<AkLedgerEntry, 'accountId'>
@@ -47,6 +62,8 @@ export interface AkDataset {
   game: 'arknights'
   uid: string
   account: CloudAccountInfo
+  /** 同步识别码；没有时省略（编码为版本 1 或 2） */
+  user?: SyncUser
   pulls: AkRecord[]
   ledger: LedgerRecord[]
   /** 截图识别的已拥有干员；没有时省略（编码为版本 1） */
@@ -57,6 +74,7 @@ export interface EfDataset {
   game: 'endfield'
   uid: string
   account: CloudAccountInfo
+  user?: SyncUser
   pulls: EfRecord[]
   pools: EfPoolInfo[]
   roster?: RosterRecord[]
@@ -271,6 +289,24 @@ function encodeAccount(account: CloudAccountInfo): string {
   return jcs(account)
 }
 
+/** 同步识别码：字段固定，merged 升序、不重复、不含 id 本身，没有时省略 */
+export function checkSyncUser(user: unknown): user is SyncUser {
+  if (typeof user !== 'object' || user === null || Array.isArray(user)) return false
+  const u = user as Record<string, unknown>
+  if (Object.keys(u).some((k) => k !== 'id' && k !== 'createdAt' && k !== 'merged')) return false
+  if (typeof u.id !== 'string' || !SYNC_USER_ID.test(u.id)) return false
+  if (!Number.isSafeInteger(u.createdAt) || (u.createdAt as number) < 0 || Object.is(u.createdAt, -0)) return false
+  if (u.merged === undefined) return true
+  const merged = u.merged
+  if (!Array.isArray(merged) || merged.length === 0 || merged.length > MAX_MERGED_USERS) return false
+  return merged.every((m, i) => typeof m === 'string' && SYNC_USER_ID.test(m) && m !== u.id && (i === 0 || (merged[i - 1] as string) < m))
+}
+
+function encodeUser(user: SyncUser): string {
+  if (!checkSyncUser(user)) throw new CodecError('同步识别码格式不对')
+  return jcs(user)
+}
+
 function encodeAkPulls(pulls: readonly AkRecord[]): string {
   pulls.forEach((p, i) => validate(p, AK_FIELDS, `第 ${i + 1} 条明日方舟寻访`))
   assertUniqueKeys(
@@ -390,9 +426,10 @@ export function encodeDataset(ds: CloudDataset): string {
   if (!checkString(ds.uid) || !ds.uid || ds.uid.length > 64) throw new CodecError('UID 不合法')
   if (ds.roster !== undefined && !Array.isArray(ds.roster)) throw new CodecError('已拥有干员格式不对')
   const roster = ds.roster ?? []
-  // 没有已拥有干员时写成版本 1：以前的网页也能读
-  const version = roster.length ? FORMAT_VERSION : 1
-  const head = `{"v":${version},"game":${lit(ds.game)},"uid":${lit(ds.uid)},"account":${encodeAccount(ds.account)}`
+  // 有识别码写成版本 3；没有识别码时，没有已拥有干员写成版本 1（以前的网页也能读），有的话写成版本 2
+  const version = ds.user !== undefined ? 3 : roster.length ? 2 : 1
+  const user = ds.user !== undefined ? `,"user":${encodeUser(ds.user)}` : ''
+  const head = `{"v":${version},"game":${lit(ds.game)},"uid":${lit(ds.uid)},"account":${encodeAccount(ds.account)}${user}`
   const tail = roster.length ? `,"roster":${encodeRoster(roster)}}` : '}'
   if (ds.game === 'arknights') return `${head},"pulls":${encodeAkPulls(ds.pulls)},"ledger":${encodeLedger(ds.ledger)}${tail}`
   if (ds.game === 'endfield') return `${head},"pulls":${encodeEfPulls(ds.pulls)},"pools":${encodePools(ds.pools)}${tail}`
@@ -576,17 +613,28 @@ export function decodeDataset(text: string): CloudDataset {
     throw new CodecError('不是合法的 JSON')
   }
   const o = obj(parsed, '数据')
-  if (o.v !== 1 && o.v !== FORMAT_VERSION) throw new UnsupportedVersionError(typeof o.v === 'number' ? o.v : NaN)
+  if (o.v !== 1 && o.v !== 2 && o.v !== 3) throw new UnsupportedVersionError(typeof o.v === 'number' ? o.v : NaN)
   const game = o.game as Game
   const uid = str(o.uid, 'UID')
   const account = obj(o.account, '账号信息') as unknown as CloudAccountInfo
-  // 版本 1 没有这一项；版本 2 必须有（内容在重新编码时逐条校验）
-  const roster = o.v === 1 ? undefined : (arr(o.roster, '已拥有干员') as unknown as RosterRecord[])
+  // 版本 1 没有这一项；版本 2 必须有；版本 3 可有可无（内容在重新编码时逐条校验）
+  const roster =
+    o.v === 1 || (o.v === 3 && o.roster === undefined) ? undefined : (arr(o.roster, '已拥有干员') as unknown as RosterRecord[])
+  // 同步识别码只有版本 3 有，而且必须有
+  const user = o.v === 3 ? (obj(o.user, '同步识别码') as unknown as SyncUser) : undefined
   let ds: CloudDataset
   if (game === 'arknights') {
-    ds = { game, uid, account, pulls: decodeAkPulls(o.pulls), ledger: decodeLedger(o.ledger), ...(roster ? { roster } : {}) }
+    ds = { game, uid, account, ...(user ? { user } : {}), pulls: decodeAkPulls(o.pulls), ledger: decodeLedger(o.ledger), ...(roster ? { roster } : {}) }
   } else if (game === 'endfield') {
-    ds = { game, uid, account, pulls: decodeEfPulls(o.pulls), pools: arr(o.pools, '卡池信息') as unknown as EfPoolInfo[], ...(roster ? { roster } : {}) }
+    ds = {
+      game,
+      uid,
+      account,
+      ...(user ? { user } : {}),
+      pulls: decodeEfPulls(o.pulls),
+      pools: arr(o.pools, '卡池信息') as unknown as EfPoolInfo[],
+      ...(roster ? { roster } : {}),
+    }
   } else {
     throw new CodecError('不认识的游戏')
   }

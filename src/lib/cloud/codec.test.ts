@@ -307,7 +307,7 @@ describe('无歧义：不规范的写法一律拒绝', () => {
   })
 
   it('不认识的更高版本：提示刷新网页，而不是当成错误数据', () => {
-    expect(() => decodeDataset(ak.replace('"v":1', '"v":3'))).toThrow(UnsupportedVersionError)
+    expect(() => decodeDataset(ak.replace('"v":1', '"v":4'))).toThrow(UnsupportedVersionError)
   })
 
   it('不是合法 UTF-8 的字节被拒绝', () => {
@@ -369,5 +369,61 @@ describe('截图识别的已拥有干员（格式版本 2）', () => {
     expect(() => decodeDataset(text.replace('"itemId":', '"extra":1,"itemId":'))).toThrow(CodecError)
     expect(() => encodeDataset({ ...ds, roster: [...ds.roster, ds.roster[0]!] })).toThrow(CodecError)
     expect(() => encodeDataset({ ...ds, roster: [{ ...ds.roster[0]!, copies: 1.5 }] })).toThrow(CodecError)
+  })
+})
+
+describe('同步识别码（格式版本 3）', () => {
+  const U1 = '0123456789abcdef0123456789abcdef'
+  const U2 = 'fedcba9876543210fedcba9876543210'
+  const U3 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  const user = { id: U1, createdAt: 1_700_000_000_000 }
+
+  it('有识别码时写成版本 3，能原样读回；没有时版本不变', () => {
+    const plain = akDataset(41, 5)
+    expect(JSON.parse(encodeDataset(plain)).v).toBe(1)
+    const text = encodeDataset({ ...plain, user })
+    expect(JSON.parse(text).v).toBe(3)
+    expect(decodeDataset(text).user).toEqual(user)
+    expect(encodeDataset(decodeDataset(text))).toBe(text)
+    const merged = { ...user, merged: [U3, U2] }
+    expect(decodeDataset(encodeDataset({ ...plain, user: merged })).user).toEqual(merged)
+  })
+
+  it('版本 3 里已拥有干员可有可无，有识别码和已拥有干员时也是版本 3', () => {
+    const r = rng(42)
+    const ds = { ...efDataset(43, 5), user, roster: roster(r, 3) }
+    const text = encodeDataset(ds)
+    expect(JSON.parse(text).v).toBe(3)
+    expect(decodeDataset(text).roster).toHaveLength(3)
+    expect(encodeDataset({ ...ds, roster: [] })).toBe(encodeDataset({ ...efDataset(43, 5), user }))
+  })
+
+  it('不规范的识别码被拒绝', () => {
+    const base = akDataset(44, 3)
+    for (const bad of [
+      { id: U1.toUpperCase(), createdAt: 1 },
+      { id: U1.slice(1), createdAt: 1 },
+      { id: U1, createdAt: -1 },
+      { id: U1, createdAt: 1.5 },
+      { id: U1, createdAt: 1, merged: [] },
+      { id: U1, createdAt: 1, merged: [U1] },
+      { id: U1, createdAt: 1, merged: [U2, U3] },
+      { id: U1, createdAt: 1, merged: [U2, U2] },
+      { id: U1, createdAt: 1, extra: 1 },
+    ]) {
+      expect(() => encodeDataset({ ...base, user: bad as never })).toThrow(CodecError)
+    }
+  })
+
+  it('版本和识别码必须对应：版本 3 必须有识别码，版本 1、2 不能有', () => {
+    const plain = akDataset(45, 3)
+    const v3 = encodeDataset({ ...plain, user })
+    const o = JSON.parse(v3) as Record<string, unknown>
+    const { user: _user, ...withoutUser } = o
+    expect(() => decodeDataset(JSON.stringify(withoutUser))).toThrow(CodecError)
+    expect(() => decodeDataset(v3.replace('"v":3', '"v":1'))).toThrow(CodecError)
+    expect(() => decodeDataset(v3.replace('"v":3', '"v":2'))).toThrow(CodecError)
+    // 版本 3 不能带空的已拥有干员
+    expect(() => decodeDataset(v3.replace('"pulls"', '"roster":[],"pulls"'))).toThrow(CodecError)
   })
 })

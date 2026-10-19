@@ -1,3 +1,4 @@
+import type { SyncUser } from './cloud/codec'
 export type Game = 'arknights' | 'endfield'
 
 /** 抽到 6★ 的叫法：明日方舟的 6★ 是金色，叫“出金”；终末地的 6★ 是红色，叫“出红” */
@@ -27,6 +28,10 @@ export interface Account {
   metaAt?: number
   /** 鹰角通行证的账号 token，只在用户选择“记住登录”时保存在本地 */
   accountToken?: string
+  /** 同步识别码（只在开过云同步的账号上，随加密的同步数据上传；见 src/lib/sync-user.ts） */
+  syncUser?: SyncUser
+  /** 用户说过这个账号的云端识别码“不是我”：以后不把本机识别码写进它（只在本地） */
+  syncUserDecision?: 'other'
 }
 
 /** 明日方舟的一次寻访结果（接口原始字段 + 本地补充字段） */
