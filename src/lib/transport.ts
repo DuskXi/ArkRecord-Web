@@ -6,9 +6,26 @@
  *   请求交给本机的 Python 后端执行，不经过 Worker。M1 接入，目前桌面版也走网页版的路径。
  */
 
+/**
+ * rpc() 失败时 reject 的值：普通对象，不是 Error（这样 code 和 data 经过 contextBridge 后还在）。
+ * code 按 JSON-RPC：-32601 方法不允许、-32602 参数不对、-32603 内部错误、-32000 业务错误（看 data.kind）。
+ * 主进程自己产生的 data.kind：backend_unavailable（后端没启动成功或已退出）、timeout（超时）。
+ */
+export interface RpcErrorObject {
+  code: number
+  message: string
+  data?: { kind?: string } & Record<string, unknown>
+}
+
+export function isRpcErrorObject(value: unknown): value is RpcErrorObject {
+  if (typeof value !== 'object' || value === null) return false
+  const { code, message } = value as Record<string, unknown>
+  return Number.isInteger(code) && typeof message === 'string'
+}
+
 /** 桌面版 preload 暴露给页面的接口（协议见 desktop/README.md） */
 export interface ArkrecordBridge {
-  /** 调用 Python 后端的方法（JSON-RPC），主进程只放行白名单里的方法 */
+  /** 调用 Python 后端的方法（JSON-RPC），主进程只放行白名单里的方法。失败时 reject RpcErrorObject */
   rpc(method: string, params?: unknown): Promise<unknown>
   readonly platform: 'win32' | 'darwin' | 'linux'
 }

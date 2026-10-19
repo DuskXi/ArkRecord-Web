@@ -1,5 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { desktopBridge, isDesktop, postHg } from './transport'
+import { desktopBridge, isDesktop, isRpcErrorObject, postHg } from './transport'
+
+describe('isRpcErrorObject', () => {
+  it('accepts the plain error objects rpc() rejects with', () => {
+    expect(isRpcErrorObject({ code: -32601, message: '不允许调用这个方法' })).toBe(true)
+    expect(isRpcErrorObject({ code: -32000, message: '超时', data: { kind: 'timeout' } })).toBe(true)
+  })
+
+  it('rejects anything else', () => {
+    expect(isRpcErrorObject(new Error('x'))).toBe(false)
+    expect(isRpcErrorObject({ code: '1', message: 'x' })).toBe(false)
+    expect(isRpcErrorObject({ code: 1.5, message: 'x' })).toBe(false)
+    expect(isRpcErrorObject(null)).toBe(false)
+    expect(isRpcErrorObject('x')).toBe(false)
+  })
+})
 
 afterEach(() => {
   vi.unstubAllGlobals()

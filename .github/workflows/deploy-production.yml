@@ -18,6 +18,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# 网页版的检查、构建和部署用不到 Electron 本体（只有桌面版要），npm ci 时不下载
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
 permissions:
   contents: read
 

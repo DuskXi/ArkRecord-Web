@@ -68,11 +68,17 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 读游戏缓存的步骤和规则：
 
-1. **找游戏目录**：读游戏日志（原神 `output_log.txt`，星铁 `Player.log`，在 `%USERPROFILE%\AppData\LocalLow\` 下，国服、国际服路径不同），用正则取出 `YuanShen_Data` / `GenshinImpact_Data` / `StarRail_Data` 所在目录。找不到时让用户手动选择游戏目录（或直接选 `data_2` 文件），并记住这个路径。
-2. **找缓存文件**：`<数据目录>\webCaches\<版本号>\Cache\Cache_Data\data_2`；有多个版本目录时取最近修改的。
-3. **取链接**：把 `data_2` **复制**到临时目录再读（游戏运行时文件被占用），从后往前找最新的抽卡记录链接；临时文件用完就删。
-4. **清理参数**：只保留拉记录需要的参数（`authkey`、`authkey_ver`、`sign_type`、`game_biz`、`lang` 等），其余参数一律删掉（游戏链接里出现过玩家坐标等信息）。
-5. **校验**：发一个小分页请求，`retcode == 0` 才算有效；`-101`（过期）时提示用户回游戏重新打开抽卡记录（链接大约 24 小时过期）。
+1. **找游戏目录**：读游戏日志（原神 `output_log.txt`，星铁 `Player.log`，在 `%USERPROFILE%\AppData\LocalLow\` 下，国服、国际服路径不同），用正则取出 `YuanShen_Data` / `GenshinImpact_Data` / `StarRail_Data` 所在目录。日志只用来找目录，里面没有抽卡链接（实测）。找不到时让用户手动选择游戏目录（或直接选 `data_2` 文件），并记住这个路径。
+2. **找缓存文件**：`<数据目录>\webCaches\<版本号>\Cache\Cache_Data\data_2`。`webCaches` 下还有 `Cache`、`Network`、`IndexedDB` 等不是版本号的目录，要按版本号格式（如 `2.55.0.0`）过滤。按版本号从新到旧找：最新的版本目录里可能一条链接都没有（这个版本还没打开过抽卡记录），就去更早的目录找。
+3. **取链接**：把 `data_2` **复制**到临时目录再读（游戏运行时文件被占用），从后往前找抽卡记录链接；临时文件用完就删。匹配规则按“有 `authkey` + 和抽卡有关的路径 + 有 `game_biz`”，**不要写死页面路径**：
+   - 页面地址和接口地址都会出现，两种都要能处理；
+   - 页面路径会变（实测原神是 `hk4e/event/e20190909gacha-<哈希>/index.html`，不是常见的 `gacha-v3`；星铁是 `hkrpg/event/e20211215gacha-v2/index.html`）；
+   - 接口域名也变过（星铁现在是 `public-operation-hkrpg.mihoyo.com/common/gacha_record/api/getGachaLog`，更早是 `api-takumi.mihoyo.com`）。
+4. **清理参数**：只保留拉记录需要的参数（`authkey`、`authkey_ver`、`sign_type`、`auth_appid`、`game_biz`、`region`、`lang` 等），其余一律删掉（`timestamp`、`device_type`、`game_version`、`gacha_id`、`win_mode` 等用不到；游戏链接里还出现过玩家坐标）。
+5. **校验**：发一个小分页请求，`retcode == 0` 才算有效；`-101`（过期）时换下一条更早的链接，全部失效就提示用户回游戏重新打开抽卡记录（链接大约 24 小时过期）。**链接里的 `timestamp` 不是生成时间**（实测比缓存写入时间早几周），不能据此离线判断过期，只能发校验请求。
+6. **等待读取**（可选）：用户点“等待”后，每隔几秒检查一次 `data_2` 的修改时间，用户在游戏里打开抽卡记录后自动读到新链接。只读文件，不挂代理、不抓包。
+
+本机实测（2026-10-19，Windows，国服两款）：日志里都能找到游戏目录、都没有抽卡链接；原神 `data_2` 里有几十条抽卡链接，星铁最新的版本目录里没有、更早的目录里有。当时缓存里的链接都已过期，真实测试前要先在游戏里打开一次抽卡记录。
 
 - **只读**：不写、不改任何游戏文件，不注入、不挂代理、不请求管理员权限。缓存里除抽卡链接以外的内容不读取、不保存、不上传。
 - **平台**：
@@ -101,7 +107,7 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 ## 里程碑
 
-1. **M0 骨架**：Electron + Python 子进程跑通（ping），一条命令启动开发环境；渲染进程加载现有应用（desktop 构建）。
+1. **M0 骨架**（2026-10-19 完成）：Electron + Python 子进程跑通（ping），一条命令启动开发环境（`npm run desktop:dev`）；渲染进程加载现有应用（desktop 构建）。
 2. **M1 鹰角两款**：`transport.ts` + `shared/upstreams/hg.json` + Python 执行请求信封；应用内登录窗口取 token；明日方舟、终末地同步跑通，不经过 Worker。
 3. **M2 原神**：读日志找目录 → 读缓存取链接 → 校验 → 分页拉取抽卡记录；粘贴链接；手动选择目录；存储、统计页面。
 4. **M3 星铁**（含联动池）；UIGF 导入导出；Linux 下的路径处理。

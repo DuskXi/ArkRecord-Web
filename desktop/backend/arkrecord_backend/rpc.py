@@ -106,7 +106,8 @@ def encode(response: dict[str, Any]) -> str:
 def serve(methods: Mapping[str, Handler], lines: Iterable[str], out: TextIO) -> None:
     """逐行处理请求，直到输入结束。"""
     for raw in lines:
-        line = raw.strip()
+        # 去掉 BOM：Windows PowerShell 5.1 用管道传给后端时会在开头加 U+FEFF
+        line = raw.strip().lstrip("\ufeff").strip()
         if not line:
             continue
         response = handle_line(line, methods)

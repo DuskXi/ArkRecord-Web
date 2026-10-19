@@ -128,3 +128,9 @@ def test_serve_keeps_non_ascii():
     out = io.StringIO()
     serve({"echo": echo}, [request("echo", params=["寻访"]) + "\n"], out)
     assert "寻访" in out.getvalue()
+
+
+def test_serve_ignores_bom():
+    out = io.StringIO()
+    serve(build_methods(), ["\ufeff" + request("ping") + "\r\n"], out)
+    assert json.loads(out.getvalue())["result"]["pong"] is True
