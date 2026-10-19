@@ -71,7 +71,7 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 1. **找游戏目录**：读游戏日志（原神 `output_log.txt`，星铁 `Player.log`，在 `%USERPROFILE%\AppData\LocalLow\` 下，国服、国际服路径不同），用正则取出 `YuanShen_Data` / `GenshinImpact_Data` / `StarRail_Data` 所在目录。日志只用来找目录，里面没有抽卡链接（实测）。找不到时让用户手动选择游戏目录（或直接选 `data_2` 文件），并记住这个路径。
 2. **找缓存文件**：`<数据目录>\webCaches\<版本号>\Cache\Cache_Data\data_2`。`webCaches` 下还有 `Cache`、`Network`、`IndexedDB` 等不是版本号的目录，要按版本号格式（如 `2.55.0.0`）过滤。按版本号从新到旧找：最新的版本目录里可能一条链接都没有（这个版本还没打开过抽卡记录），就去更早的目录找。
-3. **取链接**：把 `data_2` **复制**到临时目录再读（游戏运行时文件被占用），从后往前找抽卡记录链接；临时文件用完就删。匹配规则按“有 `authkey` + 和抽卡有关的路径 + 有 `game_biz`”，**不要写死页面路径**：
+3. **取链接**：**只读打开** `data_2`（不加锁，游戏运行时也能读；不复制，避免在临时目录留下含 authkey 的副本），从后往前找抽卡记录链接。匹配规则按“有 `authkey` + 和抽卡有关的路径 + 有 `game_biz`”，**不要写死页面路径**：
    - 页面地址和接口地址都会出现，两种都要能处理；
    - 页面路径会变（实测原神是 `hk4e/event/e20190909gacha-<哈希>/index.html`，不是常见的 `gacha-v3`；星铁是 `hkrpg/event/e20211215gacha-v2/index.html`）；
    - 接口域名也变过（星铁现在是 `public-operation-hkrpg.mihoyo.com/common/gacha_record/api/getGachaLog`，更早是 `api-takumi.mihoyo.com`）。
@@ -93,7 +93,7 @@ shared/upstreams/mhy.json  米哈游白名单（只给桌面版）
 
 ## 凭据和隐私
 
-- 抽卡链接里的 authkey 只在 Python 进程内存里，大约 24 小时就过期，不保存，每次从缓存重新读。
+- 抽卡链接里的 authkey 只在 Python 进程内存里，大约 24 小时就过期，不保存，每次从缓存重新读。页面只拿到随机句柄，拉记录时传句柄（`mhy.*` 方法，见 desktop/README.md），authkey 不进渲染进程；用户粘贴的链接除外（粘贴时已经在页面里了）。
 - 鹰角 token 分两步：
   - **M1**：和网页版一样交给页面（拼进请求信封；“记住登录”时存在 IndexedDB），改动最小。
   - **之后**：改成句柄。token 由主进程交给后端保存（记住登录时存系统钥匙串：Windows 凭据管理器、macOS 钥匙串、Linux Secret Service），页面和请求信封里只有句柄，由后端换成真的 token，token 不进渲染进程。要同时改后端、`client.ts`、`auth.ts`，单独做。

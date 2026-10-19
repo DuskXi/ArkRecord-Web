@@ -12,6 +12,7 @@ from typing import Any
 
 from . import PROTOCOL_VERSION, __version__
 from .hg import HgClient
+from .mhy.service import MhyService
 from .redact import RedactingFormatter
 from .rpc import Handler, Params, no_params, serve
 
@@ -21,7 +22,7 @@ def ping(params: Params) -> dict[str, Any]:
     return {"pong": True, "protocol": PROTOCOL_VERSION, "backend": __version__, "python": platform.python_version()}
 
 
-def build_methods(hg: HgClient | None = None) -> dict[str, Handler]:
+def build_methods(hg: HgClient | None = None, mhy: MhyService | None = None) -> dict[str, Handler]:
     hg_client: list[HgClient] = [hg] if hg else []
     hg_lock = threading.Lock()
 
@@ -32,7 +33,7 @@ def build_methods(hg: HgClient | None = None) -> dict[str, Handler]:
                 hg_client.append(HgClient())
         return hg_client[0].request(params)
 
-    return {"ping": ping, "hg.request": hg_request}
+    return {"ping": ping, "hg.request": hg_request, **(mhy or MhyService()).methods()}
 
 
 def _setup_logging(stream: io.TextIOBase | Any) -> None:

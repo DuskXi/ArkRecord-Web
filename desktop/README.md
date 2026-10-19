@@ -57,6 +57,12 @@ uv run --project desktop/backend python -m arkrecord_backend
 |---|---|---|---|
 | `ping` | 无 | `{"pong": true, "protocol": 1, "backend": "0.1.0", "python": "3.12.x"}` | 启动后先调用一次，确认后端可用、协议版本一致 |
 | `hg.request` | `{upstream, path, envelope}` | `{status, headers, body}` | 执行鹰角请求信封，代替网页版的 Worker 转发（见下） |
+| `mhy.locate` | `{game}` | `{logs, searched, dataDirs}` | 读游戏日志找游戏数据目录（不读缓存、不发请求） |
+| `mhy.cacheStamp` | `{game, dataDir?}` | `{mtime}` | 最新的 `data_2` 修改时间，“等待读取”时轮询 |
+| `mhy.readCache` | `{game, dataDir?}` | `{handle, game, gameBiz, region, uid, source}` | 从缓存里找抽卡链接、校验，返回句柄 |
+| `mhy.useLink` | `{url}` | 同上 | 校验用户粘贴的抽卡链接，返回句柄 |
+| `mhy.fetchPage` | `{handle, gachaType, endId?, size?}` | `{list, region, regionTimeZone}` | 拉一页记录（从新到旧，`size` 最大 20） |
+| `mhy.forget` | `{handle}` | `{ok}` | 丢掉这个链接 |
 
 ### `hg.request`
 
@@ -66,6 +72,15 @@ uv run --project desktop/backend python -m arkrecord_backend
 - 不跟随重定向，20 秒超时。请求头带 `user-agent: ArkRecord-Desktop/<版本>`，如实标明是桌面版。
 - 日志只记上游名、路径、状态码和耗时，不记查询参数、请求体和响应内容。
 - 参数格式不对（不是这三个字符串）时返回 JSON-RPC 错误 -32602；其余情况都按上表返回结果，和网页版的处理路径一致。
+
+### 米哈游（`mhy.*`）
+
+- `game` 是 `genshin` 或 `starrail`；`dataDir` 是用户手动选的目录（游戏安装目录、游戏数据目录或 `webCaches` 都行），不传就读日志自动找（只在 Windows 上）。
+- 抽卡链接（含 authkey）只留在后端内存里，页面拿到的是随机句柄（最多保留 8 个，后端重启后失效）。
+- 请求由本机直连米哈游官方接口，只发 [`shared/upstreams/mhy.json`](../shared/upstreams/mhy.json) 白名单里的抽卡记录接口；两次请求至少间隔 0.5 秒；日志不记地址。
+- `gachaType`：原神 100、200、301（会同时返回 400）、302、500；星铁 1、2、11、12、21、22（21、22 走联动池接口）。
+- 业务错误（-32000）的 `data.kind`：`game_not_found`、`no_link`（先在游戏里打开抽卡记录）、`link_expired`、`link_invalid`、`bad_link`、`handle_expired`、`rate_limited`（-110，稍后重试）、`network`、`upstream_error`、`unsupported`。
+- 本机只读检查（不输出参数值、不发请求）：`uv run --project desktop/backend python -m arkrecord_backend.mhy.inspect genshin`。
 
 ### 错误
 

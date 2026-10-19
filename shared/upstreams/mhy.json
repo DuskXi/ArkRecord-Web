@@ -1,0 +1,32 @@
+{
+  "hk4e_cn": {
+    "host": "public-operation-hk4e.mihoyo.com",
+    "purpose": "原神国服抽卡记录",
+    "routes": [{ "method": "GET", "path": "/gacha_info/api/getGachaLog" }]
+  },
+  "hk4e_global": {
+    "host": "public-operation-hk4e-sg.hoyoverse.com",
+    "purpose": "原神国际服抽卡记录（所有海外区共用）",
+    "routes": [{ "method": "GET", "path": "/gacha_info/api/getGachaLog" }]
+  },
+  "hkrpg_cn": {
+    "host": "public-operation-hkrpg.mihoyo.com",
+    "purpose": "星穹铁道国服跃迁记录（联动池用 getLdGachaLog；路径有 gacha_record 和 hkrpg_gacha_record 两种，按链接里的用）",
+    "routes": [
+      { "method": "GET", "path": "/common/gacha_record/api/getGachaLog" },
+      { "method": "GET", "path": "/common/gacha_record/api/getLdGachaLog" },
+      { "method": "GET", "path": "/common/hkrpg_gacha_record/api/getGachaLog" },
+      { "method": "GET", "path": "/common/hkrpg_gacha_record/api/getLdGachaLog" }
+    ]
+  },
+  "hkrpg_global": {
+    "host": "public-operation-hkrpg-sg.hoyoverse.com",
+    "purpose": "星穹铁道国际服跃迁记录",
+    "routes": [
+      { "method": "GET", "path": "/common/gacha_record/api/getGachaLog" },
+      { "method": "GET", "path": "/common/gacha_record/api/getLdGachaLog" },
+      { "method": "GET", "path": "/common/hkrpg_gacha_record/api/getGachaLog" },
+      { "method": "GET", "path": "/common/hkrpg_gacha_record/api/getLdGachaLog" }
+    ]
+  }
+}

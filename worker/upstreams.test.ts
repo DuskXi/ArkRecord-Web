@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { findRoute, UPSTREAMS } from './upstreams'
 
@@ -65,5 +67,21 @@ describe('findRoute', () => {
     expect(findRoute('__proto__', '/')).toBeNull()
     expect(findRoute('constructor', '/')).toBeNull()
     expect(findRoute('toString', '/')).toBeNull()
+  })
+})
+
+describe('shared/upstreams/mhy.json', () => {
+  // 米哈游的白名单只给桌面版的 Python 后端用：网页版和 Worker 不能引用它（网页版只有鹰角两款）
+  it('is not referenced by the website or the Worker', () => {
+    const files = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const path = join(dir, name)
+        if (statSync(path).isDirectory()) return files(path)
+        return /\.(ts|vue|js|mjs)$/.test(name) ? [path] : []
+      })
+    const offenders = ['src', 'worker']
+      .flatMap(files)
+      .filter((file) => !file.endsWith('.test.ts') && readFileSync(file, 'utf8').includes('upstreams/mhy'))
+    expect(offenders).toEqual([])
   })
 })

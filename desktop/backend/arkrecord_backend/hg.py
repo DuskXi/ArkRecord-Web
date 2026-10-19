@@ -48,11 +48,14 @@ _ENVELOPE_KEYS = {"query", "body", "roleToken", "akCookie"}
 USER_AGENT = f"ArkRecord-Desktop/{__version__} (+https://github.com/DuskXi/ArkRecord-Web)"
 
 
-def default_upstreams_path() -> Path:
-    """开发时在仓库里；打包后的位置由 ARKRECORD_SHARED_DIR 指定（M4）。"""
+def shared_dir() -> Path:
+    """仓库的 shared/ 目录；打包后的位置由 ARKRECORD_SHARED_DIR 指定（M4）。"""
     shared = os.environ.get("ARKRECORD_SHARED_DIR")
-    base = Path(shared) if shared else Path(__file__).resolve().parents[3] / "shared"
-    return base / "upstreams" / "hg.json"
+    return Path(shared) if shared else Path(__file__).resolve().parents[3] / "shared"
+
+
+def default_upstreams_path() -> Path:
+    return shared_dir() / "upstreams" / "hg.json"
 
 
 def load_upstreams(path: Path | None = None) -> dict[str, Any]:
