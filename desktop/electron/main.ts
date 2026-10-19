@@ -1,0 +1,219 @@
+/**
+ * Electron 主进程：窗口、加载页面（开发时是 Vite 开发服务器，正式构建是 app:// 协议）、把页面的 RPC 请求转给 Python 后端。
+ * 安全基线见 desktop/README.md：渲染进程开沙盒和上下文隔离、不开 Node；不开新窗口，不跳转到应用以外的地址。
+ */
+import { stat } from 'node:fs/promises'
+import { extname, join, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { BrowserWindow, type IpcMainInvokeEvent, app, ipcMain, nativeTheme, net, protocol, session, shell } from 'electron'
+import { Backend } from './backend.js'
+import { METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
+import { runSmokeTest } from './smoke.js'
+
+/** 正式构建用的协议：注册成 standard + secure，页面来源固定是 app://arkrecord，升级后 IndexedDB 里的数据还在 */
+const APP_SCHEME = 'app'
+const APP_HOST = 'arkrecord'
+
+/** 页面能调用的后端方法（M1 加 hg.request） */
+const ALLOWED_METHODS = new Set(['ping'])
+/** 和后端约定的协议版本（desktop/README.md） */
+const PROTOCOL_VERSION = 1
+const REQUEST_TIMEOUT_MS = 30_000
+/** 第一次启动时 uv 可能要先创建虚拟环境，多给一些时间 */
+const STARTUP_TIMEOUT_MS = 120_000
+
+/** 页面用到的权限：复制文字和图片、申请持久存储（src/lib/db.ts）。其余一律拒绝 */
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'persistent-storage'])
+
+/** 和网页版的 CSP（public/_headers）一致，去掉了 Cloudflare 统计脚本 */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' blob: data:",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ')
+
+/** 开发时由 desktop/electron/dev.mjs 传入，只接受本机地址；安装包里不读这个变量 */
+function parseDevServerUrl(value: string | undefined): URL | undefined {
+  if (!value) return undefined
+  const url = new URL(value)
+  if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+    throw new Error(`开发服务器只能是本机地址：${value}`)
+  }
+  return url
+}
+
+const devServer = app.isPackaged ? undefined : parseDevServerUrl(process.env.ARKRECORD_DEV_SERVER_URL)
+const smoke = !app.isPackaged && process.env.ARKRECORD_SMOKE === '1'
+const rendererDir = join(import.meta.dirname, 'renderer')
+
+/** 是不是应用自己的页面 */
+function isAppUrl(value: string): boolean {
+  const url = URL.parse(value)
+  if (!url) return false
+  if (devServer) return url.origin === devServer.origin
+  return url.protocol === `${APP_SCHEME}:` && url.host === APP_HOST
+}
+
+/** 应用以外的链接（GitHub、鹰角官网等）交给系统浏览器，只接受 https */
+function openExternal(value: string): void {
+  if (URL.parse(value)?.protocol === 'https:') void shell.openExternal(value)
+}
+
+const isFile = (file: string) => stat(file).then((s) => s.isFile(), () => false)
+
+/** app://arkrecord/ 下的文件来自 vite build --mode desktop 的产物 */
+async function serveAppFile(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  if (url.host !== APP_HOST) return new Response(null, { status: 404 })
+  let path: string
+  try {
+    path = decodeURIComponent(url.pathname)
+  } catch {
+    return new Response(null, { status: 400 })
+  }
+  let file = resolve(rendererDir, `.${path}`)
+  if (file !== rendererDir && !file.startsWith(rendererDir + sep)) return new Response(null, { status: 404 })
+  if (!(await isFile(file))) {
+    // 页面地址（/history 等，没有扩展名）都返回 index.html，由前端路由处理
+    if (extname(path)) return new Response(null, { status: 404 })
+    file = join(rendererDir, 'index.html')
+  }
+  const response = await net.fetch(pathToFileURL(file).href)
+  const headers = new Headers(response.headers)
+  headers.set('Content-Security-Policy', CSP)
+  headers.set('X-Content-Type-Options', 'nosniff')
+  return new Response(response.body, { status: response.status, headers })
+}
+
+const backend = new Backend(() => {
+  if (app.isPackaged) throw new Error('安装包里还没有带上后端（M4）')
+  // 开发时在仓库根目录用 uv 启动，见 desktop/README.md
+  return { command: 'uv', args: ['run', '--project', 'desktop/backend', 'python', '-m', 'arkrecord_backend'], cwd: app.getAppPath() }
+})
+
+let mainWindow: BrowserWindow | undefined
+
+type RpcReply = { ok: true; result: unknown } | { ok: false; error: RpcErrorObject }
+
+/** 只接受主窗口顶层页面、且是应用自己地址的请求 */
+function isTrustedSender(event: IpcMainInvokeEvent): boolean {
+  const frame = event.senderFrame
+  return mainWindow !== undefined && event.sender === mainWindow.webContents && frame !== null && frame.parent === null && isAppUrl(frame.url)
+}
+
+async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unknown): Promise<RpcReply> {
+  if (!isTrustedSender(event)) throw new Error('只接受应用自己页面的请求')
+  if (typeof method !== 'string' || !ALLOWED_METHODS.has(method)) {
+    return { ok: false, error: new RpcError(METHOD_NOT_FOUND, '不允许调用这个方法').toJSON() }
+  }
+  try {
+    return { ok: true, result: await backend.request(method, params, REQUEST_TIMEOUT_MS) }
+  } catch (error) {
+    return { ok: false, error: (error instanceof RpcError ? error : new RpcError(-32603, '主进程内部错误')).toJSON() }
+  }
+}
+
+/** 启动时 ping 一次后端，结果写到终端 */
+async function checkBackend(): Promise<void> {
+  try {
+    const result = (await backend.request('ping', undefined, STARTUP_TIMEOUT_MS)) as Record<string, unknown> | null
+    if (result?.protocol !== PROTOCOL_VERSION) {
+      console.error(`[backend] 协议版本不一致：主进程是 ${PROTOCOL_VERSION}，后端是 ${String(result?.protocol)}`)
+      return
+    }
+    console.log(`[backend] ping 成功：backend ${String(result.backend)}，Python ${String(result.python)}`)
+  } catch (error) {
+    console.error(`[backend] ping 失败：${(error as Error).message}`)
+  }
+}
+
+function createWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 860,
+    minWidth: 960,
+    minHeight: 640,
+    show: false,
+    title: 'ArkRecord',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#09090b' : '#ffffff',
+    icon: app.isPackaged ? undefined : join(app.getAppPath(), 'public/icons/record-128.png'),
+    webPreferences: {
+      preload: join(import.meta.dirname, 'preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      webviewTag: false,
+      spellcheck: false,
+    },
+  })
+  win.once('ready-to-show', () => win.show())
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = undefined
+  })
+  if (smoke) runSmokeTest(win, (ok) => app.exit(ok ? 0 : 1))
+  void win.loadURL(devServer ? devServer.href : `${APP_SCHEME}://${APP_HOST}/`)
+  return win
+}
+
+function showMainWindow(): void {
+  if (!mainWindow) {
+    mainWindow = createWindow()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.focus()
+}
+
+app.setName('ArkRecord')
+// 开发和安装版的数据分开放（IndexedDB、单实例锁都在这个目录里）
+app.setPath('userData', join(app.getPath('appData'), app.isPackaged ? 'ArkRecord' : 'ArkRecord Dev'))
+protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } }])
+app.enableSandbox()
+
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (!isAppUrl(url)) openExternal(url)
+    return { action: 'deny' }
+  })
+  contents.on('will-navigate', (event) => {
+    if (isAppUrl(event.url)) return
+    event.preventDefault()
+    openExternal(event.url)
+  })
+  contents.on('will-redirect', (event) => {
+    if (!isAppUrl(event.url)) event.preventDefault()
+  })
+  contents.on('will-attach-webview', (event) => event.preventDefault())
+})
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', showMainWindow)
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+  app.on('activate', showMainWindow)
+  app.on('before-quit', () => backend.stop())
+
+  void app.whenReady().then(() => {
+    const ses = session.defaultSession
+    ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
+      callback(ALLOWED_PERMISSIONS.has(permission) && isAppUrl(details.requestingUrl))
+    })
+    ses.setPermissionCheckHandler((_contents, permission, requestingOrigin) => ALLOWED_PERMISSIONS.has(permission) && isAppUrl(requestingOrigin))
+    if (!devServer) protocol.handle(APP_SCHEME, serveAppFile)
+    ipcMain.handle('arkrecord:rpc', handleRpc)
+
+    showMainWindow()
+    void checkBackend()
+  })
+}

@@ -78,33 +78,41 @@ function crawlerFiles(): Plugin {
   }
 }
 
-export default defineConfig({
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-    __BUILD_COMMIT__: JSON.stringify(process.env.GITHUB_SHA ?? 'dev'),
-    __OCR_BASE__: JSON.stringify(OCR_BASE),
-  },
-  plugins: [
-    vue(),
-    ocrAssets(),
-    crawlerFiles(),
-    ui({
-      ui: {
-        colors: { primary: 'sky', neutral: 'zinc' },
-      },
-      // 构建时扫描源码，把用到的图标打包进产物，运行时不再请求 Iconify 的在线接口（国内慢，也无法离线）。
-      icon: { clientBundle: { scan: { globInclude: ['src/**/*.{vue,ts}'] } } },
-    }),
-    // 本地开发时由这个插件在 Vite 里运行 worker/index.ts，/api/* 与页面同源，和线上一致。
-    cloudflare(),
-  ],
-  resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
-  },
-  // 关闭开发服务器自带的 CORS，让本地行为与线上一致（/api/* 只接受同源请求）
-  server: { cors: false },
-  preview: { cors: false },
-  build: {
-    chunkSizeWarningLimit: 1200,
-  },
+export default defineConfig(({ mode }) => {
+  /**
+   * 桌面版（vite build --mode desktop、npm run desktop:dev）：页面由 Electron 加载，请求交给本机的 Python 后端，
+   * 不经过 Worker，所以不加载 cloudflare() 和给搜索引擎的文件；产物放在 Electron 主进程旁边。见 desktop/README.md。
+   */
+  const desktop = mode === 'desktop'
+  return {
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      __BUILD_COMMIT__: JSON.stringify(process.env.GITHUB_SHA ?? 'dev'),
+      __OCR_BASE__: JSON.stringify(OCR_BASE),
+    },
+    plugins: [
+      vue(),
+      ocrAssets(),
+      ...(desktop ? [] : [crawlerFiles()]),
+      ui({
+        ui: {
+          colors: { primary: 'sky', neutral: 'zinc' },
+        },
+        // 构建时扫描源码，把用到的图标打包进产物，运行时不再请求 Iconify 的在线接口（国内慢，也无法离线）。
+        icon: { clientBundle: { scan: { globInclude: ['src/**/*.{vue,ts}'] } } },
+      }),
+      // 本地开发时由这个插件在 Vite 里运行 worker/index.ts，/api/* 与页面同源，和线上一致。
+      ...(desktop ? [] : [cloudflare()]),
+    ],
+    resolve: {
+      alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    },
+    // 关闭开发服务器自带的 CORS，让本地行为与线上一致（/api/* 只接受同源请求）
+    server: { cors: false },
+    preview: { cors: false },
+    build: {
+      chunkSizeWarningLimit: 1200,
+      ...(desktop ? { outDir: 'desktop/electron/dist/renderer', emptyOutDir: true } : {}),
+    },
+  }
 })

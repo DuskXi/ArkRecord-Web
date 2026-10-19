@@ -52,7 +52,8 @@
   "overrides": [
     {
       "files": [
-        "scripts/**"
+        "scripts/**",
+        "desktop/electron/**"
       ],
       "rules": {
         "no-console": "off"

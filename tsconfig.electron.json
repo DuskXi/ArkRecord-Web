@@ -1,0 +1,18 @@
+{
+  // 桌面版 Electron 主进程和 preload（desktop/electron）的类型检查；编译用 desktop/electron/tsconfig.json
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.electron.tsbuildinfo",
+    "target": "ES2023",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["desktop/electron/**/*.ts", "desktop/electron/**/*.cts"],
+  "exclude": ["desktop/electron/dist"]
+}

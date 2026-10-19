@@ -1,0 +1,11 @@
+{
+  // 编译主进程和 preload 到 dist/（npm run desktop:dev / desktop:build 会调用）
+  "extends": "../../tsconfig.electron.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["*.ts", "*.cts"],
+  "exclude": ["*.test.ts", "dist"]
+}
