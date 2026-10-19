@@ -36,7 +36,7 @@ if (site) {
   lines.push(`- 网站：${esc(site.site)}，线上 commit \`${esc(site.commit)}\``)
   const a = site.attestation
   lines.push(`- 构建清单的构建证明：${a?.verified ? `有效（${esc(a.ref)}，${esc(a.run)}）` : a?.skipped ? '跳过' : '无效'}`)
-  if (site.files) lines.push(`- 网站文件：核对 ${site.files.checked} 个（${site.files.scope === 'all' ? '全部' : '代码文件'}，共 ${site.files.total} 个），一致 ${site.files.same} 个`)
+  if (site.files) lines.push(`- 网站文件：核对 ${site.files.checked} 个（${site.files.scope === 'all' ? '全部' : '代码文件'}，共 ${site.files.total} 个），一致 ${site.files.same} 个${site.files.rechecked ? `（其中 ${site.files.rechecked} 个刚部署完时不一致，复查后一致）` : ''}`)
   if (site.headers) lines.push(`- 首页安全响应头：${site.headers.same}/${site.headers.checked} 一致`)
 }
 if (worker) {

@@ -40,6 +40,10 @@ const local = site.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(s
 if ((site.protocol !== 'https:' && !local) || site.pathname !== '/' || site.search || site.hash) throw new Error('--site 应为 https://域名（本地预览可以用 http://localhost:端口）')
 const environment = Object.entries(ENVIRONMENTS).find(([, e]) => e.site === site.origin)?.[0] ?? null
 
+/** 第一次核对不一致的文件，复查几次、每次间隔多久 */
+const RECHECK_ROUNDS = 3
+const RECHECK_DELAY_MS = 30_000
+
 const report = { site: site.origin, checkedAt: new Date().toISOString(), commit: null, environment, attestation: null, files: null, headers: null, problems: [] }
 const problem = (text) => {
   report.problems.push(text)
@@ -103,26 +107,40 @@ async function main() {
   }
 
   // 3. 逐个核对文件
+  //    刚部署完的几十秒里，Cloudflare 有的节点还在用上一个版本：新文件名会按单页应用回退成首页，
+  //    路径不变的文件会是旧内容。所以第一次不一致的文件隔一会儿再复查几次，复查后仍不一致才算问题。
   const entries = Object.entries(manifest.files).filter(([p]) => values.all || isCodeFile(p))
-  let same = 0
-  const queue = [...entries]
-  const worker = async () => {
-    for (let item = queue.shift(); item; item = queue.shift()) {
-      const [p, e] = item
-      try {
-        const res = await get(servedPath(p))
-        const body = Buffer.from(await res.arrayBuffer())
-        if (!res.ok) problem(`${p}：HTTP ${res.status}`)
-        else if (sha256Hex(body) !== e.sha256) problem(`${p}：线上的内容和构建清单不同`)
-        else same++
-      } catch (error) {
-        problem(`${p}：${error?.message ?? error}`)
+  /** 核对一批文件，返回不一致的 [路径, 清单条目, 原因] */
+  const checkFiles = async (list) => {
+    const failed = []
+    const queue = [...list]
+    const worker = async () => {
+      for (let item = queue.shift(); item; item = queue.shift()) {
+        const [p, e] = item
+        try {
+          const res = await get(servedPath(p))
+          const body = Buffer.from(await res.arrayBuffer())
+          if (!res.ok) failed.push([p, e, `HTTP ${res.status}`])
+          else if (sha256Hex(body) !== e.sha256) failed.push([p, e, '线上的内容和构建清单不同'])
+        } catch (error) {
+          failed.push([p, e, String(error?.message ?? error)])
+        }
       }
     }
+    await Promise.all(Array.from({ length: 8 }, worker))
+    return failed
   }
-  await Promise.all(Array.from({ length: 8 }, worker))
-  report.files = { checked: entries.length, same, total: Object.keys(manifest.files).length, scope: values.all ? 'all' : 'code' }
-  console.log(`${same === entries.length ? '✓' : '✗'} 文件：核对 ${entries.length} 个（${values.all ? '全部' : '代码文件；加 --all 核对全部'}），一致 ${same} 个`)
+  let failed = await checkFiles(entries)
+  const firstFailed = failed.length
+  for (let round = 1; failed.length && round <= RECHECK_ROUNDS; round++) {
+    console.log(`… ${failed.length} 个文件不一致，${RECHECK_DELAY_MS / 1000} 秒后第 ${round} 次复查（刚部署完时各节点生效需要一点时间）`)
+    await new Promise((resolve) => setTimeout(resolve, RECHECK_DELAY_MS))
+    failed = await checkFiles(failed.map(([p, e]) => [p, e]))
+  }
+  for (const [p, , reason] of failed) problem(`${p}：${reason}`)
+  const same = entries.length - failed.length
+  report.files = { checked: entries.length, same, total: Object.keys(manifest.files).length, scope: values.all ? 'all' : 'code', rechecked: firstFailed - failed.length }
+  console.log(`${same === entries.length ? '✓' : '✗'} 文件：核对 ${entries.length} 个（${values.all ? '全部' : '代码文件；加 --all 核对全部'}），一致 ${same} 个${firstFailed && !failed.length ? `（其中 ${firstFailed} 个复查后一致）` : ''}`)
 
   // 4. 首页的安全响应头
   const expected = manifest.headers?.['/*'] ?? {}
