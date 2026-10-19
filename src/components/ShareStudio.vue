@@ -3,7 +3,6 @@ import { computed, nextTick, ref, watch } from 'vue'
 import CharAvatar from '@/components/ui/CharAvatar.vue'
 import { formatDate, formatNumber, formatPercent } from '@/lib/format'
 import { luckLabel } from '@/lib/stats/analyze'
-import { GAME_LABEL } from '@/lib/types'
 import { useAppStore } from '@/stores/app'
 import { useRecords } from '@/composables/useRecords'
 
@@ -104,8 +103,8 @@ async function copy() {
         <div ref="card" class="grid-backdrop w-[640px] bg-default p-8 text-default">
           <div class="flex items-start justify-between">
             <div>
-              <p class="eyebrow">{{ records.game === 'arknights' ? 'RHODES ISLAND' : 'ENDFIELD' }} · HEADHUNTING REPORT</p>
-              <p class="mt-1 text-2xl font-semibold text-highlighted">{{ showName ? app.activeAccount?.nickName : GAME_LABEL[records.game] + '寻访总结' }}</p>
+              <p class="eyebrow">{{ records.profile.reportTitle }} · HEADHUNTING REPORT</p>
+              <p class="mt-1 text-2xl font-semibold text-highlighted">{{ showName ? app.activeAccount?.nickName : records.profile.label + '寻访总结' }}</p>
               <p v-if="a.firstTs && a.lastTs" class="mt-0.5 font-display text-xs text-dimmed">{{ formatDate(a.firstTs) }} — {{ formatDate(a.lastTs) }}</p>
             </div>
             <div class="text-right">

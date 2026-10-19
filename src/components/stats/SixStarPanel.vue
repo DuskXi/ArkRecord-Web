@@ -7,12 +7,11 @@ import { axisStyle, useChartTheme } from '@/composables/useChartTheme'
 import { formatDateTime, formatPercent } from '@/lib/format'
 import { quantile } from '@/lib/stats/pity'
 import { analyzeUp, binPity, luckTrend } from '@/lib/stats/sixstar'
-import { SIX_TERM } from '@/lib/types'
 import { useRecords } from '@/composables/useRecords'
 
 const records = useRecords()
 /** 明日方舟叫“出金”，终末地叫“出红” */
-const term = computed(() => SIX_TERM[records.game])
+const term = computed(() => records.profile.topTerm)
 const palette = useChartTheme()
 const dist = computed(() => records.model.dist)
 const intervals = computed(() => records.analysis.mainIntervals)

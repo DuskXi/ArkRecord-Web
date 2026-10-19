@@ -15,7 +15,7 @@ const records = useRecords()
 
 const view = useLocalStorage<'batch' | 'list'>('arkrecord:history-view', 'batch')
 /** 终末地没有 3★ */
-const starOptions = computed(() => (records.game === 'endfield' ? [6, 5, 4] : [6, 5, 4, 3]))
+const starOptions = computed(() => [...records.profile.stars])
 const stars = ref<number[]>([6, 5, 4, 3])
 const pool = ref<string | undefined>()
 const search = ref('')

@@ -7,7 +7,6 @@ import CollectionPanel from '@/components/stats/CollectionPanel.vue'
 import RecordsPanel from '@/components/stats/RecordsPanel.vue'
 import SixStarPanel from '@/components/stats/SixStarPanel.vue'
 import TimePanel from '@/components/stats/TimePanel.vue'
-import { SIX_TERM } from '@/lib/types'
 import { useRecords } from '@/composables/useRecords'
 
 const records = useRecords()
@@ -15,13 +14,14 @@ const route = useRoute()
 const router = useRouter()
 
 /** 明日方舟叫“出金”，终末地叫“出红” */
-const term = computed(() => SIX_TERM[records.game])
+const term = computed(() => records.profile.topTerm)
 const TABS = computed(() => [
   { label: '纪录', value: 'records', icon: 'i-lucide-trophy' },
   { label: `${term.value}分析`, value: 'six', icon: 'i-lucide-flame' },
   { label: '时段', value: 'time', icon: 'i-lucide-clock-3' },
   { label: '收集', value: 'collection', icon: 'i-lucide-gallery-vertical-end' },
-  { label: '规划', value: 'planner', icon: 'i-lucide-calculator' },
+  // 没有抽卡规划的游戏不显示这一页
+  ...(records.profile.planner ? [{ label: '规划', value: 'planner', icon: 'i-lucide-calculator' }] : []),
 ])
 
 /** 当前 Tab 记在地址里，刷新或分享链接时保持 */

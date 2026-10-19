@@ -161,7 +161,7 @@ function pityTone(pity: number | null) {
                 <span class="ml-auto flex gap-3 font-display text-xs">
                   <span :style="{ color: rarityTextVar(5) }">5★ × {{ counts(n.seg.pulls)[5] }}</span>
                   <span :style="{ color: rarityTextVar(4) }">4★ × {{ counts(n.seg.pulls)[4] }}</span>
-                  <span v-if="records.game === 'arknights'" class="text-muted">3★ × {{ counts(n.seg.pulls)[3] }}</span>
+                  <span v-if="records.profile.stars.includes(3)" class="text-muted">3★ × {{ counts(n.seg.pulls)[3] }}</span>
                 </span>
                 <UButton
                   :icon="expanded.has(n.seg.id) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useLiveQuery } from '@/composables/useLiveQuery'
 import { db } from '@/lib/db'
+import { HG_PROFILES } from '@/lib/game-profile'
 import { analyze, type PityModel } from '@/lib/stats/analyze'
 import { normalizeArknights, normalizeEndfield } from '@/lib/stats/events'
 import { arknightsGifts, endfieldGifts, type GiftEvent } from '@/lib/stats/gifts'
@@ -47,6 +48,8 @@ export const useRecordsStore = defineStore('records', () => {
   const efPools = computed(() => new Map(efPoolList.value.map((p) => [p.poolId, p])))
 
   const game = computed(() => app.activeAccount?.game ?? app.game)
+  /** 游戏档案：页面按它显示，不按 game 分支（见 lib/game-profile.ts） */
+  const profile = computed(() => HG_PROFILES[game.value])
   const efScope = ref<EfScope>('char')
   const weaponScope = computed(() => game.value === 'endfield' && efScope.value === 'weapon')
   const allEvents = computed(() =>
@@ -82,5 +85,5 @@ export const useRecordsStore = defineStore('records', () => {
   /** 高级统计用的数据（计算较多，只有页面用到时才计算） */
   const insights = computed(() => computeInsights(events.value, analysis.value))
 
-  return { accountId, game, efScope, weaponScope, events, gifts, roster, model, analysis, guarantees, insights, efPools }
+  return { accountId, game, profile, efScope, weaponScope, events, gifts, roster, model, analysis, guarantees, insights, efPools }
 })

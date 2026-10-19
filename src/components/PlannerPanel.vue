@@ -5,8 +5,7 @@ import { computed, ref, watch } from 'vue'
 import EChart from '@/components/charts/EChart.vue'
 import { useChartTheme } from '@/composables/useChartTheme'
 import { formatPercent } from '@/lib/format'
-import { arknightsRate, endfieldRate } from '@/lib/stats/pity'
-import { AK_PRESETS, EF_PRESETS, plan } from '@/lib/stats/planner'
+import { plan } from '@/lib/stats/planner'
 import { useRecords } from '@/composables/useRecords'
 
 /**
@@ -16,11 +15,13 @@ import { useRecords } from '@/composables/useRecords'
 const records = useRecords()
 const palette = useChartTheme()
 
-const presets = computed(() => (records.game === 'arknights' ? AK_PRESETS : EF_PRESETS))
+/** 预设、概率和规则来自游戏档案；StatsPage 只在档案里有抽卡规划时显示这个面板 */
+const planner = computed(() => records.profile.planner!)
+const presets = computed(() => planner.value.presets)
 const presetId = ref('any')
 const preset = computed(() => presets.value.find((p) => p.id === presetId.value) ?? presets.value[0]!)
 
-const groups = computed(() => records.analysis.pity.filter((p) => !p.isolated || records.game === 'arknights'))
+const groups = computed(() => records.analysis.pity.filter((p) => !p.isolated || planner.value.includeIsolated))
 const family = ref<string>()
 const pity = ref(0)
 const pulls = ref(100)
@@ -46,7 +47,7 @@ watch(
   { immediate: true },
 )
 watch(
-  () => records.game,
+  () => records.profile.id,
   () => (presetId.value = 'any'),
 )
 
@@ -72,7 +73,7 @@ const inputs = computed(() => ({
 const debounced = refDebounced(inputs, 120)
 const result = computed(() =>
   plan({
-    rate: records.game === 'arknights' ? arknightsRate : endfieldRate,
+    rate: planner.value.rate,
     hardPity: records.model.hardPity,
     pity: debounced.value.pity,
     pulls: debounced.value.pulls,
@@ -151,7 +152,7 @@ const chartOption = computed<EChartsOption>(() => {
         <UInputNumber v-model="pulls" :min="0" :max="2000" :step="10" class="w-full" />
       </UFormField>
 
-      <UCollapsible v-if="records.game === 'arknights'" class="rounded-(--ui-radius) border border-default">
+      <UCollapsible v-if="planner.resources" class="rounded-(--ui-radius) border border-default">
         <UButton label="按资源换算" icon="i-lucide-calculator" color="neutral" variant="ghost" size="sm" trailing-icon="i-lucide-chevron-down" block class="justify-start" />
         <template #content>
           <div class="grid grid-cols-2 gap-2 border-t border-default p-3">

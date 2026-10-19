@@ -90,7 +90,7 @@ const expectedRates = computed(() => {
   const dist = records.model.dist
   if (!dist) return null
   const six = 1 / dist.mean
-  return records.game === 'arknights' ? { 6: six, 5: 0.08, 4: 0.5, 3: 0.42 - six } : { 6: six, 5: 0.08, 4: 0.92 - six, 3: 0 }
+  return records.profile.rarityRates(six)
 })
 const rarityOption = computed<EChartsOption>(() => {
   const p = palette.value

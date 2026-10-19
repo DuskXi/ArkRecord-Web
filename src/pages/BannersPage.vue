@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import CharAvatar from '@/components/ui/CharAvatar.vue'
 import { formatDate } from '@/lib/format'
+import type { PoolFilter } from '@/lib/game-profile'
 import { ruleLabel } from '@/lib/labels'
 import { efImageUrl } from '@/lib/meta'
 import { useAppStore } from '@/stores/app'
@@ -11,18 +12,9 @@ import { useRecords } from '@/composables/useRecords'
 const app = useAppStore()
 const records = useRecords()
 
-type Filter = 'all' | 'limited' | 'standard' | 'kernel' | 'weapon'
+type Filter = PoolFilter
 const filter = ref<Filter>('all')
-const filters = computed(() => {
-  const base: { value: Filter; label: string }[] = [
-    { value: 'all', label: '全部' },
-    { value: 'limited', label: records.game === 'arknights' ? '限定 / 联动' : '特许 / 重构' },
-    { value: 'standard', label: records.game === 'arknights' ? '标准' : '基础' },
-  ]
-  if (records.game === 'arknights') base.push({ value: 'kernel', label: '中坚' })
-  else base.push({ value: 'weapon', label: '武器' })
-  return base
-})
+const filters = computed(() => records.profile.poolFilters)
 
 function category(ruleType: string, weapon: boolean): Filter {
   if (weapon) return 'weapon'

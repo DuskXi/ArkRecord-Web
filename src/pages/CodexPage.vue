@@ -14,15 +14,16 @@ const app = useAppStore()
 const records = useRecords()
 
 const weapon = computed(() => records.weaponScope)
-const noun = computed(() => (weapon.value ? '武器' : '干员'))
+const noun = computed(() => (weapon.value ? records.profile.nouns.weapon : records.profile.nouns.char))
 const title = computed(() => `${noun.value}图鉴`)
 
+// 干员 / 武器列表来自鹰角的游戏数据，按 game 取
 const items = computed(() => {
   if (records.game === 'arknights') return app.meta ? akCodexItems(app.meta) : []
   return app.efMeta ? efCodexItems(app.efMeta, weapon.value) : []
 })
 /** 终末地干员有潜能（份数 − 1），明日方舟截图里暂时读不出潜能 */
-const potentialGame = computed(() => records.game === 'endfield' && !weapon.value)
+const potentialGame = computed(() => !!records.profile.codex?.potential && !weapon.value)
 const codex = computed(() =>
   applyRoster(buildCodex(items.value, records.events, records.gifts), weapon.value ? [] : records.roster, records.events, records.gifts, potentialGame.value),
 )
@@ -129,13 +130,7 @@ function detail(c: CodexEntry): string[] {
       >
         <template #description>
           <p v-if="!rosterInfo" class="leading-relaxed">
-            {{
-              records.game === 'arknights'
-                ? '公开招募、活动赠送、兑换所、剧情奖励等途径获得的干员'
-                : weapon
-                  ? '活动、商店、剧情奖励等途径获得的武器'
-                  : '剧情、活动赠送等途径获得的干员'
-            }}，以及官方只保留 90 天、没有被本站保存下来的早期寻访记录，这里都无法统计，所以“未获得”不代表账号里没有。
+            {{ weapon ? records.profile.codex?.otherSources.weapon : records.profile.codex?.otherSources.char }}，以及官方只保留 90 天、没有被本站保存下来的早期寻访记录，这里都无法统计，所以“未获得”不代表账号里没有。
           </p>
           <p v-if="rosterInfo" class="leading-relaxed">
             最近的截图：{{ formatDateTime(rosterInfo.latest) }}。截图之后抽到的、获得赠送的会自动加上{{ potentialGame ? '（潜能 = 获得次数 − 1，最多 5）' : '' }}，不需要重新截图。
@@ -195,7 +190,7 @@ function detail(c: CodexEntry): string[] {
           :content="false"
           size="xs"
         />
-        <USelect v-if="records.game === 'arknights'" v-model="profession" :items="professionOptions" placeholder="全部职业" size="sm" class="w-28" />
+        <USelect v-if="records.profile.codex?.professionFilter" v-model="profession" :items="professionOptions" placeholder="全部职业" size="sm" class="w-28" />
         <UInput v-model="search" icon="i-lucide-search" :placeholder="`搜索${noun}`" size="sm" class="w-36" />
         <UTabs
           v-model="sort"

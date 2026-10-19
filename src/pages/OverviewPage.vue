@@ -33,11 +33,7 @@ const luckColor = computed(
 )
 /** 累计寻访赠送的 6★（不是抽出来的，不计入统计） */
 const giftedSix = computed(() => records.gifts.filter((g) => g.copy && g.star === 6))
-const currency = computed(() =>
-  records.game === 'arknights'
-    ? `约 ${formatNumber(a.value.total * 600)} 合成玉`
-    : '含免费十连，不含赠送',
-)
+const currency = computed(() => records.profile.spendNote(a.value.total))
 </script>
 
 <template>
@@ -54,7 +50,7 @@ const currency = computed(() =>
     <div v-else class="space-y-8">
       <div class="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <p class="eyebrow">{{ records.game === 'arknights' ? 'DOCTOR' : 'ENDMINISTRATOR' }}</p>
+          <p class="eyebrow">{{ records.profile.playerTitle }}</p>
           <p class="text-2xl font-semibold text-highlighted">{{ app.activeAccount?.nickName }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -62,14 +58,14 @@ const currency = computed(() =>
             存档范围 <span class="font-display">{{ formatDate(a.firstTs) }} — {{ formatDate(a.lastTs) }}</span>
           </p>
           <!-- 手机底部导航放不下，从这里进入 -->
-          <UButton v-if="records.game === 'arknights'" label="源石与充值" icon="i-lucide-gem" to="/ledger" size="xs" color="neutral" variant="outline" />
+          <UButton v-if="records.profile.hasLedger" label="源石与充值" icon="i-lucide-gem" to="/ledger" size="xs" color="neutral" variant="outline" />
         </div>
       </div>
 
       <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatTile label="TOTAL PULLS" :value="formatNumber(a.total)" :hint="currency" icon="i-lucide-sigma" />
         <StatTile
-          :label="records.weaponScope ? '6★ WEAPONS' : '6★ OPERATORS'"
+          :label="`6★ ${records.weaponScope ? records.profile.nouns.weaponEn : records.profile.nouns.charEn}`"
           :value="a.stars[6]"
           :hint="a.total ? `出货率 ${formatPercent(a.stars[6] / a.total, 2)}${giftedSix.length ? ` · 另有赠送 ${giftedSix.length}` : ''}` : ''"
           icon="i-lucide-star"
@@ -127,7 +123,7 @@ const currency = computed(() =>
         <SixStarWall :hits="a.hits" :gifts="giftedSix" :hard-pity="records.model.hardPity" :game="records.game" :limit="12" />
         <p v-if="giftedSix.length" class="mt-2 flex items-center gap-1.5 text-xs text-muted">
           <UIcon name="i-lucide-gift" class="size-3.5 text-amber-500" />
-          虚线框、标着“赠”的是累计寻访赠送的（{{ records.game === 'endfield' ? '信物赠礼，潜能 +1' : '限定池累计 300 抽赠送' }}），不是抽出来的，不计入出货统计。
+          虚线框、标着“赠”的是累计寻访赠送的（{{ records.profile.giftNote }}），不是抽出来的，不计入出货统计。
         </p>
       </section>
 

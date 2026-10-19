@@ -35,7 +35,7 @@ const duplicates = computed(() => shown.value.reduce((a, c) => a + c.count - 1, 
         variant="link"
       />
       <p class="ml-auto text-xs text-muted">
-        {{ shown.length }} {{ records.weaponScope ? '件不同的武器' : '名不同的干员' }}，重复获得 {{ duplicates }} 次
+        {{ shown.length }} {{ records.weaponScope ? `件不同的${records.profile.nouns.weapon}` : `名不同的${records.profile.nouns.char}` }}，重复获得 {{ duplicates }} 次
       </p>
     </div>
     <p v-if="!shown.length" class="py-10 text-center text-sm text-muted">暂无</p>
