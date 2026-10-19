@@ -76,13 +76,14 @@ def test_without_yes_sends_nothing(tmp_path):
 def test_pages_through_every_pool_and_prints_only_counts(tmp_path):
     # 常驻 45 条（3 页），角色活动 301 混着 400 共 25 条，其余卡池没有记录
     standard = [record("200", 1000 - i) for i in range(45)]
-    event = [record("301" if i % 2 else "400", 500 - i, rank_type="5") for i in range(25)]
+    event = [record("301" if i % 2 else "400", 500 - i, rank_type="5", op_gacha_type="301") for i in range(25)]
     data, fake, service = setup(tmp_path, {"200": standard, "301": event})
     code, text = probe(service, "genshin", "--yes", "--data-dir", str(data))
     assert code == 0, text
     assert "卡池 200：3 页，45 条" in text
     assert "卡池 301：2 页，25 条（gacha_type 301×12、400×13）" in text
     assert "卡池 100：1 页，0 条" in text
+    assert "gacha_type→op_gacha_type：301→301×12、400→301×13" in text
     assert "region_time_zone：8" in text and "✓ 完成" in text
     # 翻页用上一页最后一条的 id
     pages = [c for c in fake.calls if c["gacha_type"] == "200" and c["size"] == "20"]

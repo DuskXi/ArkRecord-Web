@@ -42,6 +42,8 @@ class PoolCheck:
         self.records = 0
         self.fields: set[str] = set()
         self.gacha_types: Counter[str] = Counter()
+        # gacha_type → op_gacha_type 的对应（含义还没确认，先看取值）
+        self.op_types: Counter[tuple[str, str]] = Counter()
         self.id_lengths: set[int] = set()
         self.bad_ids = 0
         self.bad_times = 0
@@ -63,6 +65,8 @@ class PoolCheck:
             return None
         self.fields.update(str(key) for key in record)
         self.gacha_types[str(record.get("gacha_type"))] += 1
+        if "op_gacha_type" in record:
+            self.op_types[(str(record.get("gacha_type")), str(record.get("op_gacha_type")))] += 1
         if uid is not None and record.get("uid") != uid:
             self.other_uid += 1
         if not record.get("item_id"):
@@ -110,6 +114,9 @@ class PoolCheck:
                 f"id 位数 {lengths}；rank_type 取值 {'/'.join(sorted(self.rank_types)) or '无'}；"
                 f"lang {'/'.join(sorted(self.langs)) or '无'}；item_id 为空 {self.empty_item_id} 条"
             )
+        if self.op_types:
+            pairs = "、".join(f"{g}→{o}×{n}" for (g, o), n in sorted(self.op_types.items()))
+            lines.append(f"gacha_type→op_gacha_type：{pairs}")
         if self.time_zones:
             lines.append(f"region_time_zone：{'/'.join(sorted(self.time_zones))}")
         problems = self.problems()
