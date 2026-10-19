@@ -157,7 +157,7 @@ node scripts/audit/manifest.mjs --compare https://ark.kaltsit.dev/build-manifest
 Worker 代码只有 Cloudflare 账号持有者能取回，所以由仓库里公开的 [`audit-deployment.yml`](.github/workflows/audit-deployment.yml) 代为核对：每天一次，每次部署之后也立即运行一次，正式环境和测试环境都核对。
 
 - [`verify-site.mjs`](scripts/audit/verify-site.mjs)：同上，验证网站上的文件、清单和构建证明。刚部署完的几十秒里，Cloudflare 的部分节点还在提供上一个版本的文件，所以第一次不一致的文件会隔 30 秒复查，最多 3 次；复查后一致的数量写在报告里，仍不一致的才算问题。
-- [`verify-worker.mjs`](scripts/audit/verify-worker.mjs)：用 Cloudflare 接口取回**最近 72 小时内上传的每一个 Worker 版本**的代码（不论是谁上传、有没有部署），每个模块都必须有本仓库部署流程签发的构建证明；正在运行的版本还必须和网站上的构建清单完全一致。按时间而不是按个数取版本，连续上传再多版本也挤不出核对范围；在网页后台修改密钥会产生新版本，但代码不变，所以同样能通过。
+- [`verify-worker.mjs`](scripts/audit/verify-worker.mjs)：用 Cloudflare 接口取回**最近 72 小时内上传的每一个 Worker 版本**的代码（不论是谁上传、有没有部署），每个模块都必须有本仓库部署流程签发的构建证明，而且来自同一次构建（同一份构建证明里列出了这个版本的全部模块，拼凑不同构建的模块会被发现）；正在运行的版本还必须和网站上的构建清单完全一致。按时间而不是按个数取版本，连续上传再多版本也挤不出核对范围；在网页后台修改密钥会产生新版本，但代码不变，所以同样能通过。
 - 结果写在每次运行的摘要里（Actions 页面公开）；完整报告作为附件保留 90 天，并且同样签发构建证明，记录在透明日志里。核对失败时运行会标成失败。
 
 核对流程不安装任何依赖（脚本只用 Node 自带模块）。Cloudflare 令牌只交给 `verify-worker.mjs`：它只发 GET 请求、只访问固定的几个 Worker 接口，不把令牌传给子进程；报告里只有版本号、时间、来源、哈希和构建来源，不包含账号 ID、邮箱、IP 和绑定的值。
