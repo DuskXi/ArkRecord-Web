@@ -41,8 +41,8 @@ async function rawAccounts(db: ArkRecordDB): Promise<Record<string, unknown>[]> 
   const idb = db.backendDB()
   return new Promise((resolve, reject) => {
     const request = idb.transaction('accounts').objectStore('accounts').getAll()
-    request.onsuccess = () => resolve(request.result as Record<string, unknown>[])
-    request.onerror = () => reject(request.error)
+    request.addEventListener('success', () => resolve(request.result as Record<string, unknown>[]))
+    request.addEventListener('error', () => reject(request.error))
   })
 }
 

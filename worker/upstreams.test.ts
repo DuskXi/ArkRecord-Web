@@ -70,17 +70,20 @@ describe('findRoute', () => {
   })
 })
 
+/** 目录下所有源码文件 */
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return sourceFiles(path)
+    return /\.(ts|vue|js|mjs)$/.test(name) ? [path] : []
+  })
+}
+
 describe('shared/upstreams/mhy.json', () => {
   // 米哈游的白名单只给桌面版的 Python 后端用：网页版和 Worker 不能引用它（网页版只有鹰角两款）
   it('is not referenced by the website or the Worker', () => {
-    const files = (dir: string): string[] =>
-      readdirSync(dir).flatMap((name) => {
-        const path = join(dir, name)
-        if (statSync(path).isDirectory()) return files(path)
-        return /\.(ts|vue|js|mjs)$/.test(name) ? [path] : []
-      })
     const offenders = ['src', 'worker']
-      .flatMap(files)
+      .flatMap(sourceFiles)
       .filter((file) => !file.endsWith('.test.ts') && readFileSync(file, 'utf8').includes('upstreams/mhy'))
     expect(offenders).toEqual([])
   })
