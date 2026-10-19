@@ -25,6 +25,10 @@ const APP_HOST = 'arkrecord'
 const ALLOWED_METHODS = new Map([
   ['ping', 30_000],
   ['hg.request', 45_000],
+  // 使用人数统计：后端马上返回，真正的上报在后台排队
+  ['stats.status', 30_000],
+  ['stats.setEnabled', 30_000],
+  ['stats.report', 30_000],
 ])
 /** 和后端约定的协议版本（desktop/README.md） */
 const PROTOCOL_VERSION = 1
@@ -100,10 +104,22 @@ async function serveAppFile(request: Request): Promise<Response> {
   return new Response(response.body, { status: response.status, headers })
 }
 
+/**
+ * 使用人数统计的上报地址（desktop/README.md 的“使用人数统计”）：安装版报到正式站，开发版报到测试站。
+ * 冒烟测试不设，测试数据不算进统计
+ */
+const STATS_URL = smoke ? undefined : app.isPackaged ? 'https://ark.kaltsit.dev' : 'https://ark-next.kaltsit.dev'
+
 const backend = new Backend(() => {
   if (app.isPackaged) throw new Error('安装包里还没有带上后端（M4）')
   // 开发时在仓库根目录用 uv 启动，见 desktop/README.md
-  return { command: 'uv', args: ['run', '--project', 'desktop/backend', 'python', '-m', 'arkrecord_backend'], cwd: app.getAppPath() }
+  return {
+    command: 'uv',
+    args: ['run', '--project', 'desktop/backend', 'python', '-m', 'arkrecord_backend'],
+    cwd: app.getAppPath(),
+    // 后端在数据目录里存 stats.json；没有上报地址时不上报（继承来的环境变量里有也删掉）
+    env: { ARKRECORD_DATA_DIR: app.getPath('userData'), ARKRECORD_STATS_URL: STATS_URL },
+  }
 })
 
 let mainWindow: BrowserWindow | undefined

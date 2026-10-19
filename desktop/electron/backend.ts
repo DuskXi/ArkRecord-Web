@@ -10,6 +10,8 @@ export interface BackendCommand {
   command: string
   args: string[]
   cwd: string
+  /** 额外的环境变量；值是 undefined 的会从继承来的环境里删掉 */
+  env?: Record<string, string | undefined>
 }
 
 /** 停止时给后端多少时间自己退出（关闭 stdin 后），超时就强制结束 */
@@ -48,13 +50,13 @@ export class Backend {
   private start(): RpcClient {
     if (this.client && !this.client.closed) return this.client
 
-    const { command, args, cwd } = this.resolveCommand()
-    const child = spawn(command, args, {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      env: { ...process.env, PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' },
-    })
+    const { command, args, cwd, env: extraEnv = {} } = this.resolveCommand()
+    const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' }
+    for (const [key, value] of Object.entries(extraEnv)) {
+      if (value === undefined) delete env[key]
+      else env[key] = value
+    }
+    const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env })
     const client = new RpcClient(child.stdin, child.stdout, (message) => console.warn(`[backend] ${message}`))
     createInterface({ input: child.stderr, crlfDelay: Infinity }).on('line', (line) => console.log(`[backend] ${line}`))
 

@@ -109,7 +109,7 @@ interface ArkrecordBridge {
 
 - 只接受主窗口顶层页面、地址是应用自己的请求，其他的直接拒绝；
 - `app.` 开头的方法由主进程自己处理，不转给后端（见下面的“应用内鹰角登录”）；
-- 其他方法只放行白名单里的（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`：`ping`、`hg.request`），再交给后端。超时：`ping` 30 秒，`hg.request` 45 秒（后端对上游 20 秒超时，留出余量），启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
+- 其他方法只放行白名单里的（`desktop/electron/main.ts` 的 `ALLOWED_METHODS`：`ping`、`hg.request`、`stats.status`、`stats.setEnabled`、`stats.report`），再交给后端。超时：`ping` 30 秒，`hg.request` 45 秒（后端对上游 20 秒超时，留出余量），启动时的 ping 120 秒（uv 第一次运行要建虚拟环境）。后端退出后，下一次请求会重新启动它。
 
 ### 应用内鹰角登录（`app.hgLogin`）
 
@@ -152,6 +152,7 @@ interface ArkrecordBridge {
 
 - `ARKRECORD_DATA_DIR`：应用数据目录（`app.getPath('userData')`），后端在这里存 `stats.json`（开关、随机设备 ID、今天报过什么）。
 - `ARKRECORD_STATS_URL`：安装版 `https://ark.kaltsit.dev`，开发版 `https://ark-next.kaltsit.dev`。后端只接受这两个地址，没设置时不上报。
+- 主进程这一侧在 `desktop/electron/main.ts`（`STATS_URL`，经 `backend.ts` 的 `env` 传给后端）。**冒烟测试不设上报地址**，继承来的环境变量里有也会删掉，测试数据不算进统计；数据目录是冒烟测试的临时目录。冒烟测试检查页面上没有同意弹窗、`stats.status` 的 `available` 为 false。
 
 ## 鹰角 token 的保存（主进程，`app.tokens.*`）
 

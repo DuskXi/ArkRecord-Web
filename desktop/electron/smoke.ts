@@ -33,6 +33,9 @@ const PROBE = `(async () => {
     return out
   }
   try { out.ping = await bridge.rpc('ping') } catch (error) { out.pingError = error }
+  // 桌面版不弹 Cookie / 统计同意；冒烟测试不设上报地址，统计不可用
+  out.consentBanner = document.body.innerText.includes('Cookie 与统计')
+  try { out.stats = await bridge.rpc('stats.status') } catch (error) { out.stats = error }
   try { await bridge.rpc('fs.readFile', ['C:/secret']); out.blocked = null } catch (error) { out.blocked = error }
   try {
     const result = await bridge.rpc('hg.request', { upstream: 'ak', path: '/arkrecord-smoke-test/not-allowed', envelope: '{}' })
@@ -60,6 +63,8 @@ interface ProbeResult {
   failedRequests?: string[]
   ping?: { pong?: boolean; protocol?: number }
   pingError?: unknown
+  consentBanner?: boolean
+  stats?: { available?: unknown; enabled?: unknown; code?: number }
   blocked?: { code?: number } | null
   hgRoute?: unknown
   /** 只有 app:// 协议（正式构建）才检查 */
@@ -267,6 +272,8 @@ function report(result: ProbeResult, extra: Record<string, boolean>): boolean {
   }
   if (result.appMounted) {
     checks['ping 成功、协议版本 1'] = result.ping?.pong === true && result.ping.protocol === 1
+    checks['桌面版没有 Cookie / 统计同意弹窗'] = result.consentBanner === false
+    checks['冒烟测试不上报统计（stats.status 的 available 为 false）'] = result.stats?.available === false
     checks['白名单以外的方法被拒绝（-32601）'] = result.blocked?.code === -32601
     checks['hg.request 拒绝白名单以外的路径（route_not_allowed）'] = result.hgRoute === 'route_not_allowed'
   }
