@@ -7,7 +7,9 @@
  * --shots <目录>（和 --smoke 一起用）：冒烟测试时把主窗口、登录弹窗、登录窗口截图存到这个目录，看界面效果用。
  */
 import { spawn, spawnSync } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
@@ -36,6 +38,9 @@ const env = { ...process.env, ARKRECORD_DEV_SERVER_URL: url }
 // 从其他 Electron 应用（编辑器、终端）里启动时可能带着这个变量，会让 Electron 以 Node 方式运行
 delete env.ELECTRON_RUN_AS_NODE
 if (smoke) env.ARKRECORD_SMOKE = '1'
+// 冒烟测试每次用一个新的临时数据目录（第一次打开的状态），跑完删掉
+const smokeDataDir = smoke ? await mkdtemp(join(tmpdir(), 'arkrecord-smoke-')) : undefined
+if (smokeDataDir) env.ARKRECORD_SMOKE_DATA_DIR = smokeDataDir
 const shotsIndex = process.argv.indexOf('--shots')
 if (smoke && shotsIndex !== -1 && process.argv[shotsIndex + 1]) env.ARKRECORD_SMOKE_SHOTS = resolve(process.argv[shotsIndex + 1])
 if (fakeHg) {
@@ -48,6 +53,8 @@ if (fakeHg) {
 const electron = spawn(electronPath, ['.'], { cwd: root, env, stdio: 'inherit' })
 electron.on('exit', async (code, signal) => {
   await Promise.all([server.close(), fakeHg?.close()])
+  // Windows 上 Electron 刚退出时文件可能还被占着，多试几次
+  if (smokeDataDir) await rm(smokeDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => undefined)
   process.exit(signal ? 1 : (code ?? 0))
 })
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => electron.kill())

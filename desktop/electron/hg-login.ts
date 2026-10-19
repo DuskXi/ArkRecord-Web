@@ -8,8 +8,8 @@
 import { randomUUID } from 'node:crypto'
 import { BrowserWindow, type Session, type WebContents, app, session } from 'electron'
 import { openExternal } from './external.js'
-import type { HgLoginTarget } from './hg-login-rules.js'
-import { tokenFromInfo } from './hg-login-rules.js'
+import type { BlockedKind, HgLoginTarget } from './hg-login-rules.js'
+import { blockedHost, tokenFromInfo } from './hg-login-rules.js'
 import { APP_ERROR, RpcError } from './rpc.js'
 
 /** 页面跳转后等多久再查登录状态 */
@@ -41,6 +41,24 @@ export const lastLoginPartition = (): string | undefined => lastPartition
 
 const loginError = (kind: 'cancelled' | 'login_failed', message: string) => new RpcError(APP_ERROR, message, { kind })
 
+const MAX_BLOCKED = 50
+const blocked: string[] = []
+
+/** 冒烟测试用：开发版里最近被拦下的跳转（只有类型和域名） */
+export const recentBlocked = (): readonly string[] => blocked
+
+/**
+ * 开发版：被拦下的跳转只记类型和域名（不记端口、路径、参数和 fragment），真机测试时用来确认白名单够不够。
+ * 安装包里不记
+ */
+function noteBlocked(kind: BlockedKind, value: string): void {
+  if (app.isPackaged) return
+  const entry = `${kind} ${blockedHost(value)}`
+  blocked.push(entry)
+  if (blocked.length > MAX_BLOCKED) blocked.shift()
+  devLog(`拦下：${entry}`)
+}
+
 /** 登录窗口里只允许 target 的地址；其他链接交给系统浏览器，新窗口、webview 一律拒绝 */
 function guard(contents: WebContents, target: HgLoginTarget): void {
   const allowed = (value: string, isMainFrame: boolean) => {
@@ -48,16 +66,20 @@ function guard(contents: WebContents, target: HgLoginTarget): void {
     return url !== null && (isMainFrame ? target.allowTop(url) : target.allowFrame(url))
   }
   contents.setWindowOpenHandler(({ url }) => {
+    noteBlocked('新窗口', url)
     openExternal(url)
     return { action: 'deny' }
   })
   contents.on('will-frame-navigate', (event) => {
     if (allowed(event.url, event.isMainFrame)) return
     event.preventDefault()
+    noteBlocked(event.isMainFrame ? '顶层页面' : '子框架', event.url)
     if (event.isMainFrame) openExternal(event.url)
   })
   contents.on('will-redirect', (event) => {
-    if (!allowed(event.url, event.isMainFrame)) event.preventDefault()
+    if (allowed(event.url, event.isMainFrame)) return
+    event.preventDefault()
+    noteBlocked(event.isMainFrame ? '顶层页面' : '子框架', event.url)
   })
   contents.on('will-attach-webview', (event) => event.preventDefault())
 }
@@ -73,13 +95,19 @@ async function clearSession(ses: Session): Promise<void> {
   }
 }
 
-/** 在登录会话里请求 account/info/hg；没登录、网络错误、不是 JSON 都返回 undefined */
-async function fetchToken(ses: Session, infoUrl: string): Promise<string | undefined> {
+/** 开发版的调试输出（只有域名、次数、状态码和结果，不带 token）；安装包里不输出 */
+function devLog(message: string): void {
+  if (!app.isPackaged) console.log(`[hg-login] ${message}`)
+}
+
+/** 在登录会话里请求 account/info/hg；没登录、网络错误、不是 JSON 时 token 是 undefined。status 只给开发版日志用 */
+async function fetchToken(ses: Session, infoUrl: string): Promise<{ token: string | undefined; status: string }> {
   try {
     const response = await ses.fetch(infoUrl, { credentials: 'include', cache: 'no-store', redirect: 'error' })
-    return response.ok ? tokenFromInfo(await response.json()) : undefined
+    const token = response.ok ? tokenFromInfo(await response.json().catch(() => null)) : undefined
+    return { token, status: `HTTP ${response.status}` }
   } catch {
-    return undefined
+    return { token: undefined, status: '网络错误' }
   }
 }
 
@@ -127,6 +155,7 @@ function openLogin(parent: BrowserWindow, target: HgLoginTarget): ActiveLogin {
     clearTimeout(debounce)
     clearTimeout(timeout)
     if (active?.window === win) active = undefined
+    devLog(`结束：${'token' in outcome ? '拿到 token' : String((outcome.error.data as { kind?: string }).kind)}`)
     void clearSession(ses).then(() => {
       if (!win.isDestroyed()) win.destroy()
       if ('token' in outcome) resolveLogin(outcome.token)
@@ -137,7 +166,8 @@ function openLogin(parent: BrowserWindow, target: HgLoginTarget): ActiveLogin {
   const check = async () => {
     if (settled || checks >= MAX_CHECKS) return
     checks++
-    const token = await fetchToken(ses, target.infoUrl)
+    const { token, status } = await fetchToken(ses, target.infoUrl)
+    devLog(`查登录状态（第 ${checks} 次）：${status}，${token ? '已登录' : '还没登录'}`)
     if (token) finish({ token })
     else if (checks >= MAX_CHECKS) finish({ error: loginError('login_failed', '多次没有读到登录状态，请关闭窗口后重试，或者改用粘贴 token') })
   }
@@ -148,7 +178,9 @@ function openLogin(parent: BrowserWindow, target: HgLoginTarget): ActiveLogin {
 
   // 标题显示当前域名，让用户看得到自己在哪个网站上；不用页面自己的标题
   const showHost = (value: string) => {
-    if (!win.isDestroyed()) win.setTitle(`${TITLE} - ${URL.parse(value)?.host ?? ''}`)
+    if (win.isDestroyed()) return
+    win.setTitle(`${TITLE} - ${URL.parse(value)?.host ?? ''}`)
+    devLog(`当前页面：${blockedHost(value)}`)
   }
   win.on('page-title-updated', (event) => event.preventDefault())
   win.webContents.on('did-navigate', (_event, url) => {

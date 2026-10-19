@@ -13,7 +13,7 @@ desktop/
 | 命令 | 做什么 |
 |---|---|
 | `npm run desktop:dev` | 编译主进程和 preload → 启动 Vite（desktop 模式）→ 启动 Electron → 主进程拉起后端并 ping。页面代码热更新；改了 `desktop/electron` 要重新运行 |
-| `npm run desktop:smoke` | 冒烟测试：检查 `window.arkrecord`、页面里没有 Node、ping、白名单以外的方法被拒绝、`hg.request` 拒绝白名单以外的路径、应用内登录窗口（用本机的假登录页），不发出真实请求，跑完自动退出，退出码 0 表示通过。加 `-- --shots <目录>` 会把主窗口、登录弹窗、登录窗口截图存到这个目录 |
+| `npm run desktop:smoke` | 冒烟测试：检查 `window.arkrecord`、页面里没有 Node、ping、白名单以外的方法被拒绝、`hg.request` 拒绝白名单以外的路径、应用内登录窗口（用本机的假登录页），不发出真实请求，跑完自动退出，退出码 0 表示通过。加 `-- --shots <目录>` 会把主窗口、登录弹窗、登录窗口截图存到这个目录。每次用一个新的临时数据目录（第一次打开的状态，跑完删掉），不碰开发版的数据，开发版开着也能跑 |
 | `npm run desktop:build` | 游戏数据 + `vite build --mode desktop`（输出到 `desktop/electron/dist/renderer`）+ 编译主进程 |
 | `npm run desktop:start` | 运行构建好的版本（页面从 `app://arkrecord/` 加载） |
 
@@ -124,6 +124,7 @@ interface ArkrecordBridge {
 - 每次登录用新的内存分区 `hg-login-<随机>`，结束时清掉它的全部存储、缓存和认证缓存，再销毁窗口；不调用鹰角的退出接口。
 - 登录窗口：沙盒、上下文隔离、不开 Node、**没有 preload**、不允许 `<webview>`、安装版关掉开发者工具；标题显示当前域名。权限请求和下载一律拒绝，证书错误不放行（保持默认）。
 - 顶层页面只允许 `https://*.hypergryph.com`，子框架另外放行 `*.geetest.com`；其他链接交给系统浏览器，`window.open` 一律拒绝。主进程的全局跳转规则跳过登录窗口。
+- 开发版（没打包）里，被拦下的跳转在终端输出一行 `[hg-login] 拦下：顶层页面 / 子框架 / 新窗口 <域名>`，只有域名，不记端口、路径、参数和 fragment；真机测试时用来确认白名单够不够。安装包里不输出。
 - 取 token：在登录会话里请求 `https://web-api.hypergryph.com/account/info/hg`，时机是每次跳转后防抖 1 秒，或 `app.hgLoginCheck`；每个窗口最多 20 次。token 只作为这次 `rpc` 的返回值交给页面，不写日志、主进程不保存。
 
 页面里鹰角的请求不用直接调 `rpc`：`postHg` 在桌面版里调用 `hg.request`，把结果还原成 `Response`（只保留上面三个响应头，`204` 等状态不带正文）；`rpc()` 失败或结果格式不对时抛 `TransportError`（继承 `TypeError`），`client.ts` 当作网络错误处理，和网页版 `fetch` 失败一样。

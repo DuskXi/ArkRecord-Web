@@ -42,6 +42,19 @@ export function fakeLoginTarget(origin: string): HgLoginTarget {
   }
 }
 
+/** 被拦下的是什么：顶层页面的跳转、子框架的跳转，还是新窗口 */
+export type BlockedKind = '顶层页面' | '子框架' | '新窗口'
+
+/**
+ * 被拦下的地址只留域名（开发版的日志用，真机测试时确认白名单）：不记端口、路径、参数和 fragment；
+ * 不是 http(s) 的地址只记协议（如 data:、about:）
+ */
+export function blockedHost(value: string): string {
+  const url = URL.parse(value)
+  if (!url) return '（无法解析的地址）'
+  return url.hostname || url.protocol
+}
+
 /** account/info/hg 的响应：code === 0 且 data.content 是非空字符串才算登录成功 */
 export function tokenFromInfo(json: unknown): string | undefined {
   if (typeof json !== 'object' || json === null) return undefined

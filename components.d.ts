@@ -24,6 +24,7 @@ declare module 'vue' {
     CollectionPanel: typeof import('./src/components/stats/CollectionPanel.vue')['default']
     ConsentBanner: typeof import('./src/components/ConsentBanner.vue')['default']
     DemoBanner: typeof import('./src/components/shell/DemoBanner.vue')['default']
+    DesktopTitleBar: typeof import('./src/components/shell/DesktopTitleBar.vue')['default']
     EChart: typeof import('./src/components/charts/EChart.vue')['default']
     GameSwitcher: typeof import('./src/components/shell/GameSwitcher.vue')['default']
     HgModeNotice: typeof import('./src/components/cloud/HgModeNotice.vue')['default']

@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { type BrowserWindow, type WebContents, app, desktopCapturer, session } from 'electron'
-import { currentLoginWindow, lastLoginPartition } from './hg-login.js'
+import { currentLoginWindow, lastLoginPartition, recentBlocked } from './hg-login.js'
 import { TOKEN_FILE } from './token-store.js'
 
 /** 截图目录（dev.mjs --smoke --shots <目录>）：看界面效果用，不设就不截图 */
@@ -138,6 +138,8 @@ async function probeLogin(win: BrowserWindow, expectedToken: string): Promise<Re
   await contents.executeJavaScript(`void (location.href = 'http://127.0.0.1:9/arkrecord-smoke-test')`)
   await sleep(1000)
   const stayed = contents.getURL() === loginUrl
+  // 开发版的拦截日志：顶层页面和子框架分开标注，只有域名（假登录页里有一个白名单以外的子框架）
+  const blockedLog = [...recentBlocked()]
   await contents.executeJavaScript(`void setTimeout(() => document.querySelector('form').submit(), 0)`)
   const first = await success
   const partition = lastLoginPartition()
@@ -152,10 +154,16 @@ async function probeLogin(win: BrowserWindow, expectedToken: string): Promise<Re
   second.close()
   const cancelled = await cancel
 
-  console.log(`[smoke] 登录窗口：${JSON.stringify({ bridgeInLogin, stayed, first: { ok: first.ok, error: first.error }, cookiesLeft, cancelled })}`)
+  console.log(
+    `[smoke] 登录窗口：${JSON.stringify({ bridgeInLogin, stayed, blockedLog, first: { ok: first.ok, error: first.error }, cookiesLeft, cancelled })}`,
+  )
   return {
     '登录窗口里拿不到 window.arkrecord': bridgeInLogin === 'undefined',
     '登录窗口跳到白名单以外的地址被拦下': stayed,
+    '拦截日志分开标注顶层页面和子框架，只有域名':
+      blockedLog.includes('顶层页面 127.0.0.1') &&
+      blockedLog.includes('子框架 localhost') &&
+      !blockedLog.some((entry) => /smoke-test|secret|:9|\//.test(entry)),
     '假登录页登录后拿到 token': first.ok && first.token === expectedToken,
     '登录结束后分区被清空': cookiesLeft === 0,
     '关闭登录窗口返回 cancelled': !cancelled.ok && cancelled.error?.code === -32000 && cancelled.error.data?.kind === 'cancelled',
@@ -205,6 +213,48 @@ async function probeTokens(win: BrowserWindow): Promise<Record<string, boolean>>
     'hg-tokens.json 里只有密文': raw.includes(FAKE_ACCOUNT) && !raw.includes(token),
     'token 删除后读不到，文件里没有残留': deleted.ok && after.ok && !(FAKE_ACCOUNT in tokensOf(after)) && !rawAfter.includes(FAKE_ACCOUNT),
     '格式不对的 accountId 和 token 被拒绝（-32602）': badId.e?.code === -32602 && badToken.e?.code === -32602,
+  }
+}
+
+interface VaultProbe {
+  skipped?: boolean
+  error?: string
+  missingOk?: boolean
+  roundTrip?: boolean
+  deleted?: boolean
+}
+
+/**
+ * 账号表和 token 钩子（src/lib/token-vault.ts）：在页面里像 LoginModal 那样新增一个假账号（先查是否已存在），读回、再删掉。
+ * 只在开发服务器上跑（要用 import('/src/lib/db.ts') 拿到页面用的同一个数据库）
+ */
+async function probeAccountVault(win: BrowserWindow): Promise<Record<string, boolean>> {
+  const token = `arkrecord-smoke-test-${randomUUID()}`
+  const result = (await win.webContents.executeJavaScript(`(async () => {
+    if (location.protocol === 'app:') return { skipped: true }
+    try {
+      const { db } = await import('/src/lib/db.ts')
+      const id = ${JSON.stringify(FAKE_ACCOUNT)}
+      const missing = await db.accounts.get('arknights:arkrecord-smoke-missing')
+      const existing = await db.accounts.get(id)
+      await db.accounts.put({ id, game: 'arknights', uid: 'arkrecord-smoke-test', nickName: 'smoke test', createdAt: existing ? existing.createdAt : Date.now(), accountToken: ${JSON.stringify(token)} })
+      const read = await db.accounts.get(id)
+      await db.accounts.delete(id)
+      const after = await db.accounts.get(id)
+      return { missingOk: missing === undefined, roundTrip: Boolean(read) && read.accountToken === ${JSON.stringify(token)}, deleted: after === undefined }
+    } catch (error) {
+      return { error: String(error && error.message || error) }
+    }
+  })()`)) as VaultProbe
+  if (result.skipped) return {}
+  // 钥匙串里的删除是页面发出去不等结果的，稍等一下再看文件
+  await sleep(500)
+  const raw = await readFile(join(app.getPath('userData'), TOKEN_FILE), 'utf8').catch(() => '')
+  console.log(`[smoke] 账号表：${JSON.stringify(result)}`)
+  return {
+    '读不存在的账号不出错（LoginModal 新增账号前会先查）': result.error === undefined && result.missingOk === true,
+    '新增账号带 token，读回来一致': result.roundTrip === true,
+    '删除账号后读不到，钥匙串文件里没有残留': result.deleted === true && !raw.includes(FAKE_ACCOUNT),
   }
 }
 
@@ -276,7 +326,7 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
     await shotPages(win).catch((error: unknown) => console.error(`[smoke] 截图失败：${(error as Error).message}`))
     let tokens: Record<string, boolean>
     try {
-      tokens = await probeTokens(win)
+      tokens = { ...(await probeTokens(win)), ...(await probeAccountVault(win)) }
     } catch (error) {
       console.error(`[smoke] token 保存检查出错：${(error as Error).message}`)
       tokens = { token保存检查没有跑完: false }

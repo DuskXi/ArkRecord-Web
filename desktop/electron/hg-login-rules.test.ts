@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OFFICIAL_LOGIN, fakeLoginTarget, tokenFromInfo } from './hg-login-rules.js'
+import { OFFICIAL_LOGIN, blockedHost, fakeLoginTarget, tokenFromInfo } from './hg-login-rules.js'
 
 const url = (value: string) => new URL(value)
 
@@ -39,6 +39,21 @@ describe('fakeLoginTarget', () => {
   it('不接受本机以外的地址和 https', () => {
     expect(() => fakeLoginTarget('http://example.com')).toThrow()
     expect(() => fakeLoginTarget('https://127.0.0.1:4567')).toThrow()
+  })
+})
+
+describe('blockedHost', () => {
+  it('只留域名，不带端口、路径、参数和 fragment', () => {
+    const value = 'https://user.hypergryph.com:8443/login/callback?code=secret-code&state=x#token=secret-token'
+    const host = blockedHost(value)
+    expect(host).toBe('user.hypergryph.com')
+    for (const part of ['8443', 'login', 'callback', 'secret', 'state', 'token']) expect(host).not.toContain(part)
+  })
+
+  it('不是 http(s) 的地址只记协议，解析不了的不带原文', () => {
+    expect(blockedHost('data:text/html,<h1>secret</h1>')).toBe('data:')
+    expect(blockedHost('about:blank')).toBe('about:')
+    expect(blockedHost('not a url secret')).toBe('（无法解析的地址）')
   })
 })
 

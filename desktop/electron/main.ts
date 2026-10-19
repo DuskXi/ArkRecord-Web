@@ -237,8 +237,10 @@ function showMainWindow(): void {
 }
 
 app.setName('ArkRecord')
-// 开发和安装版的数据分开放（IndexedDB、单实例锁都在这个目录里）
-app.setPath('userData', join(app.getPath('appData'), app.isPackaged ? 'ArkRecord' : 'ArkRecord Dev'))
+// 开发和安装版的数据分开放（IndexedDB、单实例锁都在这个目录里）。
+// 冒烟测试用 dev.mjs 每次新建的临时目录：不碰开发版的数据，也不和开着的开发版抢单实例锁
+const smokeDataDir = smoke ? process.env.ARKRECORD_SMOKE_DATA_DIR : undefined
+app.setPath('userData', smokeDataDir ?? join(app.getPath('appData'), app.isPackaged ? 'ArkRecord' : 'ArkRecord Dev'))
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } }])
 app.enableSandbox()
 
@@ -261,7 +263,13 @@ app.on('web-contents-created', (_event, contents) => {
 })
 
 if (!app.requestSingleInstanceLock()) {
-  app.quit()
+  // 已经有一个在运行：把它切到前面（second-instance），自己退出。冒烟测试这时什么都没测，不能算通过
+  if (smoke) {
+    console.error('[smoke] 已经有一个开发版在运行（同一个数据目录只能开一个），请先关掉它再跑冒烟测试')
+    app.exit(1)
+  } else {
+    app.quit()
+  }
 } else {
   app.on('second-instance', showMainWindow)
   app.on('window-all-closed', () => {

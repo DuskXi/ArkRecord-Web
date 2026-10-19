@@ -16,10 +16,12 @@ const page = (title, body) =>
   `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title></head>` +
   `<body style="font: 15px/1.6 system-ui, sans-serif; margin: 3rem auto; max-width: 22rem">${body}</body></html>`
 
+// 白名单以外的子框架（冒烟测试检查它被拦下，日志里只有域名、没有路径和参数）
 const LOGIN_PAGE = page(
   '假的鹰角登录页',
   '<h1>假的鹰角登录页</h1><p>只用于开发和冒烟测试，不会连接鹰角的服务器。</p>' +
-    '<form method="post" action="/login"><button type="submit">登录</button></form>',
+    '<form method="post" action="/login"><button type="submit">登录</button></form>' +
+    '<iframe src="http://localhost:9/frame-secret?code=frame-secret" title="子框架拦截测试" width="1" height="1" style="border:0"></iframe>',
 )
 const HOME_PAGE = page('已登录（假）', '<h1>已登录</h1><p>应用会自动读取登录状态并关闭这个窗口。</p>')
 
