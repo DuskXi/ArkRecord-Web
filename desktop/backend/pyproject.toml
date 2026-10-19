@@ -1,0 +1,30 @@
+[project]
+name = "arkrecord-backend"
+version = "0.1.0"
+description = "ArkRecord 桌面版的本地后端：Electron 主进程经 stdio JSON-RPC 调用"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.9"]
+
+[build-system]
+requires = ["uv_build>=0.8.4,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# 包直接放在 desktop/backend/arkrecord_backend/，不用 src/ 布局
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S"]
+# 测试里允许 assert、启动子进程、写合成的假凭据
+per-file-ignores = { "tests/*" = ["S101", "S105", "S106", "S603"] }

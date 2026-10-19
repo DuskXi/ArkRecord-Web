@@ -41,3 +41,26 @@ jobs:
         run: npx vitest run
       - name: 构建
         run: npx vite build
+
+  # 桌面版的 Python 后端（desktop/backend）。三个平台都跑：stdio 编码、换行在 Windows 上最容易出问题
+  desktop-backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop/backend
+    steps:
+      - uses: actions/checkout@v7
+      - name: 安装 uv
+        run: pipx install uv==0.11.32
+      - name: 安装依赖（按 uv.lock）
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check .
+      - name: 格式检查
+        run: uv run ruff format --check .
+      - name: 测试
+        run: uv run pytest

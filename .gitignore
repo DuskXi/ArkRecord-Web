@@ -6,3 +6,8 @@ dist
 .DS_Store
 # 构建时从 GitHub 拉取的游戏数据与头像（见 scripts/sync-gamedata.mjs）
 public/gamedata
+# 桌面版 Python 后端（desktop/backend，用 uv 管理）
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
