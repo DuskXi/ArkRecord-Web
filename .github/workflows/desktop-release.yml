@@ -3,7 +3,7 @@ name: Desktop release
 # 桌面版的安装包（维护者 2026-10-20：“先做总览Dashboard，然后打包，发release，但是不要对ark那个网站有推送”）。
 # - 只在 desktop 分支（手动触发）和 desktop-v* 标签上运行。不要用 v 开头的标签：deploy-production.yml 会把它部署到正式站。
 # - 三个平台各打一份：Python 后端先用 PyInstaller 打成文件夹（desktop/backend/packaging/build.py，打完会启动检查一次），
-#   再构建页面和主进程，最后由 electron-builder 打安装包（npm run desktop:package）。
+#   再构建页面和主进程，由 electron-builder 打安装包（npm run desktop:package），最后启动安装版跑冒烟测试。
 # - 标签触发时建一个草稿 release，维护者确认版本号和说明后再手动发布；手动触发只上传构建产物，不建 release。
 # - 不签名：macOS 会提示“无法验证开发者”，Windows 会有 SmartScreen 提示，发布说明里写清楚。
 # - 不部署网站、不碰 Cloudflare，用不到任何密钥（建 release 只用这次运行自带的 GITHUB_TOKEN）。
@@ -66,6 +66,15 @@ jobs:
         env:
           # 不签名（macOS 不去找钥匙串里的证书）
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # 启动打好的安装版跑冒烟测试（ping、方法白名单、hg.request 拒绝白名单以外的路径、图片、app:// 文件），退出码 0 才算通过。
+      # Linux 的 runner 没有显示器，用 xvfb-run 给一个虚拟的
+      - name: 安装版冒烟测试
+        if: runner.os != 'Linux'
+        run: npm run desktop:smoke:packaged
+      - name: 安装版冒烟测试（Linux）
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run desktop:smoke:packaged
 
       - uses: actions/upload-artifact@v4
         with:
