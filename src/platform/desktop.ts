@@ -59,6 +59,8 @@ export const AVATAR_RESOLVER: AvatarResolver = (game, itemId, name) => {
   if (game === 'arknights') return itemId && AK_CHAR_ID.test(itemId) ? `/api/img/prts-avatar/${itemId}` : undefined
   // 终末地：按名称查 BWIKI 的“<名称>头像 / 图标”，BWIKI 没有的新角色按物品 ID 用森空岛的图
   if (game === 'endfield') return wikiIconUrl('endfield', name, itemId)
+  // 原神、星铁：按名称查 BWIKI（总览页用；米哈游自己的页面由 MhyGamePage 的 host.avatar 取图，结果一样）
+  if (game === 'genshin' || game === 'starrail') return wikiIconUrl(game, name)
   return undefined
 }
 

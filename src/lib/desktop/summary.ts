@@ -8,8 +8,10 @@
  * - 米哈游的模型是按官方数字推算的（derived），页面上要标“推算，非官方”。
  * - 最近的最高星（recentTop）算全部记录，带 weapon 标记；isUp、guarantee 交给 upTag 显示。
  * - 每月抽数按北京时间（UTC+8）分月，最近 12 个月，全部账号合计。
+ * - 不含演示账号（DEMO_ACCOUNT_ID）。
  */
 import { type ArkRecordDB, db as hgDb } from '../db'
+import { DEMO_ACCOUNT_ID } from '../demo-account'
 import type { AkMeta, EfMeta } from '../meta'
 import { MHY_GAME_LABEL, type MhyGame } from '../mhy/types'
 import { type MhyDB, mhyDb } from '../mhy/db'
@@ -198,7 +200,7 @@ async function hypergryph(
   efMeta: EfMeta | null | undefined,
   now: number,
 ): Promise<GameSummary[]> {
-  const accounts = (await hg.accounts.toArray()).toSorted((a, b) => a.createdAt - b.createdAt)
+  const accounts = (await hg.accounts.toArray()).filter((a) => a.id !== DEMO_ACCOUNT_ID).toSorted((a, b) => a.createdAt - b.createdAt)
   const efPools = new Map((await hg.efPools.toArray()).map((p) => [p.poolId, p]))
   const out: Record<'arknights' | 'endfield', AccountResult[]> = { arknights: [], endfield: [] }
   for (const account of accounts) {

@@ -21,7 +21,8 @@ desktop/
 - 第一次 `npm install` 之后如果没有 Electron 本体，运行 `node node_modules/electron/install.js`。网页版的 CI 和部署设置了 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`，不下载。
 - desktop 模式不加载 `cloudflare()` 和给搜索引擎的文件。
 - **只有桌面版才有的代码**（米哈游的数据层 `src/lib/mhy/`、页面 `src/pages/mhy/`、`src/components/mhy/`）只能从 `src/platform/desktop.ts` 引用：桌面构建把 `@/platform` 解析成它，网页构建用 `src/platform/index.ts`（空的）。网页构建和网页版开发服务器里只要有模块引用到这些文件就直接报错（`vite.config.ts` 的 `webWithoutDesktopCode`），所以网页版的产物里不会有米哈游的代码。
-- **侧边栏是两层切换**：最上面是厂商（鹰角 / 米哈游，`VendorSwitcher`），下面是这个厂商的游戏（`GameSwitcher`），再往下是这个游戏的账号和导航。米哈游这一层（`EXTRA_VENDORS`：游戏列表和侧边栏组件 `MhySidebar`）和它的页面（`EXTRA_ROUTES`）都由 `src/platform/desktop.ts` 提供；当前在哪个厂商、哪个游戏由页面路径决定（`src/platform/active.ts`）。切到米哈游进上次看的米哈游游戏（没有就进第一个），切回鹰角回到总览、还是上次的鹰角游戏（`app.game`）。网页版没有其他厂商，不显示厂商切换。米哈游页面用默认主题，不沿用上次鹰角游戏的。
+- **侧边栏是两层切换**：最上面是厂商（总览 / 鹰角 / 米哈游，`VendorSwitcher`），下面是这个厂商的游戏（`GameSwitcher`），再往下是这个游戏的账号和导航。米哈游这一层（`EXTRA_VENDORS`：游戏列表和侧边栏组件 `MhySidebar`）和它的页面（`EXTRA_ROUTES`）都由 `src/platform/desktop.ts` 提供；当前在哪个厂商、哪个游戏由页面路径决定（`src/platform/active.ts`）。切到米哈游进上次看的米哈游游戏（没有就进第一个），切回鹰角回到总览、还是上次的鹰角游戏（`app.game`）。网页版没有其他厂商，不显示厂商切换。米哈游页面用默认主题，不沿用上次鹰角游戏的。
+- **总览**（厂商切换最前面，路由 `/home`）：四款游戏的合计、每款游戏一张卡片（总抽数、最高星和出货率、角色池平均出货抽数、每个账号的垫抽、米哈游的大小保底、运气）、四款游戏混在一起的最近出货、最近 12 个月每月抽数。页面在 `src/components/desktop/DashboardPage.vue`、`DashboardGameCard.vue`，统计在 `src/lib/desktop/summary.ts`（不含演示账号）。米哈游的运气按官方数字推算，标“推算，非官方”。
 - 构建时常量 `__DESKTOP__`：桌面构建为 true。运行时判断是不是在桌面版里用 `isDesktop()`。
 - 桌面版没有 Worker：鹰角的请求经 `src/lib/transport.ts` 的 `postHg` 交给后端的 `hg.request`，由本机直连鹰角；其他调用 `/api/*` 的功能（统计、反馈、云同步）要等 M5。
 - 开发时主进程每次启动会清掉 HTTP 缓存：Vite 给依赖的地址带版本号并让浏览器长期缓存，上次运行留下的缓存会让依赖版本对不上（504，页面空白）。

@@ -136,6 +136,14 @@ describe('summarizeGames', () => {
     expect(sr!.monthly.every((m) => m.pulls === 0)).toBe(true)
   })
 
+  it('不含演示账号', async () => {
+    const d = dbs()
+    await d.hg.accounts.put({ id: 'arknights:demo', game: 'arknights', uid: 'demo', nickName: '演示', createdAt: 1 })
+    await d.hg.akPulls.bulkPut(Array.from({ length: 3 }, (_, i) => akPull('arknights:demo', i, 2)))
+    const [ak] = await summarizeGames({}, d)
+    expect([ak!.accounts.length, ak!.pulls]).toEqual([0, 0])
+  })
+
   it('月份按北京时间：UTC 的 1 月 31 日 20 点算 2 月', async () => {
     const d = dbs()
     await d.mhy.accounts.put({ id: 'starrail:100000002', game: 'starrail', uid: '100000002', region: 'prod_gf_cn', gameBiz: 'hkrpg_cn', utcOffset: 8, createdAt: 1 })

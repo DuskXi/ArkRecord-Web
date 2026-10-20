@@ -23,6 +23,7 @@ declare module 'vue' {
     CloudSyncPanel: typeof import('./src/components/cloud/CloudSyncPanel.vue')['default']
     CollectionPanel: typeof import('./src/components/stats/CollectionPanel.vue')['default']
     ConsentBanner: typeof import('./src/components/ConsentBanner.vue')['default']
+    DashboardGameCard: typeof import('./src/components/desktop/DashboardGameCard.vue')['default']
     DashboardPage: typeof import('./src/components/desktop/DashboardPage.vue')['default']
     DashboardSidebar: typeof import('./src/components/desktop/DashboardSidebar.vue')['default']
     DemoBanner: typeof import('./src/components/shell/DemoBanner.vue')['default']
