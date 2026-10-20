@@ -128,13 +128,17 @@ function open(game: DesktopGame) {
             <CharAvatar :char-id="h.itemId" :name="h.name" :star="h.top" :size="36" :game="h.game" />
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-highlighted">
-                {{ h.name }}
+                <span
+                  class="mr-1.5 inline-block w-7 rounded-sm border text-center align-[1px] font-display text-[10px] leading-4 font-semibold tracking-wide"
+                  :style="{ color: gameOf(h.game).accent, borderColor: gameOf(h.game).accent, background: `color-mix(in oklab, ${gameOf(h.game).accent} 12%, transparent)` }"
+                  :title="gameOf(h.game).label"
+                  :aria-label="gameOf(h.game).label"
+                  >{{ gameOf(h.game).code }}</span
+                >{{ h.name }}
                 <span v-if="h.weapon" class="ml-1 text-xs font-normal text-dimmed">{{ h.game === 'starrail' ? '光锥' : '武器' }}</span>
               </p>
               <p class="truncate text-xs text-dimmed">
-                <span class="font-medium" :style="{ color: gameOf(h.game).accent }">{{ gameOf(h.game).label }}</span>
-                <template v-if="multiAccount.has(h.game)"> · {{ accountName(h) }}</template>
-                · {{ formatDateTime(h.ts) }}
+                <template v-if="multiAccount.has(h.game)">{{ accountName(h) }} · </template>{{ formatDateTime(h.ts) }}
               </p>
             </div>
             <UBadge

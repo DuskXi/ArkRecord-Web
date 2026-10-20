@@ -12,6 +12,8 @@ export interface DesktopGame {
   label: string
   /** 放不下全名时用（总览的合计说明） */
   short: string
+  /** 两个字母的简写（总览“最近出货”每行的游戏标签，悬停显示全名） */
+  code: 'AK' | 'EF' | 'GS' | 'SR'
   vendor: '鹰角' | '米哈游'
   /** 打开这款游戏的页面 */
   to: string
@@ -20,8 +22,8 @@ export interface DesktopGame {
 }
 
 export const DESKTOP_GAMES: readonly DesktopGame[] = [
-  { id: 'arknights', label: '明日方舟', short: '方舟', vendor: '鹰角', to: '/', accent: '#0ea5e9' },
-  { id: 'endfield', label: '终末地', short: '终末地', vendor: '鹰角', to: '/', accent: '#d9c400' },
-  { id: 'genshin', label: '原神', short: '原神', vendor: '米哈游', to: '/genshin', accent: '#14b8a6' },
-  { id: 'starrail', label: '崩坏：星穹铁道', short: '星铁', vendor: '米哈游', to: '/starrail', accent: '#6366f1' },
+  { id: 'arknights', label: '明日方舟', short: '方舟', code: 'AK', vendor: '鹰角', to: '/', accent: '#0ea5e9' },
+  { id: 'endfield', label: '终末地', short: '终末地', code: 'EF', vendor: '鹰角', to: '/', accent: '#d9c400' },
+  { id: 'genshin', label: '原神', short: '原神', code: 'GS', vendor: '米哈游', to: '/genshin', accent: '#14b8a6' },
+  { id: 'starrail', label: '崩坏：星穹铁道', short: '星铁', code: 'SR', vendor: '米哈游', to: '/starrail', accent: '#6366f1' },
 ]
