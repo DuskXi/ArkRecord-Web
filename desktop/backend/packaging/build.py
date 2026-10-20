@@ -97,6 +97,9 @@ def check(exe: Path) -> dict:
 
 
 def main() -> int:
+    # 控制台不是 UTF-8 时（英文版 Windows 是 cp1252，GitHub Actions 的 Windows 机器就是）打印中文会报错
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")  # type: ignore[union-attr]
     exe = build()
     info = check(exe)
     size = sum(f.stat().st_size for f in (DIST / NAME).rglob("*") if f.is_file())
