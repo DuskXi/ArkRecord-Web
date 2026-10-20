@@ -216,9 +216,16 @@ export function childEnv(env = process.env) {
   return Object.fromEntries(keep.filter((k) => env[k] !== undefined).map((k) => [k, env[k]]))
 }
 
+/**
+ * gh 对每个文件最多取多少份证明（gh 默认 30 份，按新到旧）。很少改动的文件（_headers）每次部署都会被签发一次，
+ * 测试站部署得多：2026-10-20 正式站 _headers 的 77 份证明里 74 份是测试站的，正式站的排在第 64 位以后，
+ * 只取 30 份时正式站的那份被挤掉，核对误报“没有构建证明”。
+ */
+export const ATTESTATION_LIMIT = 1000
+
 /** gh attestation verify 的参数：必须是本仓库、指定部署流程签发的 */
 export function attestationArgs(file, workflow) {
-  return ['attestation', 'verify', file, '--repo', REPOSITORY, '--signer-workflow', `${REPOSITORY}/${workflow}`, '--format', 'json']
+  return ['attestation', 'verify', file, '--repo', REPOSITORY, '--signer-workflow', `${REPOSITORY}/${workflow}`, '--limit', String(ATTESTATION_LIMIT), '--format', 'json']
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/
@@ -239,6 +246,23 @@ export function provenancesOf(ghJson) {
       run: typeof cert.runInvocationURI === 'string' ? cert.runInvocationURI : null,
       subjects: Array.isArray(subject) ? subject.map((s) => s?.digest?.sha256).filter((d) => typeof d === 'string' && SHA256_HEX.test(d)) : [],
     }
+  })
+}
+
+/**
+ * 一个 Worker 版本里，自己没查到证明的模块，如果列在同一版本另一个模块的有效证明里，也算有证明：
+ * 证明的签名覆盖它列出的全部文件（subjects），所以这份证明同样证明了这个模块来自那次构建。
+ * 用来兜底“同样内容被签发太多次、gh 没取到对的那份”的情况（见 ATTESTATION_LIMIT）。
+ * modules 的每一项是 { sha256, attested, provenances?, reason? }；返回新的列表，这样补上的标 covered: true。
+ */
+export function coverBySubjects(modules) {
+  const verified = modules.filter((m) => m.attested).flatMap((m) => m.provenances ?? [])
+  return modules.map((m) => {
+    if (m.attested) return m
+    const covering = verified.filter((p) => typeof m.sha256 === 'string' && (p.subjects ?? []).includes(m.sha256))
+    if (!covering.length) return m
+    const { reason: _reason, ...rest } = m
+    return { ...rest, attested: true, provenances: covering, covered: true }
   })
 }
 

@@ -12,6 +12,7 @@ import {
   isSafePath,
   parseHeadersFile,
   commonProvenance,
+  coverBySubjects,
   provenancesOf,
   servedPath,
   sha256Hex,
@@ -147,9 +148,31 @@ describe('构建证明', () => {
       'DuskXi/ArkRecord-Web',
       '--signer-workflow',
       'DuskXi/ArkRecord-Web/.github/workflows/deploy-production.yml',
+      // gh 默认只取 30 份：很少改动的 _headers 被测试站反复签发，正式站那份会被挤掉
+      '--limit',
+      '1000',
       '--format',
       'json',
     ])
+  })
+
+  it('自己没查到证明的模块，列在同一版本另一个模块的有效证明里也算有证明', () => {
+    const HEADERS = 'a'.repeat(64)
+    const INDEX = 'b'.repeat(64)
+    const build = { ...prov(COMMIT), subjects: [INDEX, HEADERS] }
+    const modules = [
+      { sha256: INDEX, attested: true, provenances: [build] },
+      // gh 只取到了测试站签发的证明，按正式站的部署流程过滤后一份都不剩
+      { sha256: HEADERS, attested: false, reason: '没有构建证明' },
+    ]
+    const covered = coverBySubjects(modules)
+    expect(covered[1]).toEqual({ sha256: HEADERS, attested: true, provenances: [build], covered: true })
+    expect(commonProvenance(covered)?.commit).toBe(COMMIT)
+    // 没列在任何有效证明里的，照旧没有证明
+    const other = coverBySubjects([{ sha256: INDEX, attested: true, provenances: [{ ...prov(COMMIT), subjects: [INDEX] }] }, { sha256: HEADERS, attested: false }])
+    expect(other[1]).toEqual({ sha256: HEADERS, attested: false })
+    // 都没有证明时不会凭空补上
+    expect(coverBySubjects([{ sha256: HEADERS, attested: false }])).toEqual([{ sha256: HEADERS, attested: false }])
   })
 
   it('从 gh 的输出里取出每份证明的 commit、分支和运行地址', () => {
