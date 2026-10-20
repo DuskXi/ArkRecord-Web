@@ -56,7 +56,7 @@ export interface Analysis {
   /** 主保底模型下每个 6★ 的抽数 */
   mainIntervals: number[]
   avgPerSix: number | null
-  /** UP 胜率：在已知 UP 名单的卡池中，6★ 是 UP 的比例 */
+  /** UP 胜率：在已知 UP 名单的卡池中，6★ 是 UP 的比例（米哈游只算小保底的） */
   upWins: number
   upTotal: number
   /** 0–1，越大越欧 */
@@ -170,7 +170,8 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
   })
 
   const mainIntervals = hits.filter((h) => h.event.mainModel).map((h) => h.pity)
-  const known = hits.filter((h) => h.event.isUp !== null)
+  // 米哈游的大保底必是 UP，不算进胜率；看不出大小保底的也不算
+  const known = hits.filter((h) => h.event.isUp !== null && (h.event.upShare === undefined || h.event.guarantee === 'small'))
   return {
     topStar: top,
     total,

@@ -48,6 +48,8 @@ export function binPity(intervals: number[], dist: Distribution | null, hardPity
  * 不计入 150 / 120 抽等定向保底，因此对抽得很深的卡池略微低估。
  */
 export function theoreticalUpShare(e: PullEvent): number | null {
+  // 米哈游：只有小保底的那一个最高星看运气（大保底必是 UP；看不出大小保底的不计）
+  if (e.upShare !== undefined) return e.guarantee === 'small' ? e.upShare : null
   if (e.weapon) return null
   if (e.family === 'ef:special' || e.family === 'ef:rerun') return 0.5
   switch (e.ruleType) {
@@ -102,8 +104,10 @@ export function analyzeUp(hits: SixStarHit[]): UpLuck {
 
   const types = new Map<string, { key: string; label: string; total: number; wins: number; share: number }>()
   for (const { e, p } of samples) {
-    const key = e.family.startsWith('ef:') ? e.family : e.ruleType
-    const t = types.get(key) ?? { key, label: e.family.startsWith('ef:') ? e.familyLabel : ruleLabel(e.ruleType).label, total: 0, wins: 0, share: p }
+    // 终末地、米哈游按保底分组，明日方舟按卡池规则
+    const byFamily = e.family.startsWith('ef:') || e.upShare !== undefined
+    const key = byFamily ? e.family : e.ruleType
+    const t = types.get(key) ?? { key, label: byFamily ? e.familyLabel : ruleLabel(e.ruleType).label, total: 0, wins: 0, share: p }
     t.total++
     if (e.isUp) t.wins++
     types.set(key, t)

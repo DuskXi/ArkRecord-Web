@@ -4,11 +4,12 @@
  * 保底分组（同一组连续计数，跨期不清零）：原神角色活动（301 和 400 共用）、武器活动、常驻、集录各自一组；
  * 星铁角色活动、光锥活动、常驻、两个联动各自一组；新手池各自一组。
  * 武器（原神武器活动、星铁光锥 / 联动光锥）标成 weapon，和终末地一样分“角色 / 武器”两个范围看。
- * UP 判定要每期卡池的 UP 名单，现在没有，isUp 一律为 null（未知）。
+ * 角色、武器、光锥活动池的 5★ 按官方的大小保底规则判断歪没歪（up.ts）；其余卡池 isUp 为 null。
  */
 import type { PullEvent } from '../stats/events'
 import { compareMhyPulls } from './stats'
 import { MHY_POOLS, type MhyGame, type MhyPull } from './types'
+import { assignUp } from './up'
 
 /** 武器 / 光锥的卡池组 */
 const WEAPON_GROUPS = new Set(['weapon', 'lightcone', 'collab-lightcone'])
@@ -22,7 +23,7 @@ export function isWeaponGroup(group: string): boolean {
 export function normalizeMhy(game: MhyGame, pulls: readonly MhyPull[]): PullEvent[] {
   const pools = new Map(MHY_POOLS[game].map((p) => [p.type, p]))
   const sorted = pulls.toSorted(compareMhyPulls)
-  const out: PullEvent[] = []
+  const items: { event: PullEvent; pull: MhyPull; group: string }[] = []
   let lastTs = Number.NaN
   let order = 0
   for (const p of sorted) {
@@ -30,7 +31,7 @@ export function normalizeMhy(game: MhyGame, pulls: readonly MhyPull[]): PullEven
     if (!pool) continue
     order = p.ts === lastTs ? order + 1 : 0
     lastTs = p.ts
-    out.push({
+    const event: PullEvent = {
       key: p.id,
       ts: p.ts,
       order,
@@ -49,7 +50,9 @@ export function normalizeMhy(game: MhyGame, pulls: readonly MhyPull[]): PullEven
       countsForPity: true,
       isUp: null,
       weapon: WEAPON_GROUPS.has(pool.group),
-    })
+    }
+    items.push({ event, pull: p, group: pool.group })
   }
-  return out
+  assignUp(game, items)
+  return items.map((x) => x.event)
 }

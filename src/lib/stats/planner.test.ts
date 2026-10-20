@@ -60,4 +60,34 @@ describe('抽卡规划', () => {
     expect(deep.targetMedian).not.toBeNull()
     expect(deep.targetMedian!).toBeLessThan(fresh.targetMedian!)
   })
+
+  // 每抽必出最高星，方便直接核对大保底的规则
+  const EVERY = { rate: () => 1, hardPity: 1, pity: 0 }
+
+  it('大保底：歪了之后下一个最高星必是目标', () => {
+    const one = plan({ ...EVERY, pulls: 1, upShare: 0.5, fallback: { guaranteed: false } })
+    const two = plan({ ...EVERY, pulls: 2, upShare: 0.5, fallback: { guaranteed: false } })
+    expect(one.pTarget).toBeCloseTo(0.5, 12)
+    expect(two.pTarget).toBeCloseTo(1, 12)
+    // 没有大保底时第二个仍是 50%
+    expect(plan({ ...EVERY, pulls: 2, upShare: 0.5 }).pTarget).toBeCloseTo(0.75, 12)
+    // 已经是大保底：下一个必是目标
+    expect(plan({ ...EVERY, pulls: 1, upShare: 0.5, fallback: { guaranteed: true } }).pTarget).toBeCloseTo(1, 12)
+  })
+
+  it('原神定轨武器：小保底 37.5%，大保底时两把 UP 各一半，不是定轨的之后必是定轨的', () => {
+    const small = plan({ ...EVERY, pulls: 1, upShare: 0.375, fallback: { guaranteed: false } })
+    const big = plan({ ...EVERY, pulls: 1, upShare: 0.375, fallback: { guaranteed: true, guaranteedShare: 0.5 } })
+    const bigTwo = plan({ ...EVERY, pulls: 2, upShare: 0.375, fallback: { guaranteed: true, guaranteedShare: 0.5 } })
+    expect([small.pTarget, big.pTarget, bigTwo.pTarget].map((p) => Math.round(p! * 1e9) / 1e9)).toEqual([0.375, 0.5, 1])
+  })
+
+  it('大保底不改变出最高星的概率和个数', () => {
+    const base = plan({ ...EF, pity: 10, pulls: 200, upShare: 0.5 })
+    const withFallback = plan({ ...EF, pity: 10, pulls: 200, upShare: 0.5, fallback: { guaranteed: true } })
+    expect(withFallback.pSix).toBeCloseTo(base.pSix, 12)
+    expect(withFallback.expectedSix).toBeCloseTo(base.expectedSix, 9)
+    expect(withFallback.sixCountPmf.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9)
+    expect(withFallback.pTarget!).toBeGreaterThan(base.pTarget!)
+  })
 })
