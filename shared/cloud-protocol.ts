@@ -6,6 +6,12 @@
  */
 
 export const PROTOCOL_VERSION = 1
+/**
+ * 云端数据（加密前）的格式版本，见 src/lib/cloud/codec.ts。服务器不解密，但网页和 Worker 一起部署：
+ * /info 的 dataFormat 告诉客户端“这个网站的网页能读到哪个版本”，客户端不写更新的版本（engine.ts 的 siteDataFormat），
+ * 免得这个网站上还没更新的网页读不了（桌面版同步到正式站时就是这样）。
+ */
+export const DATA_FORMAT_VERSION = 3
 export const CLOUD_PREFIX = '/api/cloud/v1/'
 export const CLOUD_OPS = ['status', 'claim', 'pull', 'push', 'rekey', 'twofactor', 'delete'] as const
 export type CloudOp = (typeof CLOUD_OPS)[number]

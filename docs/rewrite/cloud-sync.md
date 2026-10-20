@@ -660,7 +660,7 @@ batches(seq INTEGER PRIMARY KEY, batch_id, kind, created_at, blob)              
 | `/api/cloud/v1/push` | `authKey` 或鹰角 token | 上传 delta；或者上传 snapshot，并注明覆盖到哪个 seq |
 | `/api/cloud/v1/rekey` | 旧 `authKey` | 知道旧密码时改密码（只换包裹） |
 | `/api/cloud/v1/delete` | `authKey` 或鹰角 token | 删除这个账号的全部云端数据 |
-| `/api/cloud/v1/info` | — | 协议版本、线上部署的 commit hash |
+| `/api/cloud/v1/info` | — | 协议版本、线上部署的 commit hash、网页能读的数据格式版本（`dataFormat`） |
 
 ## 12. Cloudflare 免费版额度
 

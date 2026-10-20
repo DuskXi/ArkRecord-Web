@@ -12,6 +12,7 @@
  *
  * 规范唯一性定义在这里的明文上；压缩、加密之后的字节不要求唯一（见 envelope.ts）。
  */
+import { DATA_FORMAT_VERSION } from '../../../shared/cloud-protocol'
 import { CanonicalError, isWellFormed, jcs } from '../jcs'
 import type { RosterEntry } from '../roster'
 import type { AkLedgerEntry, AkPull, EfPoolInfo, EfPull, Game } from '../types'
@@ -20,8 +21,9 @@ import type { AkLedgerEntry, AkPull, EfPoolInfo, EfPull, Game } from '../types'
  * 格式版本：1 是只有寻访记录（以及源石/充值、卡池信息）的格式；2 增加了截图识别的已拥有干员（roster）；
  * 3 增加了同步识别码（user，见 docs/rewrite/sync-user-id.md），roster 在版本 3 里可有可无。
  * 规范唯一：有识别码时写成版本 3；没有识别码时，有已拥有干员写成版本 2，否则写成版本 1（以前的网页也能读）。
+ * 网站的网页还读不了版本 3 时，同步引擎上传前去掉识别码（engine.ts 的 siteDataFormat）。
  */
-export const FORMAT_VERSION = 3
+export const FORMAT_VERSION = DATA_FORMAT_VERSION
 
 export class CodecError extends Error {
   constructor(message: string) {

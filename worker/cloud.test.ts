@@ -38,10 +38,10 @@ function makeEnv(cloud = fakeCloud(PEPPER, HG_SECRET)): Env & { cloud: ReturnTyp
 }
 
 describe('云同步接口：请求格式与来源', () => {
-  it('info：返回协议版本和线上部署的 commit', async () => {
+  it('info：返回协议版本、线上部署的 commit 和网页能读的数据格式版本', async () => {
     const res = (await worker.fetch(new Request(`${SELF}/api/cloud/v1/info`) as never, makeEnv(), ctx)) as Response
     // 本地是 dev，CI 里是 GITHUB_SHA
-    expect(await res.json()).toEqual({ protocol: 1, commit: expect.stringMatching(/^(dev|[0-9a-f]{40})$/), available: true, hgAvailable: true })
+    expect(await res.json()).toEqual({ protocol: 1, commit: expect.stringMatching(/^(dev|[0-9a-f]{40})$/), dataFormat: 3, available: true, hgAvailable: true })
     const withoutHg = { ...makeEnv(), SYNC_HG_SECRET: undefined }
     expect(await ((await worker.fetch(new Request(`${SELF}/api/cloud/v1/info`) as never, withoutHg, ctx)) as Response).json()).toMatchObject({ available: true, hgAvailable: false })
   })

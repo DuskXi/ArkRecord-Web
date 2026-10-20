@@ -145,6 +145,8 @@ export async function apiDelete(proof: Proof): Promise<void> {
 export interface CloudInfo {
   protocol: number
   commit: string
+  /** 这个网站的网页能读的云端数据格式版本（shared/cloud-protocol.ts 的 DATA_FORMAT_VERSION）；更早部署的网站没有这一项，只读得了 1、2 */
+  dataFormat?: number
   available: boolean
   /** 服务器是否配置了无密码模式 */
   hgAvailable?: boolean

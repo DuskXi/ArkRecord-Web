@@ -31,6 +31,8 @@ const VALID_OAUTH = 'valid-oauth-token-for-test'
 const ctx = { waitUntil: () => {}, passThroughOnException: () => {} }
 
 const env = () => ({ CLOUD: cloud.namespace, SYNC_PEPPER: PEPPER, ...(hgSecret ? { SYNC_HG_SECRET: hgSecret } : {}) })
+/** 模拟更早部署的网站（比如还没更新的正式站）：/info 里没有 dataFormat，网页只读得了格式版本 1、2 */
+let oldSite = false
 
 /** 把浏览器发出的请求交给真实的 Worker；Worker 核实鹰角 token 时请求的绑定列表也在这里模拟 */
 async function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -40,6 +42,7 @@ async function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     const list = token === VALID_OAUTH ? [{ uid: UID }] : []
     return Response.json({ status: 0, data: { list: ['arknights', 'endfield'].map((appCode) => ({ appCode, bindingList: list })) } })
   }
+  if (oldSite && url === '/api/cloud/v1/info') return Response.json({ protocol: 1, commit: 'dev', available: true, hgAvailable: true })
   if (url.startsWith('/api/')) {
     const headers = new Headers(init?.headers)
     headers.set('sec-fetch-site', 'same-origin')
@@ -515,5 +518,38 @@ describe('云同步端到端', () => {
     await b.engine.deleteCloud(target)
     expect(await a.syncUser.loadDeviceUser()).toEqual(merged)
     expect(await b.syncUser.loadDeviceUser()).toEqual(merged)
+  })
+
+  it('网站的网页还读不了格式版本 3（/info 没有 dataFormat）：不上传同步识别码，数据照常同步；网站更新后补传', async () => {
+    cloud = makeCloud(PEPPER)
+    oldSite = true
+    try {
+      const a = await device()
+      const account = await a.createAccount()
+      await a.addPulls(0, 2)
+      await a.engine.enableCloud(account, { password: PASSWORD, oauthToken: VALID_OAUTH, requireHg: false, remember: true, overwrite: false })
+      const first = (await a.syncUser.loadDeviceUser())!
+      // 识别码照常生成、留在本机
+      expect((await a.db.accounts.get(a.accountId))!.syncUser).toEqual(first)
+
+      // 云端没有识别码：新设备的记录齐全，但识别码是自己生成的（没有沿用 A 的），也没有冲突
+      const b = await device()
+      await b.engine.unlockCloud(target, { password: PASSWORD, remember: true })
+      expect(await b.count()).toBe(await a.count())
+      expect(await b.syncUser.loadDeviceUser()).not.toEqual(first)
+      expect(await b.syncUser.loadConflicts()).toEqual([])
+      await a.addPulls(2, 3)
+      expect((await a.engine.syncCloud(a.accountId)).uploaded).toBe(10)
+
+      // 网站更新后：A 下次同步时补传识别码（不算上传的记录），之后的新设备沿用
+      oldSite = false
+      expect((await a.engine.syncCloud(a.accountId)).uploaded).toBe(0)
+      const c = await device()
+      await c.engine.unlockCloud(target, { password: PASSWORD, remember: true })
+      expect(await c.count()).toBe(await a.count())
+      expect(await c.syncUser.loadDeviceUser()).toEqual(first)
+    } finally {
+      oldSite = false
+    }
   })
 })

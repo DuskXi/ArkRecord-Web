@@ -230,7 +230,8 @@ interface ArkrecordBridge {
 
 页面的云同步和网页版是同一份代码（`src/lib/cloud/`），照旧 `fetch('/api/cloud/v1/<op>')`。主进程在 `app://` 协议（开发时是拦截的 `http`）里接住，转发到网站的云同步接口（`desktop/electron/cloud.ts`）：
 
-- 转发到哪里：安装版是正式站 `https://ark.kaltsit.dev`（维护者 2026-10-20：“打包版本要拉的是正式站点的数据，不拉测试站”）；开发版是测试站；冒烟测试是本机的假接口（`fake-cloud.mjs`），不连网站。正式站更新到有云同步的版本之前，安装版的云同步显示不可用。
+- 转发到哪里：安装版是正式站 `https://ark.kaltsit.dev`（维护者 2026-10-20：“打包版本要拉的是正式站点的数据，不拉测试站”）；开发版是测试站；冒烟测试是本机的假接口（`fake-cloud.mjs`），不连网站。正式站从 1.1.1 起就有云同步（含鹰角账号的无密码模式），安装版直接可用；转发的请求头能通过正式站的同源检查（2026-10-20 核对过）。
+- 格式版本：桌面版带同步识别码，数据是格式版本 3，正式站现在的网页只读得了 1、2。所以上传前先看网站 `/info` 的 `dataFormat`：没有这一项（正式站更新之前）就不上传识别码、照旧写 1 或 2，免得网页那边读不了；网站更新后自动补传（`src/lib/cloud/engine.ts` 的 `siteDataFormat`，`docs/rewrite/sync-user-id.md`）。
 - 只转发 `shared/cloud-protocol.ts` 的操作（POST）和 `info`（GET），其余返回 404，不发请求；请求体最多 1 MB 多一点（和 Worker 一样），响应最多 5 MB；不带 Cookie，不跟随跳转，90 秒超时。
 - 请求体和响应体不解析、不写日志（里面有 authKey、鹰角 token 和密文）；只把 `content-type`、`x-arkrecord-cloud`（错误码）、`retry-after` 交回页面。
 - Worker 的同源检查（`worker/security.ts` 的 `checkSameOrigin`）：带 `x-arkrecord-client: 1`，`Referer` 是网站首页。用 Node 自带的 fetch 发，不用 Electron 的 `net.fetch`：后者会加上 `Sec-Fetch-Site: none`，Worker 会拒绝。Node 的 fetch 不读系统代理设置。

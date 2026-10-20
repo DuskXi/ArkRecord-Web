@@ -18,6 +18,7 @@ import {
   CLOUD_PREFIX,
   type CloudOp,
   computeLocator,
+  DATA_FORMAT_VERSION,
   frame,
   fromBase64Url,
   isLocator,
@@ -113,6 +114,8 @@ export async function handleCloud(request: Request, env: CloudEnv, url: URL, dep
       {
         protocol: PROTOCOL_VERSION,
         commit: BUILD_COMMIT,
+        // 和 Worker 一起部署的网页能读的云端数据格式版本（客户端不写更新的版本，见 shared/cloud-protocol.ts）
+        dataFormat: DATA_FORMAT_VERSION,
         available: Boolean(env.CLOUD && env.SYNC_PEPPER),
         // 无密码模式还需要 SYNC_HG_SECRET
         hgAvailable: Boolean(env.CLOUD && env.SYNC_PEPPER && env.SYNC_HG_SECRET),

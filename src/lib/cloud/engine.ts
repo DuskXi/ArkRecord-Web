@@ -39,6 +39,7 @@ import type { Account } from '../types'
 import {
   apiClaim,
   apiDelete,
+  apiInfo,
   apiPull,
   apiPush,
   apiRekey,
@@ -49,7 +50,7 @@ import {
   type Proof,
   type PullMeta,
 } from './api'
-import { type CloudDataset, CodecError, decodeDatasetBytes, encodeDatasetBytes, fingerprint, UnsupportedVersionError } from './codec'
+import { type CloudDataset, CodecError, decodeDatasetBytes, encodeDatasetBytes, fingerprint, FORMAT_VERSION, UnsupportedVersionError } from './codec'
 import { generateDek, hgKekKey, newBatchId, openEnvelope, passwordKeys, randomKid, sealEnvelope, unwrapDek, wrapDek } from './crypto'
 import { applyDataset, readLocalDataset, recordCount, recordHashes, subset } from './dataset'
 import { checkPassword } from './password'
@@ -110,6 +111,28 @@ async function sealDataset(dek: CryptoKey, locator: string, kid: number, kind: '
   const envelope = await sealEnvelope(dek, locator, kid, kind, encodeDatasetBytes(ds), newBatchId())
   if (envelope.length > MAX_ENVELOPE_BYTES) throw new CloudSyncError('too_large', '这个账号的数据太多，一次上传不完（超过 1 MiB）。请反馈给作者。')
   return envelope
+}
+
+/**
+ * 这个网站的网页能读的云端数据格式版本（/info 的 dataFormat）。没有这一项的是更早部署的网站（只读得了 1、2），
+ * 查不到时也按 2 算：宁可这次不传同步识别码，也不让那个网站上的网页读不了这个账号的数据。
+ * 例子：桌面版同步到正式站，正式站的网页还没更新时。读到新版本以后这次打开期间不再查，否则每次同步前查一次。
+ */
+let knownSiteFormat = 0
+async function siteDataFormat(): Promise<number> {
+  if (knownSiteFormat >= FORMAT_VERSION) return knownSiteFormat
+  const format = (await apiInfo())?.dataFormat
+  const value = typeof format === 'number' && Number.isInteger(format) ? format : 2
+  knownSiteFormat = value
+  return value
+}
+
+/** 网站的网页读不了版本 3 时，上传的数据去掉同步识别码（识别码还留在本机和本地账号里，等网站更新后再上传） */
+function forSite(ds: CloudDataset, format: number): CloudDataset {
+  if (format >= 3 || ds.user === undefined) return ds
+  const out = { ...ds }
+  delete out.user
+  return out
 }
 
 /** delta 太大时对半拆开，每份都放得进一个请求 */
@@ -181,7 +204,7 @@ export async function enableCloud(
   const wrapped = await wrapDek(dek, kek, locator, kid)
   // 同步识别码：开通时对账（第一次开通云同步时在这里生成，见 sync-user.ts）
   await reconcileAccountUser(account.id)
-  const ds = await readLocalDataset((await db.accounts.get(account.id)) ?? account)
+  const ds = forSite(await readLocalDataset((await db.accounts.get(account.id)) ?? account), await siteDataFormat())
   const envelope = await sealDataset(dek, locator, kid, 'snapshot', ds)
   const requireHg = mode === 'hg' || Boolean(options.requireHg)
   const { seq } = await apiClaim(
@@ -438,7 +461,7 @@ async function runSync(
   await reconcileAccountUser(state.accountId)
   const account = await db.accounts.get(state.accountId)
   if (!account) throw new CloudSyncError('corrupt', '本地找不到这个账号。')
-  const local = await readLocalDataset(account)
+  const local = forSite(await readLocalDataset(account), await siteDataFormat())
   const localHashes = recordHashes(local)
   const remote = { ...state.remote }
   for (const [id, hashes] of seen) {
