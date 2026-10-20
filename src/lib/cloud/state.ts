@@ -5,9 +5,11 @@
  *   - authKey 保存原始字节（每次请求都要发给服务器）；
  *   - DEK 是不可导出的 CryptoKey，页面脚本可以用它加解密，但读不出它的原始字节；
  *   - 选择“不在这台设备保存”时，两者只放在内存里，刷新网页后需要重新输入密码。
+ * 桌面版不存进 IndexedDB：保存在系统钥匙串里（secrets.ts），钥匙串不能用时只放在内存里。
  */
 import type { CloudGame, CloudMode } from '../../../shared/cloud-protocol'
 import { db } from '../db'
+import { deleteKeys, storedKeys, storeKeys, usesDesktopSecrets } from './secrets'
 
 export interface CloudState {
   accountId: string
@@ -47,7 +49,14 @@ export async function listStates(): Promise<CloudState[]> {
 
 export async function saveState(state: CloudState, keys?: { authKey: Uint8Array; dek: CryptoKey }): Promise<void> {
   if (keys) {
-    if (state.remember) {
+    if (usesDesktopSecrets()) {
+      // 桌面版：记住时存进系统钥匙串（存不进去就只留在内存），IndexedDB 里不带钥匙；不记住时删掉钥匙串里以前存的
+      const kept = state.remember ? await storeKeys(state.accountId, keys) : null
+      if (kept) memoryKeys.delete(state.accountId)
+      else memoryKeys.set(state.accountId, keys)
+      if (!state.remember) await deleteKeys(state.accountId)
+      state = { ...state, authKey: undefined, dek: undefined }
+    } else if (state.remember) {
       memoryKeys.delete(state.accountId)
       state = { ...state, authKey: keys.authKey, dek: keys.dek }
     } else {
@@ -63,15 +72,16 @@ export function isReady(state: CloudState): boolean {
   return state.mode === 'hg' || keysOf(state) !== null
 }
 
-/** 取出钥匙：保存在设备上的，或者这个页面内存里的；都没有时返回 null（需要重新输入密码） */
+/** 取出钥匙：保存在设备上的（桌面版是系统钥匙串里的），或者这个页面内存里的；都没有时返回 null（需要重新输入密码） */
 export function keysOf(state: CloudState): { authKey: Uint8Array; dek: CryptoKey } | null {
   if (state.authKey && state.dek) return { authKey: state.authKey, dek: state.dek }
-  return memoryKeys.get(state.accountId) ?? null
+  return memoryKeys.get(state.accountId) ?? storedKeys(state.accountId) ?? null
 }
 
 /** 忘掉这台设备上的钥匙（密码在别处改了、云端被覆盖时），保留同步进度 */
 export async function dropKeys(accountId: string): Promise<void> {
   memoryKeys.delete(accountId)
+  await deleteKeys(accountId)
   const state = await db.cloud.get(accountId)
   if (state) await db.cloud.put({ ...state, authKey: undefined, dek: undefined })
 }
@@ -79,5 +89,6 @@ export async function dropKeys(accountId: string): Promise<void> {
 /** 退出云同步：删除这台设备上的状态和钥匙，不动云端 */
 export async function removeState(accountId: string): Promise<void> {
   memoryKeys.delete(accountId)
+  await deleteKeys(accountId)
   await db.cloud.delete(accountId)
 }

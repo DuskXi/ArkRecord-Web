@@ -14,12 +14,15 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
 import { createServer } from 'vite'
+import { startFakeCloud } from './fake-cloud.mjs'
 import { startFakeHg } from './fake-hg.mjs'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const require = createRequire(import.meta.url)
 const smoke = process.argv.includes('--smoke')
 const fakeHg = smoke || process.argv.includes('--fake-hg') ? await startFakeHg() : undefined
+// 冒烟测试的云同步转发到本机的假接口，不连网站
+const fakeCloud = smoke ? await startFakeCloud() : undefined
 
 const tsc = spawnSync(process.execPath, [require.resolve('typescript/bin/tsc'), '-p', 'desktop/electron'], { cwd: root, stdio: 'inherit' })
 if (tsc.status !== 0) process.exit(tsc.status ?? 1)
@@ -43,6 +46,7 @@ const smokeDataDir = smoke ? await mkdtemp(join(tmpdir(), 'arkrecord-smoke-')) :
 if (smokeDataDir) env.ARKRECORD_SMOKE_DATA_DIR = smokeDataDir
 const shotsIndex = process.argv.indexOf('--shots')
 if (smoke && shotsIndex !== -1 && process.argv[shotsIndex + 1]) env.ARKRECORD_SMOKE_SHOTS = resolve(process.argv[shotsIndex + 1])
+if (fakeCloud) env.ARKRECORD_FAKE_CLOUD_ORIGIN = fakeCloud.origin
 if (fakeHg) {
   env.ARKRECORD_FAKE_HG_ORIGIN = fakeHg.origin
   // 冒烟测试拿它核对登录窗口交回来的 token
@@ -52,7 +56,7 @@ if (fakeHg) {
 
 const electron = spawn(electronPath, ['.'], { cwd: root, env, stdio: 'inherit' })
 electron.on('exit', async (code, signal) => {
-  await Promise.all([server.close(), fakeHg?.close()])
+  await Promise.all([server.close(), fakeHg?.close(), fakeCloud?.close()])
   // Windows 上 Electron 刚退出时文件可能还被占着，多试几次
   if (smokeDataDir) await rm(smokeDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => undefined)
   process.exit(signal ? 1 : (code ?? 0))

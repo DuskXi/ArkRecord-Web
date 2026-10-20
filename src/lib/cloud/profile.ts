@@ -6,10 +6,12 @@
  *     页面脚本能用这把钥匙解密，但读不出钥匙本身；直接翻浏览器的数据文件、导出备份都看不到密码明文。
  *     （和“记住钥匙”一样，能在这台设备上打开本站的人可以使用它，所以公用电脑不要保存。）
  *   - 选择不记住时，只放在这个页面的内存里，刷新后就没有了。
+ *   - 桌面版不存进 IndexedDB：记住时用系统钥匙串加密保存（secrets.ts），钥匙串不能用时只放在内存里。
  * 不导出、不进备份、不上传。
  */
 import type { CloudMode } from '../../../shared/cloud-protocol'
 import { db } from '../db'
+import { deleteProfile, storedProfile, storeProfile, usesDesktopSecrets } from './secrets'
 
 export interface SyncProfile {
   /** 新开通的账号用哪种模式；hg（无密码模式）没有密码 */
@@ -63,6 +65,14 @@ export async function saveProfile(profile: Omit<SyncProfile, 'savedAt'>): Promis
   if (!profile.remember) {
     memoryProfile = { ...profile, savedAt }
     await db.kv.delete(KV_KEY)
+    await deleteProfile()
+    return
+  }
+  if (usesDesktopSecrets()) {
+    await db.kv.delete(KV_KEY)
+    const { mode, password, requireHg } = profile
+    // 钥匙串不能用：只留在内存里（界面上显示成没记住）
+    memoryProfile = (await storeProfile({ mode, password, requireHg, savedAt })) ? null : { ...profile, remember: false, savedAt }
     return
   }
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
@@ -78,6 +88,8 @@ export async function saveProfile(profile: Omit<SyncProfile, 'savedAt'>): Promis
 /** 取出同步配置（含密码）；没有或者解不开时返回 null */
 export async function loadProfile(): Promise<SyncProfile | null> {
   if (memoryProfile) return memoryProfile
+  const stored = storedProfile()
+  if (stored) return { ...stored, remember: true }
   const value = (await db.kv.get(KV_KEY))?.value
   if (!isStored(value)) return null
   try {
@@ -91,6 +103,8 @@ export async function loadProfile(): Promise<SyncProfile | null> {
 /** 界面显示用：不解密密码 */
 export async function profileInfo(): Promise<SyncProfileInfo | null> {
   if (memoryProfile) return { mode: memoryProfile.mode, requireHg: memoryProfile.requireHg, remember: false, savedAt: memoryProfile.savedAt }
+  const stored = storedProfile()
+  if (stored) return { mode: stored.mode, requireHg: stored.requireHg, remember: true, savedAt: stored.savedAt }
   const value = (await db.kv.get(KV_KEY))?.value
   return isStored(value) ? { mode: modeOf(value), requireHg: value.requireHg, remember: true, savedAt: value.savedAt } : null
 }
@@ -98,4 +112,5 @@ export async function profileInfo(): Promise<SyncProfileInfo | null> {
 export async function clearProfile(): Promise<void> {
   memoryProfile = null
   await db.kv.delete(KV_KEY)
+  await deleteProfile()
 }

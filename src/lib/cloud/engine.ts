@@ -53,6 +53,7 @@ import { type CloudDataset, CodecError, decodeDatasetBytes, encodeDatasetBytes, 
 import { generateDek, hgKekKey, newBatchId, openEnvelope, passwordKeys, randomKid, sealEnvelope, unwrapDek, wrapDek } from './crypto'
 import { applyDataset, readLocalDataset, recordCount, recordHashes, subset } from './dataset'
 import { checkPassword } from './password'
+import { keepsRawKeys } from './secrets'
 import { type CloudState, dropKeys, isReady, keysOf, loadState, removeState, saveState } from './state'
 
 export type CloudSyncErrorCode =
@@ -206,8 +207,8 @@ export async function enableCloud(
     fingerprint: await fingerprint(ds),
   }
   if (authKey) {
-    // 存下来的是不可导出的副本
-    await saveState(state, { authKey, dek: await unwrapDek(wrapped, kek, locator, kid) })
+    // 存下来的是不可导出的副本（桌面版要存进系统钥匙串，先解成可导出的，留在内存里的仍是不可导出的副本，见 secrets.ts）
+    await saveState(state, { authKey, dek: await unwrapDek(wrapped, kek, locator, kid, keepsRawKeys(state.remember)) })
   } else {
     // 无密码模式：这台设备上不保存任何钥匙（也清掉以前密码模式留下的）
     await saveState({ ...state, authKey: undefined, dek: undefined })
@@ -337,7 +338,7 @@ export async function unlockCloud(
   }
   const wrapped = fromBase64Url(pulled.meta.wrappedDek)
   if (!wrapped) throw new CloudSyncError('corrupt', '云端的钥匙格式不对。')
-  const dek = await unwrapDek(wrapped, keys.kek, locator, pulled.meta.kid)
+  const dek = await unwrapDek(wrapped, keys.kek, locator, pulled.meta.kid, keepsRawKeys(options.remember))
   const previous = await loadState(makeAccountId(game, uid))
   const state: CloudState = {
     accountId: makeAccountId(game, uid),
@@ -516,7 +517,7 @@ export async function changePassword(
   const fresh = await passwordKeys(state.game, state.uid, options.newPassword, { onProgress: progress(0.5) })
   const rewrapped = await wrapDek(dek, fresh.kek, state.locator, meta.kid)
   await apiRekey(proof, { newAuthKey: b64(fresh.authKey), wrappedDek: b64(rewrapped) })
-  const stored = await unwrapDek(rewrapped, fresh.kek, state.locator, meta.kid)
+  const stored = await unwrapDek(rewrapped, fresh.kek, state.locator, meta.kid, keepsRawKeys(state.remember))
   await saveState({ ...state, kid: meta.kid }, { authKey: fresh.authKey, dek: stored })
 }
 

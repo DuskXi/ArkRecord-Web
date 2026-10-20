@@ -7,11 +7,12 @@ import { extname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { BrowserWindow, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent, app, dialog, ipcMain, nativeTheme, net, protocol, session } from 'electron'
 import { Backend } from './backend.js'
+import { CLOUD_PREFIX, forwardCloud } from './cloud.js'
 import { openExternal } from './external.js'
 import { checkHgLogin, hgLogin, isLoginSession } from './hg-login.js'
 import { OFFICIAL_LOGIN, fakeLoginTarget } from './hg-login-rules.js'
 import { IMAGE_PREFIX, serveImage } from './images.js'
-import { deleteToken, keychainStatus, loadTokens, saveToken } from './keychain.js'
+import { deleteCloudSecret, deleteToken, keychainStatus, loadCloudSecrets, loadTokens, saveCloudSecret, saveToken } from './keychain.js'
 import { INVALID_PARAMS, METHOD_NOT_FOUND, RpcError, type RpcErrorObject } from './rpc.js'
 import { noteStatsReport, runSmokeTest } from './smoke.js'
 
@@ -90,11 +91,15 @@ function isAppUrl(value: string): boolean {
 
 const isFile = (file: string) => stat(file).then((s) => s.isFile(), () => false)
 
-/** app://arkrecord/ 下的文件来自 vite build --mode desktop 的产物；/api/img/ 下的图片交给后端（和页面同源，分享图导出时 canvas 不会出错） */
+/**
+ * app://arkrecord/ 下的文件来自 vite build --mode desktop 的产物；/api/img/ 下的图片交给后端（和页面同源，分享图导出时 canvas 不会出错）；
+ * /api/cloud/v1/ 转发到网站的云同步接口（cloud.ts）
+ */
 async function serveAppFile(request: Request): Promise<Response> {
   const url = new URL(request.url)
   if (url.host !== APP_HOST) return new Response(null, { status: 404 })
   if (url.pathname.startsWith(IMAGE_PREFIX)) return serveImage(request, fetchImage)
+  if (url.pathname.startsWith(CLOUD_PREFIX)) return forwardCloud(request, CLOUD_SITE, fetchCloud)
   let path: string
   try {
     path = decodeURIComponent(url.pathname)
@@ -122,6 +127,17 @@ async function serveAppFile(request: Request): Promise<Response> {
  */
 const STATS_URL = smoke || app.isPackaged ? undefined : 'https://ark-next.kaltsit.dev'
 
+/**
+ * 云同步转发到哪个网站（cloud.ts）。维护者 2026-10-20：“打包版本要拉的是正式站点的数据，不拉测试站”：
+ * 安装版是正式站；开发版是测试站（和开发版的统计一样）；冒烟测试用本机的假云同步（dev.mjs），不连网站
+ */
+const CLOUD_SITE = app.isPackaged ? 'https://ark.kaltsit.dev' : smoke ? process.env.ARKRECORD_FAKE_CLOUD_ORIGIN : 'https://ark-next.kaltsit.dev'
+/**
+ * 用 Node 自带的 fetch，不用 Electron 的 net.fetch：后者会加上 Sec-Fetch-Site: none，Worker 的同源检查会拒绝（冒烟测试核对过）。
+ * Node 的 fetch 不读系统代理设置
+ */
+const fetchCloud = (url: string, init: RequestInit) => fetch(url, init)
+
 const backend = new Backend(() => {
   if (app.isPackaged) throw new Error('安装包里还没有带上后端（M4）')
   // 开发时在仓库根目录用 uv 启动，见 desktop/README.md
@@ -144,13 +160,14 @@ const IMAGE_TIMEOUT_MS = 120_000
 const fetchImage = (source: string, target: string) => backend.request('img.fetch', { source, target }, IMAGE_TIMEOUT_MS)
 
 /**
- * 开发模式：页面在 Vite 开发服务器上，只把开发服务器的 /api/img/ 交给后端，其余请求原样交给 Vite。
+ * 开发模式：页面在 Vite 开发服务器上，只把开发服务器的 /api/img/ 交给后端、/api/cloud/v1/ 转发到网站，其余请求原样交给 Vite。
  * 只拦截应用自己的默认会话（登录窗口用的是单独的会话，不受影响）
  */
 function interceptDevImages(server: URL): void {
   protocol.handle('http', (request) => {
     const url = URL.parse(request.url)
     if (url?.origin === server.origin && url.pathname.startsWith(IMAGE_PREFIX)) return serveImage(request, fetchImage)
+    if (url?.origin === server.origin && url.pathname.startsWith(CLOUD_PREFIX)) return forwardCloud(request, CLOUD_SITE, fetchCloud)
     return net.fetch(request, { bypassCustomProtocolHandlers: true })
   })
 }
@@ -217,6 +234,10 @@ const APP_METHODS = new Map<string, (parent: BrowserWindow, params: unknown) => 
   ['app.tokens.load', loadTokens],
   ['app.tokens.save', async (_parent, params) => saveToken(params)],
   ['app.tokens.delete', async (_parent, params) => deleteToken(params)],
+  // 云同步的密码和钥匙也只用系统钥匙串加密保存（keychain.ts）；钥匙串能不能用看 app.tokens.status
+  ['app.cloudSecrets.load', loadCloudSecrets],
+  ['app.cloudSecrets.save', async (_parent, params) => saveCloudSecret(params)],
+  ['app.cloudSecrets.delete', async (_parent, params) => deleteCloudSecret(params)],
 ])
 
 async function handleRpc(event: IpcMainInvokeEvent, method: unknown, params: unknown): Promise<RpcReply> {

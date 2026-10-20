@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { type Cipher, TOKEN_FILE, TokenStore, isAccountId, isToken, parseTokenFile, serializeTokenFile } from './token-store.js'
+import { CLOUD_SECRET_RULES, type Cipher, TOKEN_FILE, TokenStore, cloudSecretPairs, isAccountId, isToken, parseTokenFile, serializeTokenFile } from './token-store.js'
 
 /** 假的加密：前面加一个标记再逐字节异或；没有标记的解不开（模拟钥匙串变了） */
 const xor = (data: Uint8Array) => Buffer.from(data.map((byte) => byte ^ 0x5a))
@@ -109,5 +109,38 @@ describe('TokenStore', () => {
     const store = new TokenStore(path, fakeCipher)
     await store.save('arknights:1', 'token-one')
     expect((await stat(path)).mode & 0o777).toBe(0o600)
+  })
+})
+
+describe('云同步的密码和钥匙（cloud-secrets.json）', () => {
+  const keys = `k1.${'A'.repeat(43)}.${'B'.repeat(43)}`
+  const profile = 'p1.eyJtb2RlIjoicGFzc3dvcmQifQ'
+
+  it('条目名只能是 profile 或账号 ID，内容只能是同步配置或钥匙，而且要配对', () => {
+    expect(CLOUD_SECRET_RULES.isKey('profile')).toBe(true)
+    expect(CLOUD_SECRET_RULES.isKey('arknights:1')).toBe(true)
+    expect(CLOUD_SECRET_RULES.isKey('genshin:1')).toBe(false)
+    expect(CLOUD_SECRET_RULES.isValue(keys)).toBe(true)
+    expect(CLOUD_SECRET_RULES.isValue(profile)).toBe(true)
+    expect(CLOUD_SECRET_RULES.isValue(`k1.${'A'.repeat(42)}.${'B'.repeat(43)}`)).toBe(false)
+    expect(CLOUD_SECRET_RULES.isValue('p1.has space')).toBe(false)
+    expect(cloudSecretPairs('profile', profile)).toBe(true)
+    expect(cloudSecretPairs('profile', keys)).toBe(false)
+    expect(cloudSecretPairs('arknights:1', keys)).toBe(true)
+    expect(cloudSecretPairs('arknights:1', profile)).toBe(false)
+  })
+
+  it('同样的文件格式和加密，按自己的规则保存和读回', async () => {
+    const store = new TokenStore(path, fakeCipher, CLOUD_SECRET_RULES)
+    await store.save('profile', profile)
+    await store.save('endfield:2', keys)
+    await expect(store.save('arknights:1', 'token-one')).rejects.toThrow()
+    expect(await store.load()).toEqual({ profile, 'endfield:2': keys })
+    const raw = await readFile(path, 'utf8')
+    expect(raw).not.toContain(profile)
+    expect(raw).not.toContain(keys)
+    // 用鹰角 token 的规则读：profile 不是账号 ID，读不出来
+    expect(parseTokenFile(raw).has('profile')).toBe(false)
+    expect(parseTokenFile(raw, CLOUD_SECRET_RULES.isKey).has('profile')).toBe(true)
   })
 })

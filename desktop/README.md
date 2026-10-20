@@ -225,7 +225,28 @@ interface ArkrecordBridge {
 - 实现：`desktop/electron/keychain.ts`（safeStorage、四个方法）和 `token-store.ts`（文件格式、校验、读写按顺序排队，不依赖 Electron，有单元测试）。`backend` 在 Windows 上是 `dpapi`，macOS 是 `keychain`，Linux 是 safeStorage 选中的后端。一条都不剩时删掉 `hg-tokens.json`。钥匙串不可用时 `load` 返回空、`delete` 照常删文件里的条目。
 - 冒烟测试用假账号 `arknights:arkrecord-smoke-test` 和随机的假 token 走一遍 save → load → delete，并检查文件里只有密文、结束后没有残留。
 
-## Electron 的安全设置
+## 云同步（主进程转发，`app.cloudSecrets.*`）
+
+页面的云同步和网页版是同一份代码（`src/lib/cloud/`），照旧 `fetch('/api/cloud/v1/<op>')`。主进程在 `app://` 协议（开发时是拦截的 `http`）里接住，转发到网站的云同步接口（`desktop/electron/cloud.ts`）：
+
+- 转发到哪里：安装版是正式站 `https://ark.kaltsit.dev`（维护者 2026-10-20：“打包版本要拉的是正式站点的数据，不拉测试站”）；开发版是测试站；冒烟测试是本机的假接口（`fake-cloud.mjs`），不连网站。正式站更新到有云同步的版本之前，安装版的云同步显示不可用。
+- 只转发 `shared/cloud-protocol.ts` 的操作（POST）和 `info`（GET），其余返回 404，不发请求；请求体最多 1 MB 多一点（和 Worker 一样），响应最多 5 MB；不带 Cookie，不跟随跳转，90 秒超时。
+- 请求体和响应体不解析、不写日志（里面有 authKey、鹰角 token 和密文）；只把 `content-type`、`x-arkrecord-cloud`（错误码）、`retry-after` 交回页面。
+- Worker 的同源检查（`worker/security.ts` 的 `checkSameOrigin`）：带 `x-arkrecord-client: 1`，`Referer` 是网站首页。用 Node 自带的 fetch 发，不用 Electron 的 `net.fetch`：后者会加上 `Sec-Fetch-Site: none`，Worker 会拒绝。Node 的 fetch 不读系统代理设置。
+- 服务器看到的内容和网页版一样（cloud-sync.md），Worker 不用改。
+
+云同步的密码和钥匙（维护者 2026-10-20：“密码不存前端存钥匙串”）：桌面版选择“在这台设备上记住”时，同步配置（含云同步密码）和每个账号的 authKey、DEK 不写进 IndexedDB，交给主进程用系统钥匙串加密保存（页面这一侧在 `src/lib/cloud/secrets.ts`）。钥匙串能不能用看 `app.tokens.status`；不能用时只留在内存，关闭应用后要重新输入密码。
+
+| 方法 | 参数 | 结果 | 说明 |
+|---|---|---|---|
+| `app.cloudSecrets.load` | 无 | `{secrets: {[id]: secret}}` | 启动时读一次；解不开、格式不对的条目丢掉 |
+| `app.cloudSecrets.save` | `{id, secret}` | `{ok}` | `safeStorage.encryptString` 后存到应用数据目录的 `cloud-secrets.json`（和 `hg-tokens.json` 同样的格式）。不可用时返回 -32000 + `keychain_unavailable` |
+| `app.cloudSecrets.delete` | `{id}` | `{ok}` | 退出云同步、忘掉钥匙、清除同步配置时删除 |
+
+- `id` 是 `profile`（同步配置）或账号 ID（`arknights:<uid>` / `endfield:<uid>`）。`secret` 在页面里生成：同步配置是 `p1.<base64url(JSON)>`，钥匙是 `k1.<authKey>.<DEK>`（各 32 字节的 base64url）。主进程只核对格式和配对（`token-store.ts` 的 `CLOUD_SECRET_RULES`），不解析内容。
+- 页面读回钥匙后把 DEK 重新导入成不可导出的 CryptoKey；只在要存进钥匙串的那一刻把 DEK 解成可导出的。
+- 测试：`src/lib/cloud/desktop.test.ts` 把页面的云同步流程经 `cloud.ts` 交给真实的 Worker 代码跑一遍，核对钥匙和密码不进 IndexedDB、重启后能读回、没有钥匙串时只留在内存；冒烟测试核对 Electron 里真正发出去的请求头能通过同源检查，并用假账号走一遍 `app.cloudSecrets.*`。
+
 
 - 渲染进程：`contextIsolation`、`sandbox`（`app.enableSandbox()` 对所有页面生效），不开 Node，不允许 `<webview>`。
 - 正式构建从 `app://arkrecord/` 加载：协议注册成 standard + secure，页面来源固定，升级后 IndexedDB 里的数据还在。读文件时防路径穿越；没有扩展名的地址回退到 `index.html`（前端路由）；响应带 CSP（网页版的 CSP 去掉 Cloudflare 统计）和 `nosniff`。

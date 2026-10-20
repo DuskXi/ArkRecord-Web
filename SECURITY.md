@@ -89,6 +89,11 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 - 开通、切换到无密码模式之前，网站会列出上表，并要求你勾选确认；旁边的审计链接指向线上部署的那个 commit 的 `worker/hg-verify.ts`。
 - 从无密码模式切回密码模式时会换一把新的数据钥匙，旧的（服务器算得出来的）作废。
 
+### 桌面版的云同步
+
+- 桌面版（开发中）用的是同一份云同步代码，服务器收到的内容和网页版完全一样。请求由应用的主进程原样转发到网站：安装版转发到正式站，开发版转发到测试站；主进程不解析请求和响应，也不写日志。代码：[`desktop/electron/cloud.ts`](desktop/electron/cloud.ts)。
+- 选择“在这台设备上记住”时，同步配置里的云同步密码和每个账号的钥匙（`authKey`、数据钥匙）用系统钥匙串加密保存（Windows 是 DPAPI，macOS 是钥匙串，Linux 是 Secret Service / KWallet），不存进应用里的浏览器数据库。维护者 2026-10-20 的要求（原话：“密码不存前端存钥匙串”）。系统没有可用的钥匙串时只留在内存里，关闭应用后要重新输入密码。能登录这台电脑上你的系统账户的人可以使用它们，所以公用电脑请不要保存。代码：[`src/lib/cloud/secrets.ts`](src/lib/cloud/secrets.ts)、[`desktop/electron/keychain.ts`](desktop/electron/keychain.ts)。
+
 ## 桌面版的使用人数统计
 
 桌面版（开发中）由本机的 Python 后端上报，默认开启，可以在“关于”页关闭；关闭后不发出任何统计请求。**安装版（打包发布的版本）暂时不上报**：维护者 2026-10-20 的决定（原话：“打包版先不上报统计，等正式站有了接口、我同意后再开。”），现在只有开发版向测试站上报。代码：[`desktop/backend/arkrecord_backend/stats.py`](desktop/backend/arkrecord_backend/stats.py)（上报）、[`worker/desktop-stats.ts`](worker/desktop-stats.ts) 和 [`worker/proxy.ts`](worker/proxy.ts) 的 `handleSaltedStats`（接收）。

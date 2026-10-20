@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { type BrowserWindow, type WebContents, app, desktopCapturer, session } from 'electron'
 import { currentLoginWindow, lastLoginPartition, recentBlocked } from './hg-login.js'
 import { forwardedImageRequests } from './images.js'
-import { TOKEN_FILE } from './token-store.js'
+import { CLOUD_SECRETS_FILE, TOKEN_FILE } from './token-store.js'
 
 /** 截图目录（dev.mjs --smoke --shots <目录>）：看界面效果用，不设就不截图 */
 const SHOTS_DIR = process.env.ARKRECORD_SMOKE_SHOTS
@@ -229,6 +229,65 @@ async function probeTokens(win: BrowserWindow): Promise<Record<string, boolean>>
     'hg-tokens.json 里只有密文': raw.includes(FAKE_ACCOUNT) && !raw.includes(token),
     'token 删除后读不到，文件里没有残留': deleted.ok && after.ok && !(FAKE_ACCOUNT in tokensOf(after)) && !rawAfter.includes(FAKE_ACCOUNT),
     '格式不对的 accountId 和 token 被拒绝（-32602）': badId.e?.code === -32602 && badToken.e?.code === -32602,
+  }
+}
+
+const secretsOf = (call: RpcCall) => (call.r?.secrets ?? {}) as Record<string, unknown>
+
+/** 云同步的密码和钥匙（app.cloudSecrets.*）：用假账号、假钥匙走一遍 save → load → delete。钥匙串不可用时跳过 */
+async function probeCloudSecrets(win: BrowserWindow): Promise<Record<string, boolean>> {
+  const status = await pageRpc(win, 'app.tokens.status')
+  if (!status.ok || status.r?.available !== true) return {}
+  const fake = Buffer.from(randomUUID().replaceAll('-', '')).subarray(0, 32).toString('base64url')
+  const secret = `k1.${fake}.${fake}`
+  const file = join(app.getPath('userData'), CLOUD_SECRETS_FILE)
+  const readRaw = () => readFile(file, 'utf8').catch(() => '')
+
+  const saved = await pageRpc(win, 'app.cloudSecrets.save', { id: FAKE_ACCOUNT, secret })
+  const raw = await readRaw()
+  const loaded = await pageRpc(win, 'app.cloudSecrets.load')
+  const deleted = await pageRpc(win, 'app.cloudSecrets.delete', { id: FAKE_ACCOUNT })
+  const after = await pageRpc(win, 'app.cloudSecrets.load')
+  const mismatched = await pageRpc(win, 'app.cloudSecrets.save', { id: 'profile', secret })
+  return {
+    '云同步钥匙保存后能读回同样的值': saved.ok && loaded.ok && secretsOf(loaded)[FAKE_ACCOUNT] === secret,
+    'cloud-secrets.json 里只有密文': raw.includes(FAKE_ACCOUNT) && !raw.includes(fake),
+    '云同步钥匙删除后读不到，文件里没有残留': deleted.ok && after.ok && !(FAKE_ACCOUNT in secretsOf(after)) && !(await readRaw()).includes(FAKE_ACCOUNT),
+    '同步配置的条目不能存钥匙（-32602）': mismatched.e?.code === -32602,
+  }
+}
+
+interface CloudProbe {
+  info?: { protocol?: number; seen?: { count?: number; sameOrigin?: boolean; cookie?: boolean } }
+  evil?: number
+  status?: { status: number; code: string | null; body: { seen?: { count?: number }; bytes?: number } }
+  error?: string
+}
+
+/**
+ * 云同步的转发（cloud.ts）：页面自己 fetch('/api/cloud/v1/…')，主进程转发到本机的假云同步接口（fake-cloud.mjs）。
+ * 核对真正发出去的请求能通过 Worker 的同源检查、不带 Cookie；白名单以外的操作不转发；错误码原样交回页面
+ */
+async function probeCloud(win: BrowserWindow): Promise<Record<string, boolean>> {
+  if (!process.env.ARKRECORD_FAKE_CLOUD_ORIGIN) return {}
+  const result = (await win.webContents.executeJavaScript(`(async () => {
+    try {
+      const init = { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-arkrecord-client': '1' }, body: new Uint8Array([0, 2, 123, 125]) }
+      const info = await fetch('/api/cloud/v1/info').then((r) => r.json())
+      const evil = await fetch('/api/cloud/v1/evil', init).then((r) => r.status)
+      const status = await fetch('/api/cloud/v1/status', init).then(async (r) => ({ status: r.status, code: r.headers.get('x-arkrecord-cloud'), body: await r.json() }))
+      return { info, evil, status }
+    } catch (error) {
+      return { error: String(error && error.message || error) }
+    }
+  })()`)) as CloudProbe
+  console.log(`[smoke] 云同步转发：${JSON.stringify(result)}`)
+  return {
+    '云同步转发到网站：info 能取回': result.info?.protocol === 1,
+    '转发出去的请求能通过 Worker 的同源检查，不带 Cookie': result.info?.seen?.sameOrigin === true && result.info.seen.cookie === false,
+    // 页面启动时自己也会查一次 info，所以只看这两次之间的请求数
+    '白名单以外的云同步操作返回 404，没有转发': result.evil === 404 && (result.status?.body.seen?.count ?? 0) - (result.info?.seen?.count ?? 0) === 1,
+    '云同步的错误码原样交回页面，请求体完整': result.status?.status === 403 && result.status.code === 'hg_required' && result.status.body.bytes === 4,
   }
 }
 
@@ -518,7 +577,7 @@ export function runSmokeTest(win: BrowserWindow, done: (ok: boolean) => void): v
     await shotPages(win).catch((error: unknown) => console.error(`[smoke] 截图失败：${(error as Error).message}`))
     let tokens: Record<string, boolean>
     try {
-      tokens = { ...(await probeTokens(win)), ...(await probeAccountVault(win)) }
+      tokens = { ...(await probeTokens(win)), ...(await probeAccountVault(win)), ...(await probeCloudSecrets(win)), ...(await probeCloud(win)) }
     } catch (error) {
       console.error(`[smoke] token 保存检查出错：${(error as Error).message}`)
       tokens = { token保存检查没有跑完: false }

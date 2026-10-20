@@ -9,6 +9,7 @@ import { passwordKeys } from '@/lib/cloud/crypto'
 import { changePassword, CloudSyncError, deleteCloud, enableCloud, setTwoFactor, switchCloudMode, unlockCloud, unlockHgCloud } from '@/lib/cloud/engine'
 import { SECURITY_URL } from '@/lib/cloud/links'
 import { saveProfile } from '@/lib/cloud/profile'
+import { secretsInKeychain, usesDesktopSecrets } from '@/lib/cloud/secrets'
 import { keysOf } from '@/lib/cloud/state'
 import { makeAccountId } from '@/lib/archive'
 import { db } from '@/lib/db'
@@ -237,8 +238,17 @@ const tokenSteps = computed(() => {
 })
 
 const PROFILE_HINT_HG = '记下“新开通的账号用无密码模式”，之后这台设备上的其他账号点一下就开通或连接。只存在这台设备上，不包含任何密码和鹰角登录。'
-const PROFILE_HINT =
-  '只记下云同步密码和选项，之后这台设备上的其他账号开通或启用云同步时点一下就完成。只存在这台设备上（加密保存），不上传，也不会同步到别的设备；不包含鹰角登录（token）。不记住时只保存到关闭网页；公用电脑请不要保存。'
+// 桌面版的云同步密码和钥匙只存在系统钥匙串里（lib/cloud/secrets.ts）；没有钥匙串时只记到关闭应用
+const DESKTOP = usesDesktopSecrets()
+const KEYCHAIN = secretsInKeychain()
+const PROFILE_HINT = DESKTOP
+  ? `只记下云同步密码和选项，之后这台电脑上的其他账号开通或启用云同步时点一下就完成。${KEYCHAIN ? '用系统钥匙串加密保存在这台电脑上' : '这台电脑没有可用的系统钥匙串，只记到关闭应用为止'}，不上传，也不会同步到别的设备；不包含鹰角登录（token）。`
+  : '只记下云同步密码和选项，之后这台设备上的其他账号开通或启用云同步时点一下就完成。只存在这台设备上（加密保存），不上传，也不会同步到别的设备；不包含鹰角登录（token）。不记住时只保存到关闭网页；公用电脑请不要保存。'
+const REMEMBER_HINT = !DESKTOP
+  ? '不记住的话，每次打开网页后云同步都要重新输入密码。公用电脑请关闭。'
+  : KEYCHAIN
+    ? '记住时用系统钥匙串加密保存在这台电脑上；不记住的话，每次打开应用后云同步都要重新输入密码。'
+    : '这台电脑没有可用的系统钥匙串：只记到关闭应用为止，之后云同步要重新输入密码。'
 const profileLabel = computed(() => (cloud.profile ? '用这次的密码和设置替换这台设备上的同步配置' : '在这台设备上保存同步配置（推荐）'))
 
 const profileApplies = computed(
@@ -563,7 +573,7 @@ async function submit() {
             title="密码无法找回"
             description="服务器不保存密码，也解不开数据。忘记密码只能用数据最全的浏览器覆盖云端；本地数据不受影响。"
           />
-          <USwitch v-model="remember" label="在这台设备上记住（推荐）" description="不记住的话，每次打开网页后云同步都要重新输入密码。公用电脑请关闭。" />
+          <USwitch v-model="remember" label="在这台设备上记住（推荐）" :description="REMEMBER_HINT" />
           <USwitch
             v-model="requireHg"
             label="鹰角 token 双重验证（可选）"
