@@ -10,6 +10,16 @@ import type { AvatarResolver, ExtraSource, ExtraVendor } from './index'
 const MhyGamePage = () => import('@/components/mhy/MhyGamePage.vue')
 
 export const EXTRA_VENDORS: ExtraVendor[] = [
+  // 四款游戏的总览（维护者：“先做总览Dashboard”），排在厂商切换最前面；只有一页，不显示游戏切换
+  {
+    id: 'all',
+    label: '总览',
+    short: '总',
+    games: [{ id: 'dashboard', label: '总览', short: '总览', to: '/home', subtitle: 'ALL GAMES' }],
+    sidebar: defineAsyncComponent(() => import('@/components/desktop/DashboardSidebar.vue')),
+    brand: 'GAMERECORD',
+    first: true,
+  },
   {
     id: 'mhy',
     label: '米哈游',
@@ -71,11 +81,15 @@ const VIEWS = [
   { path: '/data', view: 'data' },
 ] as const
 
-export const EXTRA_ROUTES: RouteRecordRaw[] = (['genshin', 'starrail'] as const).flatMap((game) =>
-  VIEWS.map(({ path, view }) => ({
-    path: `/${game}${path}`,
-    name: path ? `${game}-${view}` : game,
-    component: MhyGamePage,
-    props: { game, view },
-  })),
-)
+export const EXTRA_ROUTES: RouteRecordRaw[] = [
+  // 四款游戏的总览
+  { path: '/home', name: 'dashboard', component: () => import('@/components/desktop/DashboardPage.vue') },
+  ...(['genshin', 'starrail'] as const).flatMap((game) =>
+    VIEWS.map(({ path, view }) => ({
+      path: `/${game}${path}`,
+      name: path ? `${game}-${view}` : game,
+      component: MhyGamePage,
+      props: { game, view },
+    })),
+  ),
+]

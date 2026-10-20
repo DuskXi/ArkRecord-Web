@@ -335,6 +335,8 @@ const SIDEBAR_STATE = `
     readButton: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '读取'),
     empty: document.body.innerText.includes('还没有原神的抽卡记录'),
     warp: document.body.innerText.includes('跃迁记录'),
+    // 四款游戏的总览页（厂商切换最前面的“总览”）
+    dashboard: document.body.innerText.includes('四款游戏') && !!document.querySelector('[aria-label="总览导航"]'),
     // 侧边栏顶部的名称：鹰角是 ARKRECORD，米哈游是 GAMERECORD
     brand: document.body.innerText.includes('GAMERECORD') ? 'GAMERECORD' : document.body.innerText.includes('ARKRECORD') ? 'ARKRECORD' : '',
   }
@@ -350,6 +352,7 @@ interface SidebarState {
   readButton: boolean
   empty: boolean
   warp: boolean
+  dashboard: boolean
   brand: string
 }
 
@@ -364,6 +367,12 @@ async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>
   const state = (before = '') => run(`${before}${SIDEBAR_STATE}`) as Promise<SidebarState>
 
   const hgStart = await state(clickSegment('切换游戏', '终末地'))
+  const dash = await state(clickSegment('切换厂商', '总览'))
+  if (SHOTS_DIR) {
+    // 总览页是异步加载的组件，等它画出来再截图
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    await shot(win.webContents, 'dashboard')
+  }
   const mhy = await state(clickSegment('切换厂商', '米哈游'))
   if (SHOTS_DIR) {
     await shot(win.webContents, 'genshin-empty')
@@ -389,10 +398,12 @@ async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>
   const hgBack = await state(clickSegment('切换厂商', '鹰角'))
   const mhyAgain = await state(clickSegment('切换厂商', '米哈游'))
   await run(`${clickSegment('切换厂商', '鹰角')}${clickSegment('切换游戏', '明日方舟')}`)
-  console.log(`[smoke] 侧边栏：${JSON.stringify({ hgStart, mhy, records, starrail, hgBack, mhyAgain })}`)
+  console.log(`[smoke] 侧边栏：${JSON.stringify({ hgStart, dash, mhy, records, starrail, hgBack, mhyAgain })}`)
 
   return {
-    '厂商切换有鹰角和米哈游两项': mhy.vendor.items.join('/') === '鹰角/米哈游',
+    '厂商切换依次是总览、鹰角、米哈游': mhy.vendor.items.join('/') === '总览/鹰角/米哈游',
+    '总览：/home，四款游戏的卡片和总览导航，没有游戏切换，顶部是 GAMERECORD':
+      dash.path === '/home' && dash.vendor.active === '总览' && dash.dashboard && dash.game.items.length === 0 && dash.brand === 'GAMERECORD',
     '切到米哈游：游戏切换里是原神和星铁，先进原神，侧边栏是米哈游的（总览 / 祈愿记录 / 高级统计等，没有鹰角的导航）':
       mhy.path === '/genshin' &&
       mhy.vendor.active === '米哈游' &&

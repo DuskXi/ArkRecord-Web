@@ -80,8 +80,11 @@ function crawlerFiles(): Plugin {
   }
 }
 
-/** 只有桌面版才有的代码（米哈游的数据层和页面、桌面版的入口），见 src/platform/index.ts */
-const DESKTOP_ONLY = ['src/lib/mhy/', 'src/pages/mhy/', 'src/components/mhy/', 'src/platform/desktop.ts']
+/**
+ * 只有桌面版才有的代码（米哈游的数据层和页面、四款游戏的总览等跨厂商的页面、桌面版的入口），见 src/platform/index.ts。
+ * 维护者：“原神和游戏综合和那边隔离，也不要产生对网页端的影响”
+ */
+const DESKTOP_ONLY = ['src/lib/mhy/', 'src/lib/desktop/', 'src/pages/mhy/', 'src/components/mhy/', 'src/components/desktop/', 'src/platform/desktop.ts']
 
 /**
  * 网页版的产物里不能有米哈游的代码（docs/desktop/plan.md）：网页构建和网页版开发服务器里，

@@ -39,7 +39,9 @@ watch(
   },
   { immediate: true },
 )
-const brandSubtitle = computed(() => (extra.value ? `${extra.value.game.id.toUpperCase()} ARCHIVE` : undefined))
+const brandSubtitle = computed(() => (extra.value ? (extra.value.game.subtitle ?? `${extra.value.game.id.toUpperCase()} ARCHIVE`) : undefined))
+/** 只有一页的“厂商”（桌面版的总览）不显示游戏切换 */
+const showGameSwitcher = computed(() => !extra.value || extra.value.vendor.games.length > 1)
 /** 其他厂商的页面上侧边栏顶部的名称（米哈游是 GAMERECORD） */
 const brandName = computed(() => extra.value?.vendor.brand)
 /** 有没看过的更新公告时，在“更新公告”旁边标出数量 */
@@ -74,7 +76,7 @@ const navItems = computed(() =>
           <!-- 厂商是标签页，游戏切换紧挨在下面，是它的内容 -->
           <div class="space-y-3">
             <VendorSwitcher v-if="EXTRA_VENDORS.length" :collapsed="collapsed" />
-            <GameSwitcher :collapsed="collapsed" />
+            <GameSwitcher v-if="showGameSwitcher" :collapsed="collapsed" />
           </div>
           <component :is="extra.vendor.sidebar" v-if="extra" :game="extra.game.id" :collapsed="collapsed" />
           <template v-else>

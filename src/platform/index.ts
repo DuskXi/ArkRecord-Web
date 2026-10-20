@@ -13,6 +13,8 @@ export interface ExtraGame {
   label: string
   short: string
   to: string
+  /** 侧边栏顶部名称下面的小字（不写就是“<ID> ARCHIVE”） */
+  subtitle?: string
 }
 
 /** 鹰角以外的厂商：侧边栏顶部的“厂商切换”里多一项，下面是它自己的游戏切换和侧边栏（账号、导航） */
@@ -25,6 +27,8 @@ export interface ExtraVendor {
   sidebar: Component
   /** 在这个厂商的页面上，侧边栏顶部显示的名称（不写就是 ARKRECORD） */
   brand?: string
+  /** 在厂商切换里排在鹰角前面（桌面版的“总览”） */
+  first?: boolean
 }
 
 /** 按游戏、物品 ID、名称给出头像地址；没有时 CharAvatar 显示文字 */

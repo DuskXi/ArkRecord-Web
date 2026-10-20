@@ -10,7 +10,10 @@ import { HG_VENDOR, useActiveVendor } from '@/platform/active'
 
 defineProps<{ collapsed?: boolean }>()
 const { vendorId, openVendor } = useActiveVendor()
-const items = computed(() => [HG_VENDOR, ...EXTRA_VENDORS].map((v) => ({ value: v.id, label: v.label, short: v.short })))
+// 桌面版的“总览”排在最前（first），其余在鹰角后面
+const items = computed(() =>
+  [...EXTRA_VENDORS.filter((v) => v.first), HG_VENDOR, ...EXTRA_VENDORS.filter((v) => !v.first)].map((v) => ({ value: v.id, label: v.label, short: v.short })),
+)
 </script>
 
 <template>
