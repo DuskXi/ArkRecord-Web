@@ -22,8 +22,12 @@
 import type { Analysis } from '../stats/analyze'
 import type { PullEvent } from '../stats/events'
 import type { Guarantee } from '../stats/guarantees'
+import { type GuaranteeState, guaranteeStates } from '../stats/up-tag'
 import { OFFICIAL_RATES } from './models'
 import type { MhyGame, MhyPull } from './types'
+
+// 大小保底的现状在共用代码里（抽卡规划面板也要用）
+export { type GuaranteeState, guaranteeStates } from '../stats/up-tag'
 
 /** 'up' 是本期 UP；'off' 歪了；'unsure' 看不出来 */
 export type UpKind = 'up' | 'off' | 'unsure'
@@ -221,18 +225,6 @@ export function assignUp(game: MhyGame, items: readonly { event: PullEvent; pull
       state.delete(e.family)
     }
   }
-}
-
-export type GuaranteeState = 'small' | 'big' | 'unknown'
-
-/** 每个活动池保底分组现在是大保底、小保底，还是看不出来（按最后一个最高星） */
-export function guaranteeStates(events: readonly PullEvent[], topStar = 5): Map<string, GuaranteeState> {
-  const out = new Map<string, GuaranteeState>()
-  for (const e of events) {
-    if (e.star !== topStar || e.upShare === undefined) continue
-    out.set(e.family, e.isUp === null ? 'unknown' : e.isUp ? 'small' : 'big')
-  }
-  return out
 }
 
 const STATE_TEXT: Record<GuaranteeState, (group: string, game: MhyGame) => string> = {

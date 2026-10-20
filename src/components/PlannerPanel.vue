@@ -6,6 +6,7 @@ import EChart from '@/components/charts/EChart.vue'
 import { rarityColor, useChartTheme } from '@/composables/useChartTheme'
 import { formatPercent, rarityVar } from '@/lib/format'
 import { plan } from '@/lib/stats/planner'
+import { guaranteeStates } from '@/lib/stats/up-tag'
 import { useRecords } from '@/composables/useRecords'
 
 /**
@@ -54,16 +55,13 @@ watch(
 )
 
 /**
- * 现在是不是大保底（米哈游的活动池，预设里有 fallback 时用）：这个保底分组最后一个能判断的最高星歪了。
- * 和 lib/mhy/up.ts 的 guaranteeStates 是同一条规则；这里是共用代码，不能引用米哈游的模块。
+ * 现在是不是大保底（米哈游的活动池，预设里有 fallback 时用）：默认按记录判断（这个保底分组最后一个最高星歪了），
+ * 看不出来时按小保底，可以手动改。
  */
 const guaranteed = ref(false)
 watch(
   [family, () => records.events],
-  ([f]) => {
-    const last = records.events.findLast((e) => e.family === f && e.star === top.value && e.upShare !== undefined && e.isUp !== null)
-    guaranteed.value = last?.isUp === false
-  },
+  ([f]) => (guaranteed.value = !!f && guaranteeStates(records.events, top.value).get(f) === 'big'),
   { immediate: true },
 )
 
