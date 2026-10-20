@@ -78,7 +78,10 @@ def test_looks_up_file_icons_for_the_given_names(tmp_path):
     wiki = FakeWiki({"文件:琴.png": {"url": file_url("ys", 1)}, "文件:天空之刃.png": {"url": file_url("ys", 2)}})
     result = icons(tmp_path, wiki).icons({"game": "genshin", "names": ["琴", "天空之刃", "没有这个", "琴"]})
     assert result == {
-        "items": {"琴": file_url("ys", 1)[len(HOST) :], "天空之刃": file_url("ys", 2)[len(HOST) :]},
+        "items": {
+            "琴": "bwiki/" + file_url("ys", 1)[len(HOST) :],
+            "天空之刃": "bwiki/" + file_url("ys", 2)[len(HOST) :],
+        },
         "complete": True,
     }
     call = wiki.calls[0]
@@ -93,7 +96,7 @@ def test_star_rail_uses_its_own_wiki_and_follows_normalized_titles(tmp_path):
         {"文件:丹恒·饮月.png": {"url": file_url("sr", 3)}}, normalized={"文件:丹恒•饮月.png": "文件:丹恒·饮月.png"}
     )
     result = icons(tmp_path, wiki).icons({"game": "starrail", "names": ["丹恒•饮月"]})
-    assert result["items"] == {"丹恒•饮月": file_url("sr", 3)[len(HOST) :]}
+    assert result["items"] == {"丹恒•饮月": "bwiki/" + file_url("sr", 3)[len(HOST) :]}
     assert wiki.calls[0]["path"] == "/sr/api.php"
 
 
@@ -159,7 +162,7 @@ def test_failures_back_off_and_keep_the_cache(tmp_path, wiki):
 
     source = icons(tmp_path, wiki, clock)
     result = source.icons({"game": "genshin", "names": ["琴", "刻晴"]})
-    assert result == {"items": {"琴": file_url("ys", 1)[len(HOST) :]}, "complete": False}
+    assert result == {"items": {"琴": "bwiki/" + file_url("ys", 1)[len(HOST) :]}, "complete": False}
     assert len(wiki.calls) == 1
 
     # 退避期间不再请求
@@ -268,9 +271,9 @@ def test_endfield_tries_avatar_then_icon_and_the_name_without_spaces(tmp_path):
     )
     result = icons(tmp_path, wiki).icons({"game": "endfield", "names": ["佩丽卡", "某武器", "Last Rite", "没有"]})
     assert result["items"] == {
-        "佩丽卡": zmd,
-        "某武器": zmd.replace("00001", "00003"),
-        "Last Rite": zmd.replace("00001", "00004"),
+        "佩丽卡": "bwiki/" + zmd,
+        "某武器": "bwiki/" + zmd.replace("00001", "00003"),
+        "Last Rite": "bwiki/" + zmd.replace("00001", "00004"),
     }
     call = wiki.calls[0]
     assert call["path"] == "/zmd/api.php"
@@ -299,5 +302,104 @@ def test_mhy_icons_only_takes_mihoyo_games_and_old_cache_is_reused(tmp_path):
     entry = {"target": target, "checkedAt": clock.now}
     (old / "genshin.json").write_text(json.dumps({"version": 1, "items": {"琴": entry}}), encoding="utf-8")
     wiki = FakeWiki()
-    assert icons(tmp_path, wiki, clock).icons({"game": "genshin", "names": ["琴"]})["items"] == {"琴": target}
+    assert icons(tmp_path, wiki, clock).icons({"game": "genshin", "names": ["琴"]})["items"] == {
+        "琴": "bwiki/" + target
+    }
     assert wiki.calls == []
+
+
+SKLAND_A = "image/common/20261014/4826366/6acf92a9b8edfebe3af524e0_56331367.png"
+SKLAND_B = "image/2026/01/12/2641152/40da4202dc8dd5d4a943077b195f5f25.png"
+
+
+class FakeWikiAndIndex(FakeWiki):
+    """BWIKI 的接口加上 GitHub 上的森空岛头像索引。"""
+
+    def __init__(self, files=None, index=None, index_status=200):
+        super().__init__(files)
+        self.index = index if index is not None else {}
+        self.index_status = index_status
+        self.index_calls = 0
+
+    def __call__(self, method, url, headers, body, timeout):
+        if url.startswith("https://raw.githubusercontent.com/"):
+            self.index_calls += 1
+            assert "referer" not in {k.lower() for k in headers}
+            return UpstreamResponse(self.index_status, [], json.dumps(self.index).encode())
+        return super().__call__(method, url, headers, body, timeout)
+
+
+def test_endfield_falls_back_to_skland_by_item_id(tmp_path):
+    zmd = "images/zmd/1/11/abcdefghijklmnopqrstuvwxyz00001.png"
+    index = {
+        "avatar/chr_0036_jsspsi": {"source": "skland", "url": "https://bbs.hycdn.cn/" + SKLAND_A},
+        "avatar/chr_9000_endmin-male": {"url": "https://bbs.hycdn.cn/" + SKLAND_B},
+        # 别的域名、别的形式的地址都不认
+        "avatar/chr_0099_evil": {"url": "https://example.com/" + SKLAND_A},
+        "avatar/chr_0098_odd": {"url": "https://bbs.hycdn.cn/image/../x.png"},
+        "fullBody/chr_0036_jsspsi": {"url": "https://bbs.hycdn.cn/" + SKLAND_B},
+    }
+    wiki = FakeWikiAndIndex({"文件:佩丽卡头像.png": {"url": HOST + zmd}}, index)
+    clock = Clock()
+    source = icons(tmp_path, wiki, clock)
+    params = {
+        "game": "endfield",
+        "names": ["佩丽卡", "祀", "管理员", "坏的", "怪的", "没有"],
+        "ids": {
+            "佩丽卡": "chr_0004_pelica",
+            "祀": "chr_0036_jsspsi",
+            "管理员": "chr_0002_endminm",
+            "坏的": "chr_0099_evil",
+            "怪的": "chr_0098_odd",
+        },
+    }
+    result = source.icons(params)
+    assert result["items"] == {"佩丽卡": "bwiki/" + zmd, "祀": "skland/" + SKLAND_A, "管理员": "skland/" + SKLAND_B}
+    assert wiki.index_calls == 1
+    # 索引一天最多拉一次（重启后也用本机保存的）
+    icons(tmp_path, wiki, clock).icons(params)
+    assert wiki.index_calls == 1
+    assert "fullBody" not in (tmp_path / "skland-avatars.json").read_text(encoding="utf-8")
+    clock.now += 24 * 3600 + 1
+    icons(tmp_path, wiki, clock).icons(params)
+    assert wiki.index_calls == 2
+
+
+def test_skland_index_failures_keep_the_old_index_and_wait_an_hour(tmp_path):
+    clock = Clock()
+    wiki = FakeWikiAndIndex(index={"avatar/chr_0036_jsspsi": {"url": "https://bbs.hycdn.cn/" + SKLAND_A}})
+    params = {"game": "endfield", "names": ["祀"], "ids": {"祀": "chr_0036_jsspsi"}}
+    assert icons(tmp_path, wiki, clock).icons(params)["items"] == {"祀": "skland/" + SKLAND_A}
+    wiki.index_status = 503
+    clock.now += 24 * 3600 + 1
+    source = icons(tmp_path, wiki, clock)
+    assert source.icons(params)["items"] == {"祀": "skland/" + SKLAND_A}
+    assert wiki.index_calls == 2
+    clock.now += 60
+    source.icons(params)
+    assert wiki.index_calls == 2
+
+
+def test_other_games_ignore_ids_and_bad_ids_are_rejected(tmp_path):
+    wiki = FakeWikiAndIndex()
+    assert icons(tmp_path, wiki).icons({"game": "genshin", "names": ["琴"], "ids": {"琴": "x"}})["items"] == {}
+    assert wiki.index_calls == 0
+    with pytest.raises(RpcError):
+        icons(tmp_path, wiki).icons({"game": "endfield", "names": [], "ids": ["x"]})
+
+
+@pytest.mark.parametrize(
+    ("target", "ok"),
+    [
+        (SKLAND_A, True),
+        (SKLAND_B, True),
+        ("image/common/20261014/4826366/../../x.png", False),
+        ("image/common/20261014/4826366/6acf92a9b8edfebe3af524e0_56331367.png?x=1", False),
+        ("api/user/info", False),
+    ],
+)
+def test_skland_image_source(tmp_path, target, ok):
+    images = Images(load_sources(), tmp_path)
+    expected = f"https://bbs.hycdn.cn/{target}" if ok else None
+    assert images.resolve("skland", target) == expected
+    assert "skland" not in load_sources(desktop=False)

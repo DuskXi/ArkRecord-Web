@@ -27,6 +27,9 @@ RPM_RULES: Sequence[tuple[str, int]] = (
     # 明日方舟头像（PRTS，桌面版运行时加载，一页可能有上百个干员）、终末地卡池图（鹰角 CDN）
     ("torappu.prts.wiki", 120),
     ("web.hycdn.cn", 60),
+    # 终末地头像的后备：森空岛的图片、它的地址索引（GitHub 上，一天最多拉一次）
+    ("bbs.hycdn.cn", 60),
+    ("raw.githubusercontent.com", 30),
     # 米哈游的抽卡记录接口：读一个大账号要翻上百页
     (".mihoyo.com", 100),
     (".hoyoverse.com", 100),

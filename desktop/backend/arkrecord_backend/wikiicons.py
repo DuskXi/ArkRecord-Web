@@ -3,12 +3,16 @@
 维护者 2026-10-20：原神、星铁“还是用bwiki的图吧，并且软件声明不拥有图片版权”；之后明日方舟、终末地也
 “本地全走转发限速这条路”：桌面版不打包镜像的头像，运行时由本机按需加载（明日方舟走 PRTS，见 images.py）。
 
-wiki.icons {game, names} → {items: {名称: target}, complete}；game 是 genshin、starrail、endfield。
-mhy.icons 是同一个方法，只接受原神、星铁（米哈游页面在用）。
+wiki.icons {game, names, ids?} → {items: {名称: "<来源>/<路径>"}, complete}；game 是 genshin、starrail、endfield。
+页面用 /api/img/<值> 显示（img.fetch 的来源 bwiki 或 skland）。mhy.icons 是同一个方法，只接受原神、星铁。
 - 原神（wiki.biligame.com/ys）、星铁（/sr）查“文件:<名称>.png”；终末地（/zmd）查“文件:<名称>头像.png”，
   没有时用“文件:<名称>图标.png”（部分武器只有图标），名称去掉空格和下划线也试一次（和构建脚本
   scripts/sync-gamedata.mjs 的 normalizeName 一致）。用 MediaWiki 接口的 imageinfo 查图片地址，一次最多 50 个标题；
   只查页面给的名称，不拉整个分类。
+- 终末地在 BWIKI 查不到时（新角色 BWIKI 收录得慢），按物品 ID（ids：{名称: 物品 ID}）用森空岛的头像，
+  和网页版的构建脚本一样（docs/rewrite/data-sources.md，维护者确认的“图片 BWIKI 为主、森空岛为备”）：
+  森空岛图片的地址取自 cmyyx/cep 每日抓取的索引（GitHub 上的 sources.json，AGPL-3.0），一天最多拉一次，
+  本机只保存其中 avatar/<ID> 的图片地址（只认 bbs.hycdn.cn/image/ 下的），不保存、不分发这个文件。
 - target 是图片在 patchwiki.biligame.com 上的路径（images/ys/...），页面用 /api/img/bwiki/<target> 显示，
   由 img.fetch 按桌面版专用的白名单拉取、缓存（images.py 的 DESKTOP_SOURCES）。
 - 查到的 30 天内不再查，没有的 1 天后再查。对 BWIKI 低频（bili.py）：同一时间一个请求，两次之间至少 8 秒，
@@ -33,7 +37,7 @@ from urllib.parse import quote
 from . import __version__
 from .bili import BiliGuard
 from .hg import Sender, urllib_send
-from .images import BWIKI_HOST, BWIKI_TARGET
+from .images import BWIKI_HOST, BWIKI_TARGET, SKLAND_HOST, SKLAND_TARGET
 from .rpc import INVALID_PARAMS, Params, RpcError
 
 log = logging.getLogger(__name__)
@@ -61,6 +65,20 @@ LOG_MISSING = 30
 MAX_ICON_BYTES = 1024 * 1024
 CACHE_DIR = "wiki-icons"
 OLD_CACHE_DIR = "mhy-icons"
+
+# 森空岛头像的地址索引（第三方每日抓取）；本机只存提取出的 ID → 图片路径
+SKLAND_INDEX_URL = "https://raw.githubusercontent.com/cmyyx/cep/main/public/images/characters/sources.json"
+SKLAND_INDEX_FILE = "skland-avatars.json"
+SKLAND_INDEX_TTL_S = 24 * 3600
+SKLAND_INDEX_RETRY_S = 3600
+# 索引里管理员的键和游戏 ID 不同（和 scripts/sync-gamedata.mjs 的 SKLAND_ALIASES 一致）
+SKLAND_ALIASES = {
+    "chr_0002_endminm": "chr_9000_endmin-male",
+    "chr_0003_endminf": "chr_9000_endmin-female",
+    "chr_9000_endmin": "chr_9000_endmin-male",
+}
+_ITEM_ID = re.compile(r"[a-z0-9_\-]{1,64}", re.ASCII)
+_SKLAND_TARGET = re.compile(SKLAND_TARGET, re.ASCII)
 CACHE_VERSION = 1
 
 # 名称里不能有 MediaWiki 标题不允许的字符（| 还是批量查询的分隔符）
@@ -92,6 +110,8 @@ class WikiIcons:
         # 节奏和退避和图片下载共用（两个 wiki、图片都是 B 站的）
         self._guard = guard or BiliGuard(self._dir, clock)
         self._game_locks = {game: threading.Lock() for game in GAMES}
+        self._skland_lock = threading.Lock()
+        self._skland: dict[str, Any] | None = None
         # 没有数据目录时（测试、开发）只放在内存里
         self._memory: dict[str, dict[str, Any]] = {}
 
@@ -130,6 +150,69 @@ class WikiIcons:
             return True
         ttl = FOUND_TTL_S if entry.get("target") else MISSING_TTL_S
         return now - entry["checkedAt"] > ttl
+
+    # ---- 森空岛（终末地的后备） ----
+
+    def _skland_index(self) -> dict[str, str]:
+        """ID → 森空岛图片路径；过期时重新拉（失败后 1 小时内不再拉），拉不到时用旧的。"""
+        with self._skland_lock:
+            path = self._dir / SKLAND_INDEX_FILE if self._dir else None
+            if self._skland is None:
+                self._skland = {"fetchedAt": 0, "failedAt": 0, "items": {}}
+                if path and path.is_file():
+                    try:
+                        data = json.loads(path.read_text(encoding="utf-8"))
+                        if isinstance(data.get("items"), dict):
+                            self._skland = data
+                    except (OSError, ValueError, AttributeError):
+                        pass
+            state = self._skland
+            now = self._clock()
+            stale = now - float(state.get("fetchedAt", 0)) > SKLAND_INDEX_TTL_S
+            if stale and now - float(state.get("failedAt", 0)) > SKLAND_INDEX_RETRY_S:
+                items = self._fetch_skland_index()
+                if items is None:
+                    state["failedAt"] = now
+                else:
+                    state.update(fetchedAt=now, failedAt=0, items=items)
+                    log.info("森空岛头像索引：%d 个", len(items))
+                if path:
+                    try:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        temp = path.with_suffix(".tmp")
+                        temp.write_text(json.dumps(state), encoding="utf-8")
+                        temp.replace(path)
+                    except OSError as error:
+                        log.warning("写森空岛头像索引失败：%s", type(error).__name__)
+            return dict(state.get("items") or {})
+
+    def _fetch_skland_index(self) -> dict[str, str] | None:
+        try:
+            response = self._send(
+                "GET", SKLAND_INDEX_URL, {"accept": "application/json", "user-agent": USER_AGENT}, None, TIMEOUT_S
+            )
+        except Exception as error:
+            log.info("拉森空岛头像索引失败：%s", type(error).__name__)
+            return None
+        if response.status != 200:
+            log.info("拉森空岛头像索引：HTTP %s", response.status)
+            return None
+        try:
+            data = json.loads(response.body)
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        prefix = f"https://{SKLAND_HOST}/"
+        items: dict[str, str] = {}
+        for key, value in data.items():
+            url = value.get("url") if isinstance(value, dict) else None
+            if not isinstance(key, str) or not key.startswith("avatar/") or not isinstance(url, str):
+                continue
+            target = url[len(prefix) :] if url.startswith(prefix) else ""
+            if _SKLAND_TARGET.fullmatch(target):
+                items[key[len("avatar/") :]] = target
+        return items
 
     # ---- BWIKI ----
 
@@ -225,9 +308,12 @@ class WikiIcons:
     # ---- RPC ----
 
     def icons(self, params: Params, games: tuple[str, ...] = tuple(GAMES)) -> dict[str, Any]:
-        if not isinstance(params, dict) or set(params) != {"game", "names"}:
-            raise RpcError(INVALID_PARAMS, "参数应为 {game, names}")
+        if not isinstance(params, dict) or not {"game", "names"} <= set(params) <= {"game", "names", "ids"}:
+            raise RpcError(INVALID_PARAMS, "参数应为 {game, names, ids?}")
         game, names = params["game"], params["names"]
+        ids = params.get("ids") or {}
+        if not isinstance(ids, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in ids.items()):
+            raise RpcError(INVALID_PARAMS, "ids 应为 {名称: 物品 ID}")
         if game not in games:
             raise RpcError(INVALID_PARAMS, f"game 应为 {'、'.join(games)} 之一")
         if not isinstance(names, list) or len(names) > MAX_NAMES or not all(isinstance(n, str) for n in names):
@@ -265,8 +351,25 @@ class WikiIcons:
                 due = [n for n in wanted if self._due(items.get(n), now)]
 
             found_items = {
-                n: items[n]["target"] for n in wanted if isinstance(items.get(n), dict) and items[n].get("target")
+                n: f"bwiki/{items[n]['target']}"
+                for n in wanted
+                if isinstance(items.get(n), dict) and items[n].get("target")
             }
+            # 终末地：BWIKI 上已经确定没有的，按物品 ID 用森空岛的头像
+            fallback = [
+                n
+                for n in wanted
+                if game == "endfield"
+                and n not in found_items
+                and isinstance(items.get(n), dict)
+                and _ITEM_ID.fullmatch(ids.get(n, ""))
+            ]
+            if fallback:
+                skland = self._skland_index()
+                for n in fallback:
+                    target = skland.get(SKLAND_ALIASES.get(ids[n], ids[n]))
+                    if target:
+                        found_items[n] = f"skland/{target}"
             return {"items": found_items, "complete": not due}
 
     def methods(self) -> dict[str, Any]:

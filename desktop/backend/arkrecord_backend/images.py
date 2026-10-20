@@ -43,6 +43,14 @@ CACHE_DIR = "image-cache"
 BWIKI_HOST = "patchwiki.biligame.com"
 BWIKI_TARGET = r"images/(?:ys|sr|zmd)/[0-9a-f]/[0-9a-f]{2}/[0-9a-z]{16,48}\.(?:png|jpe?g|webp|gif)"
 
+# 终末地头像的后备：森空岛（鹰角的社区）的图片。地址只有这两种形式（2026-10-20 按 cmyyx/cep 的索引核对）：
+# image/common/<日期>/<数字>/<哈希>_<哈希>.png、image/<年>/<月>/<日>/<数字>/<哈希>.png
+SKLAND_HOST = "bbs.hycdn.cn"
+SKLAND_TARGET = (
+    r"image/(?:common/\d{8}/\d{1,12}/[0-9a-f]{16,64}_[0-9a-f]{4,16}|\d{4}/\d{2}/\d{2}/\d{1,12}/[0-9a-f]{16,64})"
+    r"\.(?:png|jpe?g|webp)"
+)
+
 # 只在桌面版用的来源：不放进 shared/images.json，Worker 不转发这些
 DESKTOP_SOURCES: dict[str, dict[str, Any]] = {
     "bwiki": {
@@ -52,6 +60,13 @@ DESKTOP_SOURCES: dict[str, dict[str, Any]] = {
         "path": "/{target}",
         # 按 B 站的节奏下载、和 BWIKI 接口一起退避（bili.py）
         "bili": True,
+    },
+    # 不带 Referer（森空岛的图片有防盗链，带别的站点的 Referer 会 403；这里本来就不带）
+    "skland": {
+        "host": SKLAND_HOST,
+        "purpose": "终末地角色头像的后备（森空岛，BWIKI 还没有新角色时用）",
+        "pattern": f"^{SKLAND_TARGET}$",
+        "path": "/{target}",
     },
 }
 
