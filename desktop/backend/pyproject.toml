@@ -8,6 +8,8 @@ dependencies = []
 
 [dependency-groups]
 dev = ["pytest>=8.3", "ruff>=0.9"]
+# 打安装包时用（PyInstaller 把后端和 Python 打成一个文件夹，见 packaging/build.py）
+package = ["pyinstaller>=6.11,<7"]
 
 [build-system]
 requires = ["uv_build>=0.8.4,<0.12"]
@@ -27,4 +29,4 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S"]
 # 测试里允许 assert、启动子进程、写合成的假凭据
-per-file-ignores = { "tests/*" = ["S101", "S105", "S106", "S311", "S603"] }
+per-file-ignores = { "tests/*" = ["S101", "S105", "S106", "S311", "S603"], "packaging/*" = ["S603"] }

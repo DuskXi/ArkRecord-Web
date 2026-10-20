@@ -11,3 +11,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+
+# 桌面版后端打包（PyInstaller）的中间文件
+desktop/backend/build/

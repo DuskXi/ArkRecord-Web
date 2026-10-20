@@ -236,6 +236,15 @@ interface ArkrecordBridge {
 - 主窗口不用系统标题栏：页面顶部是 40px 的自定义标题栏（`src/components/shell/DesktopTitleBar.vue`，和侧边栏同色，用来拖动窗口），页面整体往下让出这一条，通知也放到它下面。Windows / Linux 的最小化、最大化、关闭按钮由 Electron 画在右上角（`titleBarOverlay`，高 39px，不盖住底下的分隔线），颜色由页面按深浅色设置；macOS 的红绿灯在左上角。Windows / Linux 没有菜单栏，开发时按 F12 打开开发者工具。挂在 `body` 下的弹窗、菜单、通知设成不可拖动，盖到标题栏上时也能点到。登录窗口保留系统标题栏（标题里显示当前域名）。
 - 还没做（M4）：Electron fuses、正式菜单、打包。
 
+## 打包和发布（`desktop` 分支）
+
+维护者 2026-10-20：“先做总览Dashboard，然后打包，发release，但是不要对ark那个网站有推送，原神和游戏综合和那边隔离，也不要产生对网页端的影响”。所以桌面版在 `desktop` 分支上开发和发布：推这个分支只跑 CI 的检查（`ci.yml`），不部署测试站和正式站。
+
+- **后端**：PyInstaller 打成文件夹（onedir，不用单文件：启动快，不用每次解压到临时目录）。后端只用标准库，没有第三方依赖。在 `desktop/backend` 运行 `uv sync --locked --group package && uv run python packaging/build.py`，输出 `desktop/backend/dist/arkrecord-backend/`；打完会启动一次打好的后端，检查 `ping` 和读 `shared/`（`ARKRECORD_SHARED_DIR`）是否正常。Linux 上实测约 20 MB。
+- **安装包**：`npm run desktop:build` 之后 `npm run desktop:package`（electron-builder）。后端文件夹放进安装包的 `resources/backend/`，`shared/` 放进 `resources/shared/`；打包后的主进程启动 `resources/backend/arkrecord-backend(.exe)`，并设 `ARKRECORD_SHARED_DIR=resources/shared`。
+- **工作流**：`.github/workflows/desktop-release.yml`，三个平台各打一份。只在 `desktop` 分支（手动触发，只上传构建产物）和 `desktop-vX.Y.Z` 标签（建草稿 release）上运行。**标签不要用 `v` 开头**：`deploy-production.yml` 会把 `v*` 标签部署到正式站。草稿由维护者确认版本号和说明后再发布。
+- **不签名**：macOS 首次打开要在“系统设置 → 隐私与安全性”里允许，Windows 可能出现 SmartScreen 提示。
+
 ## 安全规则
 
 - 凭据（鹰角 token、抽卡链接里的 authkey 等）不写日志、不写文件、不出现在报错信息里；测试只用合成的假值。

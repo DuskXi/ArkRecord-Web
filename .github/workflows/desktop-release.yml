@@ -1,0 +1,101 @@
+name: Desktop release
+
+# 桌面版的安装包（维护者 2026-10-20：“先做总览Dashboard，然后打包，发release，但是不要对ark那个网站有推送”）。
+# - 只在 desktop 分支（手动触发）和 desktop-v* 标签上运行。不要用 v 开头的标签：deploy-production.yml 会把它部署到正式站。
+# - 三个平台各打一份：Python 后端先用 PyInstaller 打成文件夹（desktop/backend/packaging/build.py，打完会启动检查一次），
+#   再构建页面和主进程，最后由 electron-builder 打安装包（npm run desktop:package）。
+# - 标签触发时建一个草稿 release，维护者确认版本号和说明后再手动发布；手动触发只上传构建产物，不建 release。
+# - 不签名：macOS 会提示“无法验证开发者”，Windows 会有 SmartScreen 提示，发布说明里写清楚。
+# - 不部署网站、不碰 Cloudflare，用不到任何密钥（建 release 只用这次运行自带的 GITHUB_TOKEN）。
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 只在 desktop 分支和 desktop-v* 标签上运行
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          case "$REF" in
+            refs/heads/desktop) ;;
+            refs/tags/desktop-v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::桌面版只能在 desktop 分支或 desktop-vX.Y.Z 标签上打包（现在是 $REF）"; exit 1 ;;
+          esac
+
+  build:
+    needs: guard
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: 安装 uv
+        run: pipx install uv==0.11.32
+      # 这里要 Electron 本体（打安装包用），所以不设 ELECTRON_SKIP_BINARY_DOWNLOAD
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: 打包后端（PyInstaller，打完启动检查一次）
+        working-directory: desktop/backend
+        run: |
+          uv sync --locked --group package
+          uv run python packaging/build.py
+
+      - name: 构建页面和主进程
+        run: npm run desktop:build
+      - name: 打安装包
+        run: npm run desktop:package
+        env:
+          # 不签名（macOS 不去找钥匙串里的证书）
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          # 只要安装包本身（electron-builder 的输出目录里还有调试和更新用的文件）
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.AppImage
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: 建草稿 release（维护者确认后再发布）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -la artifacts
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "ArkRecord 桌面版 ${TAG#desktop-}" \
+            --notes "草稿：发布前请补充更新说明。安装包没有签名：macOS 首次打开要在“系统设置 → 隐私与安全性”里允许，Windows 可能出现 SmartScreen 提示。" \
+            artifacts/*
