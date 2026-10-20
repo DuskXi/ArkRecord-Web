@@ -143,6 +143,7 @@ async function copy() {
             <p class="font-display text-[11px] tracking-[0.2em] text-dimmed">ARKRECORD</p>
             <p class="font-display text-[11px] text-dimmed">ark.kaltsit.dev · {{ formatDate(Date.now()) }}</p>
           </div>
+          <p v-if="host?.imageCredit" class="mt-1 text-right text-[10px] text-dimmed">{{ host.imageCredit }}</p>
         </div>
       </div>
 

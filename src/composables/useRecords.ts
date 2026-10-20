@@ -23,6 +23,10 @@ export interface RecordsHost {
   readonly playerName: string
   /** 页面路径的前缀（米哈游是 /genshin、/starrail）：页面之间的链接加上它，鹰角页面是空 */
   readonly base: string
+  /** 按名称取头像（米哈游：BWIKI 的图）；没有时 CharAvatar 显示文字。鹰角页面不用，按 game 取 */
+  readonly avatar?: (name: string, itemId: string | null) => string | undefined
+  /** 分享图底部的图片版权说明 */
+  readonly imageCredit?: string
 }
 
 const RECORDS_KEY: InjectionKey<RecordsSource> = Symbol('records')

@@ -11,6 +11,7 @@ import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { provideRecords, type RecordsHost } from '@/composables/useRecords'
 import { MHY_GAME_LABEL, type MhyGame } from '@/lib/mhy/types'
 import { useMhyAccounts } from './accounts'
+import { mhyIconUrl } from './icons'
 import MhyReadButton from './MhyReadButton.vue'
 import MhySyncPanel from './MhySyncPanel.vue'
 import { useMhyRecords } from './records'
@@ -32,6 +33,8 @@ const host: RecordsHost = reactive({
   actions: markRaw(MhyReadButton),
   playerName: computed(() => (account.value ? `UID ${account.value.uid}` : '')),
   base: computed(() => `/${props.game}`),
+  avatar: (name: string) => mhyIconUrl(props.game, name),
+  imageCredit: '角色、武器、光锥图片来自 BWIKI，版权归米哈游所有',
 })
 provideRecords(source, host)
 

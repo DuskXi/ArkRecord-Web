@@ -25,5 +25,16 @@ export interface ExtraVendor {
   sidebar: Component
 }
 
+/** “关于”页数据来源表里多出的一行 */
+export interface ExtraSource {
+  name: string
+  desc: string
+  url: string
+}
+
 export const EXTRA_VENDORS: ExtraVendor[] = []
 export const EXTRA_ROUTES: RouteRecordRaw[] = []
+/** “关于”页：数据来源表里多出的行 */
+export const EXTRA_SOURCES: ExtraSource[] = []
+/** “关于”页底部版权说明后面多出的话 */
+export const EXTRA_NOTICES: string[] = []

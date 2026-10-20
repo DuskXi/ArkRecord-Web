@@ -37,6 +37,8 @@ const ALLOWED_METHODS = new Map([
   ['mhy.useLink', 45_000],
   ['mhy.fetchPage', 45_000],
   ['mhy.forget', 10_000],
+  // 原神、星铁的头像名单（BWIKI，后端低频拉取并缓存在本机）
+  ['mhy.icons', 60_000],
 ])
 /** 和后端约定的协议版本（desktop/README.md） */
 const PROTOCOL_VERSION = 1

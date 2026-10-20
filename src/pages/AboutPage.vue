@@ -7,6 +7,7 @@ import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { formatNumber } from '@/lib/format'
 import { BUILD_COMMIT, HG_VERIFY_URL, SECURITY_URL } from '@/lib/cloud/links'
 import { LEGACY_APP_PATH } from '@/lib/legacy'
+import { EXTRA_NOTICES, EXTRA_SOURCES } from '@/platform'
 import { APP_VERSION, useAppStore } from '@/stores/app'
 import { IMAGE_SOURCES } from '../../worker/images'
 import { UPSTREAMS } from '../../worker/upstreams'
@@ -34,6 +35,8 @@ const sources = [
   { name: '555me/beyondGameData', desc: '终末地卡池类型、UP 名单、角色与武器名称（构建时获取）', url: 'https://github.com/555me/beyondGameData' },
   { name: '明日方舟终末地 BWIKI', desc: '终末地角色头像与武器图标（构建时镜像到本站）', url: 'https://wiki.biligame.com/zmd/' },
   { name: '森空岛', desc: 'BWIKI 暂缺的终末地角色头像（构建时镜像到本站；地址索引来自 cmyyx/cep）', url: 'https://wiki.skland.com/endfield' },
+  // 桌面版的米哈游（网页版是空的，见 src/platform）
+  ...EXTRA_SOURCES,
 ]
 </script>
 
@@ -196,6 +199,7 @@ const sources = [
           <ULink to="https://github.com/DuskXi/ArkRecord-Web" target="_blank" class="text-primary">GitHub</ULink>
           。本站为玩家自制工具，与鹰角网络无关。游戏内的名称与图像版权归鹰角网络所有。
         </p>
+        <p v-for="notice in EXTRA_NOTICES" :key="notice" class="mt-1">{{ notice }}</p>
         <p class="mt-1">
           给 AI 助手和搜索引擎的说明：<a href="/llms.txt" target="_blank" rel="noopener" class="text-primary">/llms.txt</a>（完整版
           <a href="/llms-full.txt" target="_blank" rel="noopener" class="text-primary">/llms-full.txt</a>）。

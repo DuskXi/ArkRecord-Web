@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { rarityVar } from '@/lib/format'
+import { useRecordsHost } from '@/composables/useRecords'
 import { akAvatarUrl, efAvatarUrl } from '@/lib/meta'
 import { useAppStore } from '@/stores/app'
 
@@ -10,6 +11,8 @@ const props = withDefaults(
   { size: 48, game: 'arknights' },
 )
 const app = useAppStore()
+/** 别的记录来源（米哈游）的页面按名称取头像 */
+const host = useRecordsHost()
 const failed = ref(false)
 // 虚拟列表会复用组件，换了角色要重新尝试加载
 watch(
@@ -18,6 +21,7 @@ watch(
 )
 const src = computed(() => {
   if (failed.value) return undefined
+  if (host?.avatar) return host.avatar(props.name, props.charId ?? null)
   if (props.game === 'arknights') return akAvatarUrl(props.charId, app.akAvatars)
   if (props.game === 'endfield') return efAvatarUrl(props.charId, app.efAvatars)
   return undefined
