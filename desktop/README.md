@@ -268,7 +268,7 @@ interface ArkrecordBridge {
 - **图标**：`desktop/resources/`。`icon.ico` 是网站的 `public/icons/record.ico`（256×256）；macOS 要求至少 512×512，`icon.png` 暂时是从 256×256 放大的，有更大的原图时换掉。
 - **打包版冒烟测试**：`npm run desktop:smoke:packaged`（`desktop/electron/smoke-packaged.mjs`）启动 `desktop/release` 里没打成安装包的那个目录（`win-unpacked`、`mac-arm64` 等，内容和安装包一样），用新的临时数据目录跑和开发版一样的检查：打好的后端能 ping、读得到 `resources/shared/`，方法白名单，`app://` 和 asar 里的页面，钥匙串，侧边栏。安装版不读假登录页、假云同步的地址，所以不检查登录窗口和云同步转发；冒烟时云同步不转发、统计不上报，不连任何网站。Linux 上加 `--no-sandbox`（CI 的 chrome-sandbox 没有 setuid 权限）。安装版只有同时给了 `ARKRECORD_SMOKE=1` 和 `ARKRECORD_SMOKE_DATA_DIR` 才进冒烟测试，不碰自己的数据目录。
 - **本机打包**（Windows 实测）：在 `desktop/backend` 打后端，再在仓库根目录 `npm run desktop:build`（要拉游戏数据；只想试打包可以换成 `npx vite build --mode desktop && npx tsc -p desktop/electron`），设 `CSC_IDENTITY_AUTO_DISCOVERY=false` 后 `npm run desktop:package`，最后 `npm run desktop:smoke:packaged`。
-- **工作流**：`.github/workflows/desktop-release.yml`，三个平台各打一份。只在 `desktop` 分支（手动触发，只上传构建产物）和 `desktop-vX.Y.Z` 标签（建草稿 release）上运行。**标签不要用 `v` 开头**：`deploy-production.yml` 会把 `v*` 标签部署到正式站。草稿由维护者确认版本号和说明后再发布。
+- **工作流**：`.github/workflows/desktop-release.yml`，三个平台各打一份。只在 `desktop` 分支（推送改了打包相关的文件时自动打包，只上传构建产物；手动触发要等工作流文件进了 master 才能用）和 `desktop-vX.Y.Z` 标签（建草稿 release）上运行。**标签不要用 `v` 开头**：`deploy-production.yml` 会把 `v*` 标签部署到正式站。草稿由维护者确认版本号和说明后再发布。
 - **不签名**：macOS 首次打开要在“系统设置 → 隐私与安全性”里允许，Windows 可能出现 SmartScreen 提示。
 
 ## 安全规则

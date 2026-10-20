@@ -1,16 +1,28 @@
 name: Desktop release
 
 # 桌面版的安装包（维护者 2026-10-20：“先做总览Dashboard，然后打包，发release，但是不要对ark那个网站有推送”）。
-# - 只在 desktop 分支（手动触发）和 desktop-v* 标签上运行。不要用 v 开头的标签：deploy-production.yml 会把它部署到正式站。
+# - 只在 desktop 分支和 desktop-v* 标签上运行。不要用 v 开头的标签：deploy-production.yml 会把它部署到正式站。
+# - desktop 分支：推送改了打包相关的文件（desktop/、shared/、依赖、这个文件，Markdown 除外）就打包，只上传构建产物。
+#   手动触发（workflow_dispatch）要等这个文件进了默认分支（master）才能用，GitHub 不认只在其他分支上的工作流，所以先用推送触发。
+#   同一分支上新的推送会取消还在跑的旧打包。
 # - 三个平台各打一份：Python 后端先用 PyInstaller 打成文件夹（desktop/backend/packaging/build.py，打完会启动检查一次），
 #   再构建页面和主进程，由 electron-builder 打安装包（npm run desktop:package），最后启动安装版跑冒烟测试。
-# - 标签触发时建一个草稿 release，维护者确认版本号和说明后再手动发布；手动触发只上传构建产物，不建 release。
+# - 标签触发时建一个草稿 release，维护者确认版本号和说明后再手动发布；分支上的打包只上传构建产物，不建 release。
 # - 不签名：macOS 会提示“无法验证开发者”，Windows 会有 SmartScreen 提示，发布说明里写清楚。
 # - 不部署网站、不碰 Cloudflare，用不到任何密钥（建 release 只用这次运行自带的 GITHUB_TOKEN）。
 
 on:
   push:
+    branches: [desktop]
     tags: ['desktop-v*']
+    # 只对分支的推送生效（GitHub 推送标签时不看 paths）
+    paths:
+      - 'desktop/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-release.yml'
+      - '!**/*.md'
   workflow_dispatch:
 
 permissions:
@@ -18,7 +30,8 @@ permissions:
 
 concurrency:
   group: desktop-release-${{ github.ref }}
-  cancel-in-progress: false
+  # 分支上的新推送取消旧的打包；标签（发布）不取消
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
 
 jobs:
   guard:
