@@ -23,7 +23,7 @@ const inSoft = computed(() => hasSoft.value && props.state.current >= props.stat
     </div>
 
     <div class="mt-3 flex items-baseline gap-1.5">
-      <span class="font-display text-4xl font-semibold tabular-nums" :class="inSoft ? 'text-warning' : 'text-highlighted'">{{ state.current }}</span>
+      <span class="font-display text-4xl font-semibold tabular-nums" :class="inSoft ? 'text-warning' : 'text-highlighted'">{{ state.afterGap ? '≥' : '' }}{{ state.current }}</span>
       <span class="font-display text-sm text-dimmed">/ {{ state.hardPity }}</span>
     </div>
 
@@ -40,7 +40,12 @@ const inSoft = computed(() => hasSoft.value && props.state.current >= props.stat
       <span>{{ state.hardPity }}</span>
     </div>
 
-    <p v-if="state.expectedMedian === null" class="mt-3 text-xs text-muted">
+    <!-- 记录的空档（米哈游）：只知道至少垫了这么多，不算预计还需多少抽 -->
+    <p v-if="state.afterGap" class="mt-3 text-xs text-muted">
+      中间有一段没有记录的空档，实际至少垫了这么多；最多再抽
+      <span class="font-display text-sm text-highlighted">{{ state.hardPity - state.current }}</span> 抽必出 {{ records.profile.topStar }}★
+    </p>
+    <p v-else-if="state.expectedMedian === null" class="mt-3 text-xs text-muted">
       最多再抽 <span class="font-display text-sm text-highlighted">{{ state.hardPity - state.current }}</span> 抽必出 {{ records.profile.topStar }}★
     </p>
     <p v-else class="mt-3 text-xs text-muted">

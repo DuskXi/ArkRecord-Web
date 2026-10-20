@@ -36,13 +36,14 @@ export type GuaranteeState = 'small' | 'big' | 'unknown'
 
 /**
  * 米哈游每个活动池保底分组现在是大保底、小保底，还是看不出来：按这个分组最后一个最高星（歪了就是大保底）。
- * 没有大小保底规则的事件（鹰角两款）不算。
+ * 之后有记录的空档（PullEvent.gapAfter）时看不出来。没有大小保底规则的事件（鹰角两款）不算。
  */
 export function guaranteeStates(events: readonly PullEvent[], topStar = 5): Map<string, GuaranteeState> {
   const out = new Map<string, GuaranteeState>()
   for (const e of events) {
-    if (e.star !== topStar || e.upShare === undefined) continue
-    out.set(e.family, e.isUp === null ? 'unknown' : e.isUp ? 'small' : 'big')
+    if (e.star === topStar && e.upShare !== undefined) out.set(e.family, e.isUp === null ? 'unknown' : e.isUp ? 'small' : 'big')
+    // 记录的空档（PullEvent.gapAfter）之后看不出来，直到下一个能判断的最高星
+    if (e.gapAfter !== undefined && out.has(e.family)) out.set(e.family, 'unknown')
   }
   return out
 }

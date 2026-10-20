@@ -199,8 +199,14 @@ export function assignUp(game: MhyGame, items: readonly { event: PullEvent; pull
   }
 
   const state = new Map<string, 'small' | 'big'>()
-  for (const x of tops) {
+  const isTop = new Set(tops)
+  for (const x of items) {
     const e = x.event
+    if (!isTop.has(x)) {
+      // 空档（gaps.ts）之后看不出大小保底，从头算
+      if (e.gapAfter !== undefined) state.delete(e.family)
+      continue
+    }
     const before = state.get(e.family)
     const kind = kinds.get(x) ?? null
     e.upShare = UP_SHARE[x.group]
@@ -224,6 +230,7 @@ export function assignUp(game: MhyGame, items: readonly { event: PullEvent; pull
       if (before === 'small') e.guarantee = 'small'
       state.delete(e.family)
     }
+    if (e.gapAfter !== undefined) state.delete(e.family)
   }
 }
 
@@ -246,7 +253,9 @@ export function mhyGuarantees(game: MhyGame, analysis: Analysis, events: readonl
     const rates = OFFICIAL_RATES[game][group]
     if (!isEventGroup(group) || !rates) continue
     const state = states.get(p.family) ?? 'unknown'
-    out.push({ poolName: p.label, label: STATE_TEXT[state](group, game), current: p.current, target: rates.hardPity, done: false })
+    // 记录的空档（gaps.ts）之后：垫抽只算了空档之后的
+    const label = p.afterGap ? `大小保底看不出来（中间有一段没有记录的空档，已垫至少 ${p.current} 抽）` : STATE_TEXT[state](group, game)
+    out.push({ poolName: p.label, label, current: p.current, target: rates.hardPity, done: false })
   }
   return out
 }

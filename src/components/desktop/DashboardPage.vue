@@ -154,8 +154,12 @@ function open(game: DesktopGame) {
               size="sm"
               :title="upTag(h)!.title"
             />
-            <span class="w-14 shrink-0 text-right font-display text-sm tabular-nums" :style="{ color: rarityVar(h.top) }" :title="h.pity === null ? '免费十连出的，不计保底' : undefined">
-              {{ h.pity === null ? '免费' : `${h.pity} 抽` }}
+            <span
+              class="w-14 shrink-0 text-right font-display text-sm tabular-nums"
+              :style="{ color: rarityVar(h.top) }"
+              :title="h.afterGap ? '前面有一段没有记录的空档（官方只保留最近一段时间的记录），实际抽了多少不知道' : h.pity === null ? '免费十连出的，不计保底' : undefined"
+            >
+              {{ h.afterGap ? '未知' : h.pity === null ? '免费' : `${h.pity} 抽` }}
             </span>
           </li>
         </ul>

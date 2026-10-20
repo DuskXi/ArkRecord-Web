@@ -10,6 +10,11 @@ export interface SixStarHit {
   pity: number
   /** 这是该卡池内的第几抽（只计入保底的抽数） */
   poolPull: number
+  /**
+   * 前面有一段记录的空档（米哈游，PullEvent.gapAfter）：pity 只算了记录里有的抽数，空档里可能还有，实际抽了多少不知道。
+   * 页面上显示“未知”，不计入平均、运气、最快 / 最慢
+   */
+  afterGap?: true
 }
 
 export interface PityState {
@@ -27,6 +32,8 @@ export interface PityState {
   lastPoolName: string
   lastTs: number
   mainModel: boolean
+  /** 上一个最高星之后有记录的空档（米哈游）：current 只算了记录里有的抽数，实际至少这么多 */
+  afterGap?: true
 }
 
 export interface PoolSummary {
@@ -53,7 +60,7 @@ export interface Analysis {
   hits: SixStarHit[]
   pity: PityState[]
   pools: PoolSummary[]
-  /** 主保底模型下每个 6★ 的抽数 */
+  /** 主保底模型下每个 6★ 的抽数（不含记录空档之后、抽数未知的） */
   mainIntervals: number[]
   avgPerSix: number | null
   /** UP 胜率：在已知 UP 名单的卡池中，6★ 是 UP 的比例（米哈游只算小保底的） */
@@ -92,7 +99,7 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
   const top = model.topStar ?? 6
   const stars = emptyStars()
   const hits: SixStarHit[] = []
-  const counters = new Map<string, { count: number; label: string; isolated: boolean; lastPool: string; lastTs: number; main: boolean }>()
+  const counters = new Map<string, { count: number; label: string; isolated: boolean; lastPool: string; lastTs: number; main: boolean; gap: boolean }>()
   const pools = new Map<string, PoolSummary>()
   const perDay = new Map<string, number>()
   const perMonth = new Map<string, number>()
@@ -129,7 +136,12 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
     pool.lastTs = e.ts
     if (e.star >= 3 && e.star <= 6) pool.stars[e.star as 3 | 4 | 5 | 6]++
 
-    if (!e.countsForPity) continue
+    if (!e.countsForPity) {
+      // 不计保底的记录后面有空档时，这个分组之后的计数也不完整
+      const c = counters.get(e.family)
+      if (c && e.gapAfter !== undefined) c.gap = true
+      continue
+    }
     pool.paid++
     const counter = counters.get(e.family) ?? {
       count: 0,
@@ -138,17 +150,21 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
       lastPool: e.poolName,
       lastTs: e.ts,
       main: e.mainModel,
+      gap: false,
     }
     counter.count++
     counter.lastPool = e.poolName
     counter.lastTs = e.ts
     if (e.star === top) {
-      const hit = { event: e, pity: counter.count, poolPull: pool.paid }
+      const hit: SixStarHit = { event: e, pity: counter.count, poolPull: pool.paid, ...(counter.gap ? { afterGap: true as const } : {}) }
       hits.push(hit)
       pool.sixStars.push(hit)
       if (e.isUp !== null) pool.gotUp = (pool.gotUp ?? false) || e.isUp
       counter.count = 0
+      counter.gap = false
     }
+    // 记录的空档（米哈游）：之后这个分组的计数不完整，直到下一个最高星
+    if (e.gapAfter !== undefined) counter.gap = true
     counters.set(e.family, counter)
   }
 
@@ -166,10 +182,11 @@ export function analyze(events: PullEvent[], model: PityModel): Analysis {
       lastPoolName: c.lastPool,
       lastTs: c.lastTs,
       mainModel: c.main,
+      ...(c.gap ? { afterGap: true as const } : {}),
     }
   })
 
-  const mainIntervals = hits.filter((h) => h.event.mainModel).map((h) => h.pity)
+  const mainIntervals = hits.filter((h) => h.event.mainModel && !h.afterGap).map((h) => h.pity)
   // 米哈游的大保底必是 UP，不算进胜率；看不出大小保底的也不算
   const known = hits.filter((h) => h.event.isUp !== null && (h.event.upShare === undefined || h.event.guarantee === 'small'))
   return {

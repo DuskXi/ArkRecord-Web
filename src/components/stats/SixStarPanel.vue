@@ -84,7 +84,8 @@ const sequenceOption = computed<EChartsOption>(() => {
         const e = item.hit.event
         const up = upTag(e)
         const tag = up ? `（${up.text}）` : ''
-        return `<b>${e.name}</b>${tag}<br/>${e.poolName}<br/>${formatDateTime(e.ts)}<br/>第 <b>${item.hit.pity}</b> 抽 · 累计平均 ${item.runningAvg.toFixed(1)}`
+        const pity = item.hit.afterGap ? '抽数未知（前面有一段没有记录的空档）' : `第 <b>${item.hit.pity}</b> 抽`
+        return `<b>${e.name}</b>${tag}<br/>${e.poolName}<br/>${formatDateTime(e.ts)}<br/>${pity} · 累计平均 ${item.runningAvg.toFixed(1)}`
       },
     },
     xAxis: { type: 'category', data: seq.map((_, i) => String(i + 1)), ...axisStyle(p) },
@@ -98,8 +99,9 @@ const sequenceOption = computed<EChartsOption>(() => {
         name: '抽数',
         type: 'bar',
         barMaxWidth: 18,
+        // 记录空档之后抽数未知的不画柱子
         data: seq.map(({ hit }) => ({
-          value: hit.pity,
+          value: hit.afterGap ? null : hit.pity,
           itemStyle: { color: hit.event.isUp === null ? rarityColor(p, top.value) : hit.event.isUp ? p.primary : p.dimmed, borderRadius: [2, 2, 0, 0] },
         })),
         markLine: mean

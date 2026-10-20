@@ -109,16 +109,23 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
   let gapTotal = 0
   let longestGap = 0
   let fivePlusCount = 0
+  // 记录的空档（米哈游）之后的第一个间隔不完整，不算
+  let broken = false
   for (const e of events) {
-    if (!e.countsForPity || e.weapon) continue
-    gap++
-    if (e.star >= top - 1) {
-      fivePlusCount++
-      gapTotal += gap
-      gapCount++
-      longestGap = Math.max(longestGap, gap)
-      gap = 0
+    if (e.countsForPity && !e.weapon) {
+      gap++
+      if (e.star >= top - 1) {
+        fivePlusCount++
+        if (!broken) {
+          gapTotal += gap
+          gapCount++
+          longestGap = Math.max(longestGap, gap)
+        }
+        gap = 0
+        broken = false
+      }
     }
+    if (e.gapAfter !== undefined && !e.weapon) broken = true
   }
   longestGap = Math.max(longestGap, gap)
 
@@ -176,12 +183,17 @@ export function computeInsights(events: PullEvent[], analysis: Analysis): Insigh
   }
 
   const hits = analysis.hits.filter((h) => !h.event.weapon)
+  // 记录空档之后的最高星抽数未知（afterGap）：留在序列里，但不算进累计平均和最快 / 最慢
   let total = 0
-  const sixSequence = hits.map((hit, i) => {
-    total += hit.pity
-    return { hit, runningAvg: total / (i + 1) }
+  let counted = 0
+  const sixSequence = hits.map((hit) => {
+    if (!hit.afterGap) {
+      total += hit.pity
+      counted++
+    }
+    return { hit, runningAvg: counted ? total / counted : 0 }
   })
-  const byPity = hits.toSorted((a, b) => a.pity - b.pity || a.event.ts - b.event.ts)
+  const byPity = hits.filter((h) => !h.afterGap).toSorted((a, b) => a.pity - b.pity || a.event.ts - b.event.ts)
 
   return {
     batches,

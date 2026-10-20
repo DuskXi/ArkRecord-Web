@@ -35,6 +35,14 @@ const shown = computed<Tile[]>(() =>
         <div class="relative">
           <CharAvatar :char-id="t.hit.event.itemId" :name="t.hit.event.name" :star="top" :size="88" :game="game" class="!size-full aspect-square" />
           <span
+            v-if="t.hit.afterGap"
+            class="absolute top-1 right-1 rounded-sm bg-black/60 px-1 font-display text-[11px] font-semibold text-white"
+            title="抽数未知：前面有一段没有记录的空档（官方只保留最近一段时间的记录）"
+          >
+            ?
+          </span>
+          <span
+            v-else
             class="absolute top-1 right-1 rounded-sm px-1 font-display text-[11px] font-semibold text-white"
             :class="t.hit.pity / hardPity >= 0.75 ? 'bg-error/90' : t.hit.pity / hardPity <= 0.25 ? 'bg-success/90' : 'bg-black/60'"
           >
@@ -50,7 +58,7 @@ const shown = computed<Tile[]>(() =>
           </span>
         </div>
         <div class="mt-1 h-1 overflow-hidden rounded-full bg-elevated">
-          <div class="h-full rounded-full" :style="{ width: `${Math.min(100, (t.hit.pity / hardPity) * 100)}%`, background: rarityVar(top) }" />
+          <div v-if="!t.hit.afterGap" class="h-full rounded-full" :style="{ width: `${Math.min(100, (t.hit.pity / hardPity) * 100)}%`, background: rarityVar(top) }" />
         </div>
         <p class="mt-1 truncate text-xs font-medium text-highlighted">{{ t.hit.event.name }}</p>
         <p class="truncate text-[10px] text-dimmed">{{ formatDate(t.hit.event.ts) }}</p>

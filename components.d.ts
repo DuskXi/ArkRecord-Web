@@ -46,6 +46,7 @@ declare module 'vue' {
     PasswordFields: typeof import('./src/components/cloud/PasswordFields.vue')['default']
     PityCard: typeof import('./src/components/ui/PityCard.vue')['default']
     PlannerPanel: typeof import('./src/components/PlannerPanel.vue')['default']
+    RecordGapNotice: typeof import('./src/components/stats/RecordGapNotice.vue')['default']
     RecordsPanel: typeof import('./src/components/stats/RecordsPanel.vue')['default']
     RosterImportDialog: typeof import('./src/components/roster/RosterImportDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent } from 'vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import PityCard from '@/components/ui/PityCard.vue'
+import RecordGapNotice from '@/components/stats/RecordGapNotice.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import SixStarWall from '@/components/ui/SixStarWall.vue'
 import StatTile from '@/components/ui/StatTile.vue'
@@ -101,6 +102,9 @@ const upHint = computed(() => {
           class="col-span-2 md:col-span-1"
         />
       </div>
+
+      <!-- 米哈游：很久没有记录的空档 -->
+      <RecordGapNotice />
 
       <section>
         <SectionHeader index="01" eyebrow="PITY" title="当前保底" />

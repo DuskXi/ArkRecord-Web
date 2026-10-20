@@ -5,8 +5,10 @@
  * 星铁角色活动、光锥活动、常驻、两个联动各自一组；新手池各自一组。
  * 武器（原神武器活动、星铁光锥 / 联动光锥）标成 weapon，和终末地一样分“角色 / 武器”两个范围看。
  * 角色、武器、光锥活动池的 5★ 按官方的大小保底规则判断歪没歪（up.ts）；其余卡池 isUp 为 null。
+ * 很久没有记录的空档（gaps.ts）标在空档前的记录上：空档后的抽数未知，大小保底重新算。
  */
 import type { PullEvent } from '../stats/events'
+import { markGaps } from './gaps'
 import { compareMhyPulls } from './stats'
 import { MHY_POOLS, type MhyGame, type MhyPull } from './types'
 import { assignUp } from './up'
@@ -53,6 +55,9 @@ export function normalizeMhy(game: MhyGame, pulls: readonly MhyPull[]): PullEven
     }
     items.push({ event, pull: p, group: pool.group })
   }
+  const events = items.map((x) => x.event)
+  // 记录的空档（gaps.ts）：要在判断大小保底之前标好
+  markGaps(game, events)
   assignUp(game, items)
-  return items.map((x) => x.event)
+  return events
 }

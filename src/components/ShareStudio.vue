@@ -133,7 +133,7 @@ async function copy() {
             <div v-for="h in hits" :key="h.event.key">
               <div class="relative">
                 <CharAvatar :char-id="h.event.itemId" :name="h.event.name" :star="top" :size="84" :game="records.game" />
-                <span class="absolute top-1 right-1 rounded-sm bg-black/65 px-1 font-display text-[11px] font-semibold text-white">{{ h.pity }}</span>
+                <span class="absolute top-1 right-1 rounded-sm bg-black/65 px-1 font-display text-[11px] font-semibold text-white">{{ h.afterGap ? '?' : h.pity }}</span>
               </div>
               <p class="mt-1 truncate text-[11px] font-medium text-highlighted">{{ h.event.name }}</p>
             </div>

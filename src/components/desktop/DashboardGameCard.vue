@@ -93,8 +93,11 @@ const pityPct = (a: AccountSummary) => (a.pity ? Math.min(100, (a.pity.current /
             <div class="relative h-1.5 flex-1 overflow-hidden rounded-full bg-accented/60">
               <div class="absolute inset-y-0 left-0 rounded-full bg-(--accent)" :style="{ width: `${pityPct(a)}%` }" />
             </div>
-            <span class="shrink-0 font-display text-xs tabular-nums text-muted" :title="a.pity.label">
-              垫 <b class="text-highlighted">{{ a.pity.current }}</b> / {{ a.pity.hardPity }}
+            <span
+              class="shrink-0 font-display text-xs tabular-nums text-muted"
+              :title="a.pity.afterGap ? `${a.pity.label}：中间有一段没有记录的空档，实际至少垫了这么多` : a.pity.label"
+            >
+              垫 <b class="text-highlighted">{{ a.pity.afterGap ? '≥' : '' }}{{ a.pity.current }}</b> / {{ a.pity.hardPity }}
             </span>
           </div>
         </li>
@@ -102,9 +105,9 @@ const pityPct = (a: AccountSummary) => (a.pity ? Math.min(100, (a.pity.current /
 
       <!-- 最近的最高星 -->
       <div v-if="recent.length" class="mt-4 flex gap-2 overflow-hidden">
-        <div v-for="h in recent" :key="`${h.accountId}:${h.ts}:${h.name}`" class="relative" :title="`${h.name}${h.pity === null ? '' : ` · 第 ${h.pity} 抽`}${upTag(h) ? ` · ${upTag(h)!.text}` : ''} · ${formatDateTime(h.ts)}`">
+        <div v-for="h in recent" :key="`${h.accountId}:${h.ts}:${h.name}`" class="relative" :title="`${h.name}${h.afterGap ? ' · 抽数未知（前面有一段没有记录的空档）' : h.pity === null ? '' : ` · 第 ${h.pity} 抽`}${upTag(h) ? ` · ${upTag(h)!.text}` : ''} · ${formatDateTime(h.ts)}`">
           <CharAvatar :char-id="h.itemId" :name="h.name" :star="top" :size="44" :game="summary.game" />
-          <span v-if="h.pity !== null" class="absolute top-0.5 right-0.5 rounded-sm bg-black/60 px-0.5 font-display text-[10px] leading-tight text-white">{{ h.pity }}</span>
+          <span v-if="h.pity !== null" class="absolute top-0.5 right-0.5 rounded-sm bg-black/60 px-0.5 font-display text-[10px] leading-tight text-white">{{ h.afterGap ? '?' : h.pity }}</span>
           <span v-if="h.weapon" class="absolute bottom-1 left-0.5 rounded-sm bg-black/60 px-0.5 text-[10px] leading-tight text-white">{{ summary.game === 'starrail' ? '光锥' : '武器' }}</span>
         </div>
       </div>

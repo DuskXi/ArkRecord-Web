@@ -144,6 +144,26 @@ describe('summarizeGames', () => {
     expect([ak!.accounts.length, ak!.pulls]).toEqual([0, 0])
   })
 
+  it('原神记录有空档（隔了一年多）：空档后的 5★ 抽数未知，不算平均；垫抽标“至少”', async () => {
+    const d = dbs()
+    await d.mhy.accounts.put({ id: 'genshin:100000003', game: 'genshin', uid: '100000003', region: 'cn_gf01', gameBiz: 'hk4e_cn', utcOffset: 8, createdAt: 1 })
+    const later = 500 * 86_400_000
+    await d.mhy.pulls.bulkPut([
+      // 第 10 抽出 5★，之后 3 抽
+      ...Array.from({ length: 13 }, (_, i) => mhyPull('genshin:100000003', i, i === 9 ? 5 : 3, i === 9 ? '迪卢克' : '某三星')),
+      // 500 天后 6 抽出 5★，再 2 抽
+      ...Array.from({ length: 8 }, (_, i) => ({ ...mhyPull('genshin:100000003', 100 + i, i === 5 ? 5 : 3, i === 5 ? '某新角色' : '某三星'), ts: T0 + later + i * 60_000 })),
+    ])
+    const [, , gi] = await summarizeGames({ now: T0 + later + 86_400_000 }, d)
+    expect(gi!.recentTop.map((h) => [h.name, h.pity, h.afterGap ?? false])).toEqual([
+      ['某新角色', 9, true],
+      ['迪卢克', 10, false],
+    ])
+    expect(gi!.accounts[0]!.avgPerTop).toBe(10)
+    expect(gi!.accounts[0]!.pity).toMatchObject({ current: 2 })
+    expect(gi!.accounts[0]!.pity!.afterGap).toBeUndefined()
+  })
+
   it('月份按北京时间：UTC 的 1 月 31 日 20 点算 2 月', async () => {
     const d = dbs()
     await d.mhy.accounts.put({ id: 'starrail:100000002', game: 'starrail', uid: '100000002', region: 'prod_gf_cn', gameBiz: 'hkrpg_cn', utcOffset: 8, createdAt: 1 })

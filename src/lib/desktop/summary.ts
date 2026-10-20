@@ -35,6 +35,8 @@ export interface TopHit {
   ts: number
   /** 这个保底分组里第几抽出的；终末地免费十连出的不计保底，为 null */
   pity: number | null
+  /** 前面有记录的空档（米哈游）：抽数未知，pity 只算了记录里有的抽数（下限） */
+  afterGap?: true
   isUp: boolean | null
   guarantee?: 'small' | 'big'
   /** 武器 / 光锥 */
@@ -56,8 +58,8 @@ export interface AccountSummary {
   /** 这个账号最近的 5 个最高星，新的在前 */
   recentTop: TopHit[]
   lastSyncAt?: number
-  /** 角色池当前的垫抽 */
-  pity?: { label: string; current: number; hardPity: number }
+  /** 角色池当前的垫抽；afterGap：上一个最高星之后有记录的空档，current 只算了记录里有的抽数（实际至少这么多） */
+  pity?: { label: string; current: number; hardPity: number; afterGap?: true }
   /** 角色范围的运气百分位（0–1，越大越欧）；没有概率模型或还没出过最高星时为 null */
   luck: number | null
   /** 运气、期望是按官方数字推算的（米哈游），页面要标“推算，非官方” */
@@ -104,7 +106,7 @@ const EMPTY_AK_META: AkMeta = { version: '', generatedAt: '', upAvailable: false
 /** 角色范围里“适用主模型、最近抽过”的保底分组 */
 function mainPity(analysis: Analysis): AccountSummary['pity'] {
   const state = analysis.pity.filter((p) => p.mainModel).toSorted((a, b) => b.lastTs - a.lastTs)[0]
-  return state ? { label: state.label, current: state.current, hardPity: state.hardPity } : undefined
+  return state ? { label: state.label, current: state.current, hardPity: state.hardPity, ...(state.afterGap ? { afterGap: true as const } : {}) } : undefined
 }
 
 interface AccountResult {
@@ -125,7 +127,7 @@ function summarizeAccount(
   const character = all.filter((e) => !e.weapon)
   const analysis = analyze(character, model)
   // 每个最高星是第几抽出的：保底按分组计，武器、角色各自分组，所以用全部记录再算一次
-  const pityOf = new Map(analyze([...all], { ...model, topStar }).hits.map((h) => [h.event.key, h.pity]))
+  const pityOf = new Map(analyze([...all], { ...model, topStar }).hits.map((h) => [h.event.key, h]))
   const hits = all
     .filter((e) => e.star === topStar)
     .map(
@@ -134,7 +136,8 @@ function summarizeAccount(
         name: e.name,
         itemId: e.itemId,
         ts: e.ts,
-        pity: pityOf.get(e.key) ?? null,
+        pity: pityOf.get(e.key)?.pity ?? null,
+        ...(pityOf.get(e.key)?.afterGap ? { afterGap: true as const } : {}),
         isUp: e.isUp,
         ...(e.guarantee ? { guarantee: e.guarantee } : {}),
         weapon: e.weapon,
