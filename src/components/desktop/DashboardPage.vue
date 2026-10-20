@@ -128,9 +128,14 @@ function open(game: DesktopGame) {
             <CharAvatar :char-id="h.itemId" :name="h.name" :star="h.top" :size="36" :game="h.game" />
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-highlighted">
+                <!-- 标签文字混一些正文色：浅色下压暗、深色下提亮，终末地的黄色在浅色背景上也看得清 -->
                 <span
                   class="mr-1.5 inline-block w-7 rounded-sm border text-center align-[1px] font-display text-[10px] leading-4 font-semibold tracking-wide"
-                  :style="{ color: gameOf(h.game).accent, borderColor: gameOf(h.game).accent, background: `color-mix(in oklab, ${gameOf(h.game).accent} 12%, transparent)` }"
+                  :style="{
+                    color: `color-mix(in oklab, ${gameOf(h.game).accent} 65%, var(--ui-text-highlighted))`,
+                    borderColor: gameOf(h.game).accent,
+                    background: `color-mix(in oklab, ${gameOf(h.game).accent} 14%, transparent)`,
+                  }"
                   :title="gameOf(h.game).label"
                   :aria-label="gameOf(h.game).label"
                   >{{ gameOf(h.game).code }}</span
