@@ -1,0 +1,63 @@
+# 桌面版安装包（npm run desktop:package，desktop/README.md 的“打包和发布”）。
+# 先打好后端（desktop/backend/packaging/build.py），再 npm run desktop:build，最后用这份配置打安装包。
+# 产物在 desktop/release/：Windows 是 NSIS 安装程序，macOS 是 dmg 和 zip，Linux 是 AppImage；
+# 每个平台还有一个没打成安装包的目录（win-unpacked 等），打包版冒烟测试（desktop:smoke:packaged）启动的就是它。
+# 不签名（维护者还没有证书），发布说明里写清楚 SmartScreen 和 macOS 的提示。
+
+appId: dev.kaltsit.arkrecord
+productName: ArkRecord
+copyright: Copyright © DuskXi
+directories:
+  output: desktop/release
+  buildResources: desktop/resources
+
+# 安装包里只有主进程、preload 和页面（desktop/electron/dist）。主进程只用 Node 和 Electron 自带的模块，
+# 页面的依赖已经由 Vite 打进 renderer/，所以不带 node_modules
+files:
+  - package.json
+  - desktop/electron/dist/**/*
+  - '!desktop/electron/dist/**/*.map'
+  - '!node_modules/**/*'
+# 后端（PyInstaller 打好的文件夹）和它要读的白名单文件（shared/ 里的 JSON，不要 .ts），放在 resources/ 下，
+# 主进程从 process.resourcesPath 启动后端，并用 ARKRECORD_SHARED_DIR 告诉它白名单在哪（main.ts）
+extraResources:
+  - from: desktop/backend/dist/arkrecord-backend
+    to: backend
+  - from: shared
+    to: shared
+    filter:
+      - '**/*'
+      - '!**/*.ts'
+
+# 用已经装好的 Electron（package.json 里固定的版本），不再下载一份
+electronDist: node_modules/electron/dist
+npmRebuild: false
+asar: true
+
+win:
+  target: nsis
+  icon: icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ArkRecord-Setup-${version}.${ext}
+
+mac:
+  target:
+    - dmg
+    - zip
+  icon: icon.png
+  category: public.app-category.utilities
+  # 没有证书：不签名、不公证
+  identity: null
+dmg:
+  artifactName: ArkRecord-${version}-${arch}.${ext}
+
+linux:
+  target: AppImage
+  icon: icon.png
+  category: Utility
+  executableName: arkrecord
+appImage:
+  artifactName: ArkRecord-${version}-${arch}.${ext}

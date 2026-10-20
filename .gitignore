@@ -14,3 +14,6 @@ __pycache__/
 
 # 桌面版后端打包（PyInstaller）的中间文件
 desktop/backend/build/
+
+# 桌面版安装包（electron-builder 的输出）
+desktop/release/

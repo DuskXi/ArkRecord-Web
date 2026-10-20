@@ -75,7 +75,11 @@ function parseDevServerUrl(value: string | undefined): URL | undefined {
 }
 
 const devServer = app.isPackaged ? undefined : parseDevServerUrl(process.env.ARKRECORD_DEV_SERVER_URL)
-const smoke = !app.isPackaged && process.env.ARKRECORD_SMOKE === '1'
+/**
+ * 冒烟测试：开发版由 dev.mjs --smoke 启动；安装版由 desktop:smoke:packaged（smoke-packaged.mjs）启动，
+ * 这时必须同时给一个临时数据目录，不碰安装版自己的数据。安装版的冒烟测试不用假登录页、假云同步（下面那些只在没打包时读）
+ */
+const smoke = process.env.ARKRECORD_SMOKE === '1' && (!app.isPackaged || Boolean(process.env.ARKRECORD_SMOKE_DATA_DIR))
 const rendererDir = join(import.meta.dirname, 'renderer')
 /** 鹰角登录页。开发和冒烟测试可以换成本机的假登录页（dev.mjs 的 --fake-hg）；安装包里只用官方登录页 */
 const fakeHgOrigin = app.isPackaged ? undefined : process.env.ARKRECORD_FAKE_HG_ORIGIN
@@ -129,9 +133,15 @@ const STATS_URL = smoke || app.isPackaged ? undefined : 'https://ark-next.kaltsi
 
 /**
  * 云同步转发到哪个网站（cloud.ts）。维护者 2026-10-20：“打包版本要拉的是正式站点的数据，不拉测试站”：
- * 安装版是正式站；开发版是测试站（和开发版的统计一样）；冒烟测试用本机的假云同步（dev.mjs），不连网站
+ * 安装版是正式站；开发版是测试站（和开发版的统计一样）；冒烟测试用本机的假云同步（dev.mjs），安装版的冒烟测试不转发，都不连网站
  */
-const CLOUD_SITE = app.isPackaged ? 'https://ark.kaltsit.dev' : smoke ? process.env.ARKRECORD_FAKE_CLOUD_ORIGIN : 'https://ark-next.kaltsit.dev'
+const CLOUD_SITE = smoke
+  ? app.isPackaged
+    ? undefined
+    : process.env.ARKRECORD_FAKE_CLOUD_ORIGIN
+  : app.isPackaged
+    ? 'https://ark.kaltsit.dev'
+    : 'https://ark-next.kaltsit.dev'
 /**
  * 用 Node 自带的 fetch，不用 Electron 的 net.fetch：后者会加上 Sec-Fetch-Site: none，Worker 的同源检查会拒绝（冒烟测试核对过）。
  * Node 的 fetch 不读系统代理设置
@@ -139,7 +149,16 @@ const CLOUD_SITE = app.isPackaged ? 'https://ark.kaltsit.dev' : smoke ? process.
 const fetchCloud = (url: string, init: RequestInit) => fetch(url, init)
 
 const backend = new Backend(() => {
-  if (app.isPackaged) throw new Error('安装包里还没有带上后端（M4）')
+  // 安装版：PyInstaller 打好的后端在 resources/backend/，白名单文件在 resources/shared/（desktop/electron-builder.yml）
+  if (app.isPackaged) {
+    const dir = join(process.resourcesPath, 'backend')
+    return {
+      command: join(dir, process.platform === 'win32' ? 'arkrecord-backend.exe' : 'arkrecord-backend'),
+      args: [],
+      cwd: dir,
+      env: { ARKRECORD_DATA_DIR: app.getPath('userData'), ARKRECORD_STATS_URL: STATS_URL, ARKRECORD_SHARED_DIR: join(process.resourcesPath, 'shared') },
+    }
+  }
   // 开发时在仓库根目录用 uv 启动，见 desktop/README.md
   return {
     command: 'uv',

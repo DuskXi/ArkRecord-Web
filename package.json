@@ -24,7 +24,9 @@
     "desktop:dev": "node desktop/electron/dev.mjs",
     "desktop:smoke": "node desktop/electron/dev.mjs --smoke",
     "desktop:build": "node scripts/sync-gamedata.mjs && vite build --mode desktop && tsc -p desktop/electron",
-    "desktop:start": "electron ."
+    "desktop:start": "electron .",
+    "desktop:package": "electron-builder --config desktop/electron-builder.yml --publish never",
+    "desktop:smoke:packaged": "node desktop/electron/smoke-packaged.mjs"
   },
   "dependencies": {
     "@fontsource-variable/oxanium": "^5.3.0",
@@ -52,6 +54,7 @@
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/test-utils": "^2.5.1",
     "electron": "44.9.0",
+    "electron-builder": "26.15.3",
     "fake-indexeddb": "^6.0.0",
     "happy-dom": "^21.0.3",
     "oxlint": "^1.88.0",
