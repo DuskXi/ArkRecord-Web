@@ -40,6 +40,8 @@ watch(
   { immediate: true },
 )
 const brandSubtitle = computed(() => (extra.value ? `${extra.value.game.id.toUpperCase()} ARCHIVE` : undefined))
+/** 其他厂商的页面上侧边栏顶部的名称（米哈游是 GAMERECORD） */
+const brandName = computed(() => extra.value?.vendor.brand)
 /** 有没看过的更新公告时，在“更新公告”旁边标出数量 */
 const navItems = computed(() =>
   navItemsFor(app.game).map((item) =>
@@ -65,7 +67,7 @@ const navItems = computed(() =>
         :ui="{ root: 'bg-elevated/40', footer: 'border-t border-default' }"
       >
         <template #header="{ collapsed }">
-          <BrandMark :collapsed="collapsed" :subtitle="brandSubtitle" />
+          <BrandMark :collapsed="collapsed" :name="brandName" :subtitle="brandSubtitle" />
         </template>
 
         <template #default="{ collapsed }">

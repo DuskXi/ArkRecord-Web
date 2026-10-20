@@ -23,6 +23,8 @@ export interface ExtraVendor {
   games: ExtraGame[]
   /** 侧边栏里游戏切换下面的部分，props：{ game: 游戏 id, collapsed } */
   sidebar: Component
+  /** 在这个厂商的页面上，侧边栏顶部显示的名称（不写就是 ARKRECORD） */
+  brand?: string
 }
 
 /** “关于”页数据来源表里多出的一行 */

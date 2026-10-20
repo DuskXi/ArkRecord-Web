@@ -335,6 +335,8 @@ const SIDEBAR_STATE = `
     readButton: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '读取'),
     empty: document.body.innerText.includes('还没有原神的抽卡记录'),
     warp: document.body.innerText.includes('跃迁记录'),
+    // 侧边栏顶部的名称：鹰角是 ARKRECORD，米哈游是 GAMERECORD
+    brand: document.body.innerText.includes('GAMERECORD') ? 'GAMERECORD' : document.body.innerText.includes('ARKRECORD') ? 'ARKRECORD' : '',
   }
 `
 
@@ -348,6 +350,7 @@ interface SidebarState {
   readButton: boolean
   empty: boolean
   warp: boolean
+  brand: string
 }
 
 /**
@@ -404,6 +407,8 @@ async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>
     '星铁：/starrail，界面说的是“跃迁记录”，侧边栏是米哈游的':
       starrail.path === '/starrail' && starrail.game.active === '星铁' && starrail.warp && starrail.read && starrail.mhyNav.includes('跃迁记录'),
     '再切到米哈游，回到上次看的星铁': mhyAgain.path === '/starrail' && mhyAgain.game.active === '星铁',
+    '侧边栏顶部：鹰角是 ARKRECORD，米哈游是 GAMERECORD':
+      hgStart.brand === 'ARKRECORD' && mhy.brand === 'GAMERECORD' && starrail.brand === 'GAMERECORD' && hgBack.brand === 'ARKRECORD',
     '切回鹰角：回到总览，还是之前选的终末地，侧边栏是鹰角的':
       hgStart.game.active === '终末地' &&
       hgBack.path === '/' &&

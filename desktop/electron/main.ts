@@ -134,8 +134,11 @@ const backend = new Backend(() => {
   }
 })
 
-/** 后端拉一张图片的超时（后端对来源站有自己的超时，这里多留余量） */
-const IMAGE_TIMEOUT_MS = 30_000
+/**
+ * 后端拉一张图片的超时。后端按来源站每分钟限量排队（比如 patchwiki 每分钟 60 张），同一张图正在下载时会等那一次，
+ * 最多 120 秒；这里取一样长，不然一页新图很多时，靠后的会先在这里超时、显示成文字。
+ */
+const IMAGE_TIMEOUT_MS = 120_000
 
 /** 图片只由主进程调用 img.fetch（页面不能直接调用，不在 ALLOWED_METHODS 里） */
 const fetchImage = (source: string, target: string) => backend.request('img.fetch', { source, target }, IMAGE_TIMEOUT_MS)

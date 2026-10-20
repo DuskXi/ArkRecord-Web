@@ -18,6 +18,8 @@ export const EXTRA_VENDORS: ExtraVendor[] = [
       { id: 'starrail', label: '星铁', short: '星铁', to: '/starrail' },
     ],
     sidebar: defineAsyncComponent(() => import('@/components/mhy/MhySidebar.vue')),
+    // 维护者：切换为米哈游的时候，上面不写 ARKRECORD，写 GAMERECORD
+    brand: 'GAMERECORD',
   },
 ]
 
