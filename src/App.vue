@@ -69,8 +69,11 @@ const navItems = computed(() =>
         </template>
 
         <template #default="{ collapsed }">
-          <VendorSwitcher v-if="EXTRA_VENDORS.length" :collapsed="collapsed" />
-          <GameSwitcher :collapsed="collapsed" />
+          <!-- 厂商是标签页，游戏切换紧挨在下面，是它的内容 -->
+          <div class="space-y-3">
+            <VendorSwitcher v-if="EXTRA_VENDORS.length" :collapsed="collapsed" />
+            <GameSwitcher :collapsed="collapsed" />
+          </div>
           <component :is="extra.vendor.sidebar" v-if="extra" :game="extra.game.id" :collapsed="collapsed" />
           <template v-else>
             <AccountMenu :collapsed="collapsed" />
