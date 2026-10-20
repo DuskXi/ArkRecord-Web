@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HG_PROFILES } from './game-profile'
+import { HG_PROFILES, starsFrom } from './game-profile'
 import { arknightsRate, endfieldRate } from './stats/pity'
 import { AK_PRESETS, EF_PRESETS } from './stats/planner'
 
@@ -13,6 +13,18 @@ describe('HG_PROFILES', () => {
     expect([ef.label, ef.topStar, ef.topTerm, ef.playerTitle, ef.reportTitle]).toEqual(['终末地', 6, '出红', 'ENDMINISTRATOR', 'ENDFIELD'])
     expect(ak.stars).toEqual([6, 5, 4, 3])
     expect(ef.stars).toEqual([6, 5, 4])
+  })
+
+  it('记录的叫法、角色 / 武器切换、没有记录时的提示', () => {
+    expect([ak.recordName, ef.recordName]).toEqual(['寻访记录', '寻访记录'])
+    expect([ak.hasScope, ef.hasScope]).toEqual([false, true])
+    expect(ak.emptyHint).toEqual({ description: '点击右上角的“同步”从鹰角服务器拉取最近 90 天的记录，或在“数据”页导入旧数据。', importLink: true })
+    expect(ef.emptyHint).toEqual(ak.emptyHint)
+  })
+
+  it('从最高星往下的星级', () => {
+    expect(starsFrom(6)).toEqual([6, 5, 4, 3])
+    expect(starsFrom(5)).toEqual([5, 4, 3])
   })
 
   it('只有明日方舟有源石记录和资源换算；赠送的说明', () => {

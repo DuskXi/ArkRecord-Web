@@ -4,14 +4,17 @@ import { computed } from 'vue'
 import EChart from '@/components/charts/EChart.vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
-import { useChartTheme } from '@/composables/useChartTheme'
-import { formatPercent } from '@/lib/format'
+import { rarityColor, useChartTheme } from '@/composables/useChartTheme'
+import { formatPercent, rarityVar } from '@/lib/format'
+import { starsFrom } from '@/lib/game-profile'
 import { luckLabel } from '@/lib/stats/analyze'
 import { useRecords } from '@/composables/useRecords'
 
 const records = useRecords()
 const palette = useChartTheme()
 const a = computed(() => records.analysis)
+/** 最高星级：鹰角 6★，米哈游 5★ */
+const top = computed(() => records.profile.topStar)
 
 function axisStyle() {
   const p = palette.value
@@ -42,12 +45,12 @@ const pityOption = computed<EChartsOption>(() => {
     xAxis: { type: 'category', data: labels, ...axisStyle() },
     yAxis: { type: 'value', minInterval: 1, ...axisStyle() },
     series: [
-      { name: '你的 6★', type: 'bar', data: actual, itemStyle: { color: p.rarity6, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 28 },
+      { name: `你的 ${top.value}★`, type: 'bar', data: actual, itemStyle: { color: rarityColor(p, top.value), borderRadius: [3, 3, 0, 0] }, barMaxWidth: 28 },
       // 没有概率模型（终末地武器池）时不画理论曲线
       ...(dist
         ? [
             {
-              name: '理论期望',
+              name: records.model.derived ? '理论期望（推算）' : '理论期望',
               type: 'line' as const,
               data: expected.map((v) => Number(v.toFixed(2))),
               symbol: 'none',
@@ -80,7 +83,15 @@ const monthlyOption = computed<EChartsOption>(() => {
     ],
     series: [
       { name: '抽数', type: 'bar', data: months.map((m) => a.value.perMonth.get(m) ?? 0), itemStyle: { color: p.primary, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 22 },
-      { name: '6★', type: 'line', yAxisIndex: 1, data: months.map((m) => sixByMonth.get(m) ?? 0), symbolSize: 6, lineStyle: { color: p.rarity6 }, itemStyle: { color: p.rarity6 } },
+      {
+        name: `${top.value}★`,
+        type: 'line',
+        yAxisIndex: 1,
+        data: months.map((m) => sixByMonth.get(m) ?? 0),
+        symbolSize: 6,
+        lineStyle: { color: rarityColor(p, top.value) },
+        itemStyle: { color: rarityColor(p, top.value) },
+      },
     ],
   }
 })
@@ -89,15 +100,15 @@ const monthlyOption = computed<EChartsOption>(() => {
 const expectedRates = computed(() => {
   const dist = records.model.dist
   if (!dist) return null
-  const six = 1 / dist.mean
-  return records.profile.rarityRates(six)
+  return records.profile.rarityRates(1 / dist.mean)
 })
+/** 星级分布列出的星级：鹰角 6 / 5 / 4 / 3，米哈游 5 / 4 / 3 */
+const rarityRows = computed(() => starsFrom(top.value))
 const rarityOption = computed<EChartsOption>(() => {
   const p = palette.value
-  const colors: Record<number, string> = { 6: p.rarity6, 5: p.rarity5, 4: p.rarity4, 3: p.rarity3 }
-  const data = ([6, 5, 4, 3] as const)
+  const data = rarityRows.value
     .filter((s) => a.value.stars[s] > 0)
-    .map((s) => ({ name: `${s}★`, value: a.value.stars[s], itemStyle: { color: colors[s] } }))
+    .map((s) => ({ name: `${s}★`, value: a.value.stars[s], itemStyle: { color: rarityColor(p, s) } }))
   return {
     tooltip: { trigger: 'item', formatter: '{b}：{c}（{d}%）' },
     series: [
@@ -139,18 +150,27 @@ const families = computed(() => {
         <div class="rounded-(--ui-radius) border border-default p-5 lg:col-span-1">
           <p class="eyebrow">LUCK PERCENTILE</p>
           <p class="mt-2 font-display text-5xl font-semibold text-highlighted">{{ a.luck === null ? '—' : formatPercent(a.luck, 0) }}</p>
-          <p class="mt-1 text-sm font-medium" style="color: var(--color-rarity-6)">{{ luck.text }}</p>
-          <p v-if="records.model.dist" class="mt-3 text-xs leading-relaxed text-muted">
-            根据游戏的保底规则精确计算：和同样出了 {{ a.mainIntervals.length }} 个 6★ 的理论玩家相比，你花的总抽数比这个比例的人更少。
-            50% 表示正好符合期望。计算全部在你的浏览器里完成，不依赖任何人的数据。
+          <p class="mt-1 text-sm font-medium" :style="{ color: rarityVar(top) }">{{ luck.text }}</p>
+          <template v-if="records.model.dist">
+            <p v-if="records.model.derived" class="mt-3 text-xs leading-relaxed text-muted">
+              按官方公布的基础概率、综合概率和保底推算出的理论分布计算（推算，非官方）：和同样出了 {{ a.mainIntervals.length }} 个 {{ top }}★
+              的理论玩家相比，你花的总抽数比这个比例的人更少。50% 表示正好符合期望。计算全部在这台电脑上完成，不依赖任何人的数据。
+            </p>
+            <p v-else class="mt-3 text-xs leading-relaxed text-muted">
+              根据游戏的保底规则精确计算：和同样出了 {{ a.mainIntervals.length }} 个 6★ 的理论玩家相比，你花的总抽数比这个比例的人更少。
+              50% 表示正好符合期望。计算全部在你的浏览器里完成，不依赖任何人的数据。
+            </p>
+          </template>
+          <p v-else-if="records.model.derived" class="mt-3 text-xs leading-relaxed text-muted">
+            按官方公布的数字推算不出可靠的概率分布，因此不计算运气百分位和理论分布。
           </p>
           <p v-else class="mt-3 text-xs leading-relaxed text-muted">
             武器池只公布了“{{ records.model.hardPity }} 抽内必出 6★”，没有可靠的基础概率，因此不计算运气百分位和理论分布。
           </p>
         </div>
         <div class="rounded-(--ui-radius) border border-default p-4 lg:col-span-2">
-          <p class="eyebrow">6★ PITY DISTRIBUTION</p>
-          <p class="text-sm font-medium text-highlighted">每个 6★ 花了多少抽</p>
+          <p class="eyebrow">{{ top }}★ PITY DISTRIBUTION</p>
+          <p class="text-sm font-medium text-highlighted">每个 {{ top }}★ 花了多少抽</p>
           <EChart :option="pityOption" height="240px" />
         </div>
       </section>
@@ -162,7 +182,7 @@ const families = computed(() => {
             <thead class="bg-elevated/50 text-left text-xs text-muted">
               <tr>
                 <th class="px-4 py-2 font-medium">分组</th>
-                <th class="px-4 py-2 text-right font-medium">6★</th>
+                <th class="px-4 py-2 text-right font-medium">{{ top }}★</th>
                 <th class="px-4 py-2 text-right font-medium">平均抽数</th>
                 <th class="px-4 py-2 text-right font-medium">最欧</th>
                 <th class="px-4 py-2 text-right font-medium">最非</th>
@@ -192,13 +212,14 @@ const families = computed(() => {
           <p class="text-sm font-medium text-highlighted">星级分布</p>
           <EChart :option="rarityOption" height="200px" />
           <ul class="mt-2 space-y-1 text-xs">
-            <li v-for="s in [6, 5, 4, 3] as const" :key="s" class="flex justify-between text-muted">
+            <li v-for="s in rarityRows" :key="s" class="flex justify-between text-muted">
               <span>{{ s }}★ 实际 / 理论</span>
               <span class="font-display">
-                {{ a.total ? formatPercent(a.stars[s] / a.total, 2) : '—' }} / {{ expectedRates ? formatPercent(expectedRates[s], 2) : '—' }}
+                {{ a.total ? formatPercent(a.stars[s] / a.total, 2) : '—' }} / {{ expectedRates?.[s] != null ? formatPercent(expectedRates[s], 2) : '—' }}
               </span>
             </li>
           </ul>
+          <p v-if="records.model.derived && expectedRates" class="mt-2 text-[11px] text-dimmed">理论占比按官方数字推算，非官方。</p>
         </div>
       </section>
     </div>

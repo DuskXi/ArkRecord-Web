@@ -5,7 +5,8 @@ import { akAvatarUrl, efAvatarUrl } from '@/lib/meta'
 import { useAppStore } from '@/stores/app'
 
 const props = withDefaults(
-  defineProps<{ charId?: string | null; name: string; star: number; size?: number; game?: 'arknights' | 'endfield' }>(),
+  /** game：头像按哪个游戏的数据取；没有头像数据的游戏（米哈游）只显示名字 */
+  defineProps<{ charId?: string | null; name: string; star: number; size?: number; game?: string }>(),
   { size: 48, game: 'arknights' },
 )
 const app = useAppStore()
@@ -17,7 +18,9 @@ watch(
 )
 const src = computed(() => {
   if (failed.value) return undefined
-  return props.game === 'arknights' ? akAvatarUrl(props.charId, app.akAvatars) : efAvatarUrl(props.charId, app.efAvatars)
+  if (props.game === 'arknights') return akAvatarUrl(props.charId, app.akAvatars)
+  if (props.game === 'endfield') return efAvatarUrl(props.charId, app.efAvatars)
+  return undefined
 })
 </script>
 

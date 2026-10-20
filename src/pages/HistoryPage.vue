@@ -10,13 +10,26 @@ import type { PullEvent } from '@/lib/stats/events'
 import type { GiftEvent } from '@/lib/stats/gifts'
 import { type Batch, bestStar, groupBatches } from '@/lib/stats/insights'
 import { useRecords } from '@/composables/useRecords'
+import { starsFrom } from '@/lib/game-profile'
 
 const records = useRecords()
+/** 最高星级：鹰角 6★，米哈游 5★ */
+const top = computed(() => records.profile.topStar)
+/** 最高星的十连卡片：底色和边框（类名要写全，构建时才能扫描到） */
+const TOP_BATCH: Record<number, string> = {
+  6: 'rarity-tint-6 border-[color-mix(in_oklab,var(--color-rarity-6)_45%,transparent)]',
+  5: 'rarity-tint-5 border-[color-mix(in_oklab,var(--color-rarity-5)_45%,transparent)]',
+}
+const TOP_RING: Record<number, string> = {
+  6: 'ring-2 ring-(--color-rarity-6) ring-offset-1 ring-offset-(--ui-bg)',
+  5: 'ring-2 ring-(--color-rarity-5) ring-offset-1 ring-offset-(--ui-bg)',
+}
 
 const view = useLocalStorage<'batch' | 'list'>('arkrecord:history-view', 'batch')
 /** 终末地没有 3★ */
 const starOptions = computed(() => [...records.profile.stars])
-const stars = ref<number[]>([6, 5, 4, 3])
+const stars = ref<number[]>([...records.profile.stars])
+watch(starOptions, (options) => (stars.value = [...options]))
 const pool = ref<string | undefined>()
 const search = ref('')
 const onlyNew = ref(false)
@@ -69,13 +82,13 @@ const summary = computed(() => {
   let off = 0
   for (const e of filtered.value) {
     counts[e.star] = (counts[e.star] ?? 0) + 1
-    if (e.star === 6 && e.isUp === true) up++
-    if (e.star === 6 && e.isUp === false) off++
+    if (e.star === top.value && e.isUp === true) up++
+    if (e.star === top.value && e.isUp === false) off++
   }
   const total = filtered.value.length
   const gifts = shownGifts.value.length
   const inferred = shownGifts.value.filter((g) => g.inferred).length
-  return { total, counts, up, off, gifts, inferred, segments: [6, 5, 4, 3].map((s) => ({ star: s, share: total ? (counts[s] ?? 0) / total : 0 })) }
+  return { total, counts, up, off, gifts, inferred, segments: starsFrom(top.value).map((s) => ({ star: s, share: total ? (counts[s] ?? 0) / total : 0 })) }
 })
 
 // ── 按批次（十连 / 单抽）查看 ──
@@ -110,8 +123,8 @@ const days = computed<DayGroup[]>(() => {
     if (item.type === 'gift') continue
     const b = item.batch
     group.pulls += b.events.length
-    group.six += b.events.filter((e) => e.star === 6).length
-    group.five += b.events.filter((e) => e.star === 5).length
+    group.six += b.events.filter((e) => e.star === top.value).length
+    group.five += b.events.filter((e) => e.star === top.value - 1).length
   }
   return out
 })
@@ -130,19 +143,21 @@ useIntersectionObserver(
 
 function batchClass(b: Batch): string {
   const best = bestStar(b)
-  return best === 6 ? 'rarity-tint-6 border-[color-mix(in_oklab,var(--color-rarity-6)_45%,transparent)]' : best === 5 ? 'rarity-tint-5' : ''
+  if (best === top.value) return TOP_BATCH[top.value] ?? ''
+  // 鹰角的 5★ 也有浅色底；米哈游的 4★ 几乎每个十连都有，不加
+  return top.value === 6 && best === 5 ? 'rarity-tint-5' : ''
 }
 
 // ── 列表 ──
 /** 列表的一行：一次抽取，或者一条赠送（gift） */
 type Row = Pick<PullEvent, 'key' | 'ts' | 'itemId' | 'name' | 'star' | 'poolName' | 'isNew' | 'isUp'> & { order: number; gift?: GiftEvent }
-const columns: TableColumn<Row>[] = [
+const columns = computed<TableColumn<Row>[]>(() => [
   { accessorKey: 'ts', header: '时间', meta: { class: { td: 'w-40 font-display text-xs text-muted tabular-nums' } } },
-  { accessorKey: 'name', header: '干员' },
+  { accessorKey: 'name', header: records.profile.nouns.char },
   { accessorKey: 'star', header: '星级', meta: { class: { td: 'w-24 max-sm:hidden', th: 'max-sm:hidden' } } },
   { accessorKey: 'poolName', header: '卡池', meta: { class: { th: 'max-md:hidden', td: 'max-md:hidden' } } },
   { id: 'pity', header: '保底', meta: { class: { td: 'w-20 text-right', th: 'text-right' } } },
-]
+])
 const rows = computed<Row[]>(() =>
   [
     ...filtered.value,
@@ -159,7 +174,7 @@ function toggleStar(s: number) {
 </script>
 
 <template>
-  <PageShell id="history" title="寻访记录" eyebrow="RECORDS">
+  <PageShell id="history" :title="records.profile.recordName" eyebrow="RECORDS">
     <div class="space-y-4">
       <div class="flex flex-wrap items-center gap-2">
         <UFieldGroup>
@@ -175,7 +190,7 @@ function toggleStar(s: number) {
           />
         </UFieldGroup>
         <USelectMenu v-model="pool" :items="poolOptions" value-key="value" placeholder="全部卡池" class="w-56" size="sm" />
-        <UInput v-model="search" icon="i-lucide-search" placeholder="搜索干员或卡池" size="sm" class="w-44" />
+        <UInput v-model="search" icon="i-lucide-search" :placeholder="`搜索${records.profile.nouns.char}或卡池`" size="sm" class="w-44" />
         <UButton
           label="只看 NEW"
           size="sm"
@@ -217,11 +232,11 @@ function toggleStar(s: number) {
             <p class="font-display text-xs font-semibold" :style="{ color: rarityTextVar(s) }">{{ s }}★</p>
             <p class="font-display text-lg font-semibold text-highlighted">
               {{ summary.counts[s] ?? 0 }}
-              <span class="text-xs font-normal text-muted">{{ summary.total ? formatPercent((summary.counts[s] ?? 0) / summary.total, s >= 5 ? 2 : 1) : '' }}</span>
+              <span class="text-xs font-normal text-muted">{{ summary.total ? formatPercent((summary.counts[s] ?? 0) / summary.total, s >= top - 1 ? 2 : 1) : '' }}</span>
             </p>
           </div>
           <div v-if="summary.up + summary.off" class="text-xs text-muted">
-            6★ 中 <b class="text-primary">{{ summary.up }}</b> 个 UP，<b class="text-highlighted">{{ summary.off }}</b> 个歪
+            {{ top }}★ 中 <b class="text-primary">{{ summary.up }}</b> 个 UP，<b class="text-highlighted">{{ summary.off }}</b> 个歪
           </div>
           <div v-if="summary.gifts" class="text-xs text-muted">
             另有赠送 <b class="text-highlighted">{{ summary.gifts }}</b> 个<template v-if="summary.inferred">（其中 {{ summary.inferred }} 个按规则推算）</template>，不是抽出来的，不计入上面的统计
@@ -240,8 +255,8 @@ function toggleStar(s: number) {
             <h3 class="text-sm font-semibold text-highlighted">{{ formatDayHeader(d.ts) }}</h3>
             <p class="font-display text-xs text-muted">
               {{ d.pulls }} 抽
-              <span v-if="d.six" :style="{ color: rarityTextVar(6) }"> · 6★ ×{{ d.six }}</span>
-              <span v-if="d.five" :style="{ color: rarityTextVar(5) }"> · 5★ ×{{ d.five }}</span>
+              <span v-if="d.six" :style="{ color: rarityTextVar(top) }"> · {{ top }}★ ×{{ d.six }}</span>
+              <span v-if="d.five" :style="{ color: rarityTextVar(top - 1) }"> · {{ top - 1 }}★ ×{{ d.five }}</span>
             </p>
           </header>
           <div class="space-y-2">
@@ -299,7 +314,7 @@ function toggleStar(s: number) {
                         :size="56"
                         :game="records.game"
                         class="aspect-square !size-full sm:!size-14"
-                        :class="e.star === 6 ? 'ring-2 ring-(--color-rarity-6) ring-offset-1 ring-offset-(--ui-bg)' : ''"
+                        :class="e.star === top ? TOP_RING[top] : ''"
                       />
                       <span
                         v-if="pityByKey.get(e.key)"
@@ -310,7 +325,7 @@ function toggleStar(s: number) {
                       </span>
                       <span v-if="e.isNew" class="absolute top-1 left-1 size-1.5 rounded-full bg-error ring-2 ring-(--ui-bg)" title="NEW" />
                       <span
-                        v-if="e.star === 6 && e.isUp !== null"
+                        v-if="e.star === top && e.isUp !== null"
                         class="absolute bottom-1 left-0.5 rounded-sm px-1 text-[9px] font-medium text-white"
                         :class="e.isUp ? 'bg-primary' : 'bg-zinc-600'"
                       >
@@ -319,8 +334,8 @@ function toggleStar(s: number) {
                     </div>
                     <p
                       class="mt-0.5 hidden w-14 truncate text-center text-[10px] sm:block"
-                      :class="e.star >= 5 ? 'font-medium' : 'text-dimmed'"
-                      :style="e.star >= 5 ? { color: rarityTextVar(e.star) } : undefined"
+                      :class="e.star >= top - 1 ? 'font-medium' : 'text-dimmed'"
+                      :style="e.star >= top - 1 ? { color: rarityTextVar(e.star) } : undefined"
                     >
                       {{ e.name }}
                     </p>
@@ -350,7 +365,7 @@ function toggleStar(s: number) {
         <template #name-cell="{ row }">
           <div class="flex items-center gap-2.5">
             <CharAvatar :char-id="row.original.itemId" :name="row.original.name" :star="row.original.star" :size="32" :game="records.game" />
-            <span class="truncate" :class="row.original.star >= 5 ? 'font-semibold' : 'font-medium'" :style="row.original.star >= 5 ? { color: rarityTextVar(row.original.star) } : undefined">
+            <span class="truncate" :class="row.original.star >= top - 1 ? 'font-semibold' : 'font-medium'" :style="row.original.star >= top - 1 ? { color: rarityTextVar(row.original.star) } : undefined">
               {{ row.original.name }}
             </span>
             <UBadge v-if="row.original.isNew" label="NEW" color="error" variant="subtle" size="sm" class="font-display" />
@@ -363,7 +378,7 @@ function toggleStar(s: number) {
               :title="giftTitle(row.original.gift)"
             />
             <UBadge
-              v-if="row.original.star === 6 && row.original.isUp !== null"
+              v-if="row.original.star === top && row.original.isUp !== null"
               :label="row.original.isUp ? 'UP' : '歪'"
               :color="row.original.isUp ? 'primary' : 'neutral'"
               variant="subtle"

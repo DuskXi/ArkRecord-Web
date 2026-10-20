@@ -331,6 +331,8 @@ const SIDEBAR_STATE = `
     mhyNav: navText('[aria-label="米哈游导航"]'),
     hgNav: navText('[aria-label="鹰角导航"]').includes('寻访记录'),
     read: document.body.innerText.includes('从游戏缓存读取'),
+    // 有记录时读取面板收进页面右上角的“读取”按钮（MhyReadButton）
+    readButton: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '读取'),
     empty: document.body.innerText.includes('还没有原神的抽卡记录'),
     warp: document.body.innerText.includes('跃迁记录'),
   }
@@ -343,6 +345,7 @@ interface SidebarState {
   mhyNav: string
   hgNav: boolean
   read: boolean
+  readButton: boolean
   empty: boolean
   warp: boolean
 }
@@ -370,7 +373,7 @@ async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>
       await shot(win.webContents, 'genshin-data')
     }
   }
-  const records = await state(`[...document.querySelectorAll('[aria-label="米哈游导航"] a')].find((a) => a.textContent.trim() === '记录')?.click()
+  const records = await state(`[...document.querySelectorAll('[aria-label="米哈游导航"] a')].find((a) => a.textContent.trim() === '祈愿记录')?.click()
     await new Promise((resolve) => setTimeout(resolve, 800))`)
   if (SHOTS_DIR && devPage(win)) {
     await shot(win.webContents, 'genshin-list')
@@ -387,18 +390,19 @@ async function probeVendors(win: BrowserWindow): Promise<Record<string, boolean>
 
   return {
     '厂商切换有鹰角和米哈游两项': mhy.vendor.items.join('/') === '鹰角/米哈游',
-    '切到米哈游：游戏切换里是原神和星铁，先进原神，侧边栏是米哈游的（统计 / 记录，没有鹰角的导航）':
+    '切到米哈游：游戏切换里是原神和星铁，先进原神，侧边栏是米哈游的（总览 / 祈愿记录 / 高级统计等，没有鹰角的导航）':
       mhy.path === '/genshin' &&
       mhy.vendor.active === '米哈游' &&
       mhy.game.items.join('/') === '原神/星铁' &&
       mhy.game.active === '原神' &&
-      mhy.mhyNav.includes('统计') &&
-      mhy.mhyNav.includes('记录') &&
+      mhy.mhyNav.includes('总览') &&
+      mhy.mhyNav.includes('祈愿记录') &&
+      mhy.mhyNav.includes('高级统计') &&
       !mhy.hgNav &&
       mhy.read,
-    '米哈游的“记录”页（也有读取面板）': records.path === '/genshin/records' && records.read,
+    '米哈游的“记录”页（没有记录时是读取面板，有记录时右上角有“读取”）': records.path === '/genshin/records' && (records.read || records.readButton),
     '星铁：/starrail，界面说的是“跃迁记录”，侧边栏是米哈游的':
-      starrail.path === '/starrail' && starrail.game.active === '星铁' && starrail.warp && starrail.read && starrail.mhyNav.includes('统计'),
+      starrail.path === '/starrail' && starrail.game.active === '星铁' && starrail.warp && starrail.read && starrail.mhyNav.includes('跃迁记录'),
     '再切到米哈游，回到上次看的星铁': mhyAgain.path === '/starrail' && mhyAgain.game.active === '星铁',
     '切回鹰角：回到总览，还是之前选的终末地，侧边栏是鹰角的':
       hgStart.game.active === '终末地' &&

@@ -5,17 +5,20 @@ import PityCard from '@/components/ui/PityCard.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
 import SixStarWall from '@/components/ui/SixStarWall.vue'
 import StatTile from '@/components/ui/StatTile.vue'
-import { formatDate, formatNumber, formatPercent } from '@/lib/format'
+import { formatDate, formatNumber, formatPercent, rarityVar } from '@/lib/format'
 import { luckLabel } from '@/lib/stats/analyze'
 import { useAppStore } from '@/stores/app'
-import { useRecords } from '@/composables/useRecords'
+import { useRecords, useRecordsHost } from '@/composables/useRecords'
 
 // 图表库较大，异步加载，不阻塞首屏
 const CalendarHeatmap = defineAsyncComponent(() => import('@/components/charts/CalendarHeatmap.vue'))
 
 const app = useAppStore()
 const records = useRecords()
+const host = useRecordsHost()
 const a = computed(() => records.analysis)
+/** 最高星级：鹰角 6★，米哈游 5★ */
+const top = computed(() => records.profile.topStar)
 
 const RECENT = 21 * 86_400_000
 const pityCards = computed(() =>
@@ -27,12 +30,12 @@ const pityCards = computed(() =>
 const luck = computed(() => luckLabel(a.value.luck))
 const luckColor = computed(
   () =>
-    ({ great: 'var(--color-rarity-6)', good: 'var(--color-rarity-5)', neutral: undefined, bad: 'var(--color-sky-500)', awful: 'var(--color-zinc-400)' })[
+    ({ great: rarityVar(top.value), good: rarityVar(top.value - 1), neutral: undefined, bad: 'var(--color-sky-500)', awful: 'var(--color-zinc-400)' })[
       luck.value.tone
     ],
 )
 /** 累计寻访赠送的 6★（不是抽出来的，不计入统计） */
-const giftedSix = computed(() => records.gifts.filter((g) => g.copy && g.star === 6))
+const giftedSix = computed(() => records.gifts.filter((g) => g.copy && g.star === top.value))
 const currency = computed(() => records.profile.spendNote(a.value.total))
 </script>
 
@@ -41,9 +44,9 @@ const currency = computed(() => records.profile.spendNote(a.value.total))
     <div v-if="a.total === 0" class="mt-10">
       <UEmpty
         icon="i-lucide-inbox"
-        title="还没有寻访记录"
-        description="点击右上角的“同步”从鹰角服务器拉取最近 90 天的记录，或在“数据”页导入旧数据。"
-        :actions="[{ label: '去导入', icon: 'i-lucide-upload', to: '/data', color: 'neutral', variant: 'outline' }]"
+        :title="`还没有${records.profile.recordName}`"
+        :description="records.profile.emptyHint.description"
+        :actions="records.profile.emptyHint.importLink ? [{ label: '去导入', icon: 'i-lucide-upload', to: '/data', color: 'neutral', variant: 'outline' }] : []"
       />
     </div>
 
@@ -51,7 +54,7 @@ const currency = computed(() => records.profile.spendNote(a.value.total))
       <div class="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p class="eyebrow">{{ records.profile.playerTitle }}</p>
-          <p class="text-2xl font-semibold text-highlighted">{{ app.activeAccount?.nickName }}</p>
+          <p class="text-2xl font-semibold text-highlighted">{{ host ? host.playerName : app.activeAccount?.nickName }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <p v-if="a.firstTs && a.lastTs" class="text-xs text-muted">
@@ -65,28 +68,28 @@ const currency = computed(() => records.profile.spendNote(a.value.total))
       <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatTile label="TOTAL PULLS" :value="formatNumber(a.total)" :hint="currency" icon="i-lucide-sigma" />
         <StatTile
-          :label="`6★ ${records.weaponScope ? records.profile.nouns.weaponEn : records.profile.nouns.charEn}`"
-          :value="a.stars[6]"
-          :hint="a.total ? `出货率 ${formatPercent(a.stars[6] / a.total, 2)}${giftedSix.length ? ` · 另有赠送 ${giftedSix.length}` : ''}` : ''"
+          :label="`${top}★ ${records.weaponScope ? records.profile.nouns.weaponEn : records.profile.nouns.charEn}`"
+          :value="a.stars[top]"
+          :hint="a.total ? `出货率 ${formatPercent(a.stars[top] / a.total, 2)}${giftedSix.length ? ` · 另有赠送 ${giftedSix.length}` : ''}` : ''"
           icon="i-lucide-star"
-          accent="var(--color-rarity-6)"
+          :accent="rarityVar(top)"
         />
         <StatTile
-          label="AVG PER 6★"
+          :label="`AVG PER ${top}★`"
           :value="a.avgPerSix ? a.avgPerSix.toFixed(1) : '—'"
-          :hint="records.model.dist ? `理论期望 ${records.model.dist.mean.toFixed(2)} 抽` : `${records.model.hardPity} 抽内必出 6★`"
+          :hint="records.model.dist ? `理论期望 ${records.model.dist.mean.toFixed(2)} 抽${records.model.derived ? '（推算）' : ''}` : `${records.model.hardPity} 抽内必出 ${top}★`"
           icon="i-lucide-gauge"
         />
         <StatTile
           label="UP WIN RATE"
           :value="a.upTotal ? formatPercent(a.upWins / a.upTotal, 0) : '—'"
-          :hint="a.upTotal ? `${a.upWins} / ${a.upTotal} 个 6★ 为当期 UP` : 'UP 名单未知'"
+          :hint="a.upTotal ? `${a.upWins} / ${a.upTotal} 个 ${top}★ 为当期 UP` : 'UP 名单未知'"
           icon="i-lucide-target"
         />
         <StatTile
           label="LUCK"
           :value="a.luck === null ? '—' : formatPercent(a.luck, 0)"
-          :hint="!records.model.dist ? '武器池不计算运气' : a.luck === null ? '还没有出过 6★' : `${luck.text} · 比这个比例的玩家更欧`"
+          :hint="!records.model.dist ? (records.model.derived ? '没有可靠的概率分布，不计算运气' : '武器池不计算运气') : a.luck === null ? `还没有出过 ${top}★` : `${luck.text} · ${records.model.derived ? '推算，非官方' : '比这个比例的玩家更欧'}`"
           icon="i-lucide-sparkles"
           :accent="luckColor"
           class="col-span-2 md:col-span-1"
@@ -117,10 +120,10 @@ const currency = computed(() => records.profile.spendNote(a.value.total))
       </section>
 
       <section>
-        <SectionHeader index="03" eyebrow="RECENT 6★" title="最近的 6★">
-          <UButton to="/timeline" label="时间线" variant="link" trailing-icon="i-lucide-arrow-right" />
+        <SectionHeader index="03" :eyebrow="`RECENT ${top}★`" :title="`最近的 ${top}★`">
+          <UButton :to="`${host?.base ?? ''}/timeline`" label="时间线" variant="link" trailing-icon="i-lucide-arrow-right" />
         </SectionHeader>
-        <SixStarWall :hits="a.hits" :gifts="giftedSix" :hard-pity="records.model.hardPity" :game="records.game" :limit="12" />
+        <SixStarWall :hits="a.hits" :gifts="giftedSix" :hard-pity="records.model.hardPity" :game="records.game" :top="top" :limit="12" />
         <p v-if="giftedSix.length" class="mt-2 flex items-center gap-1.5 text-xs text-muted">
           <UIcon name="i-lucide-gift" class="size-3.5 text-amber-500" />
           虚线框、标着“赠”的是累计寻访赠送的（{{ records.profile.giftNote }}），不是抽出来的，不计入出货统计。

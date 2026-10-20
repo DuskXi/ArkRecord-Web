@@ -70,6 +70,11 @@ export function useChartTheme() {
   return palette
 }
 
+/** 星级对应的图表颜色（和 lib/format.ts 的 rarityVar 一致） */
+export function rarityColor(p: ChartPalette, star: number): string {
+  return star >= 6 ? p.rarity6 : star === 5 ? p.rarity5 : star === 4 ? p.rarity4 : p.rarity3
+}
+
 /** 坐标轴的统一样式 */
 export function axisStyle(p: ChartPalette) {
   return {

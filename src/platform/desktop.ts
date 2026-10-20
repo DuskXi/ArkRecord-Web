@@ -21,9 +21,20 @@ export const EXTRA_VENDORS: ExtraVendor[] = [
   },
 ]
 
-export const EXTRA_ROUTES: RouteRecordRaw[] = [
-  { path: '/genshin', name: 'genshin', component: MhyGamePage, props: { game: 'genshin', view: 'stats' } },
-  { path: '/genshin/records', name: 'genshin-records', component: MhyGamePage, props: { game: 'genshin', view: 'records' } },
-  { path: '/starrail', name: 'starrail', component: MhyGamePage, props: { game: 'starrail', view: 'stats' } },
-  { path: '/starrail/records', name: 'starrail-records', component: MhyGamePage, props: { game: 'starrail', view: 'records' } },
-]
+/** 米哈游每个游戏的页面：都是 MhyGamePage，里面用鹰角的统计页面；路径和 MhySidebar 的导航对应 */
+const VIEWS = [
+  { path: '', view: 'overview' },
+  { path: '/records', view: 'history' },
+  { path: '/analysis', view: 'analysis' },
+  { path: '/stats', view: 'stats' },
+  { path: '/timeline', view: 'timeline' },
+] as const
+
+export const EXTRA_ROUTES: RouteRecordRaw[] = (['genshin', 'starrail'] as const).flatMap((game) =>
+  VIEWS.map(({ path, view }) => ({
+    path: `/${game}${path}`,
+    name: path ? `${game}-${view}` : game,
+    component: MhyGamePage,
+    props: { game, view },
+  })),
+)

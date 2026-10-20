@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRecords, useRecordsHost } from '@/composables/useRecords'
 import { useAppStore } from '@/stores/app'
 import { GAME_LABEL } from '@/lib/types'
 import CloudStatusButton from './CloudStatusButton.vue'
@@ -16,6 +17,9 @@ withDefaults(
   },
 )
 const app = useAppStore()
+const records = useRecords()
+/** 别的记录来源（米哈游）的页面：不显示鹰角的同步、云同步、演示数据提示和“添加账号”，右上角换成它自己的按钮 */
+const host = useRecordsHost()
 </script>
 
 <template>
@@ -29,19 +33,20 @@ const app = useAppStore()
           </div>
         </template>
         <template #right>
-          <ScopeSwitch v-if="scoped && app.game === 'endfield' && app.activeAccount" />
+          <ScopeSwitch v-if="scoped && records.profile.hasScope && records.accountId" />
           <slot name="actions" />
-          <CloudStatusButton v-if="sync && app.activeAccount" />
-          <SyncButton v-if="sync && app.activeAccount" />
+          <component :is="host.actions" v-if="sync && host?.actions" />
+          <CloudStatusButton v-if="sync && !host && app.activeAccount" />
+          <SyncButton v-if="sync && !host && app.activeAccount" />
         </template>
       </UDashboardNavbar>
-      <DemoBanner />
+      <DemoBanner v-if="!host" />
     </template>
 
     <template #body>
       <div class="mx-auto w-full max-w-screen-2xl pb-24 lg:pb-6">
         <UEmpty
-          v-if="requireAccount && !app.activeAccount"
+          v-if="requireAccount && !host && !app.activeAccount"
           icon="i-lucide-user-round-plus"
           :title="`还没有添加${GAME_LABEL[app.game]}账号`"
           description="粘贴鹰角通行证的账号 token 即可同步寻访记录。所有数据只保存在你的浏览器里。"

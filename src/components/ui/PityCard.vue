@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRecords } from '@/composables/useRecords'
+import { rarityVar } from '@/lib/format'
 import type { PityState } from '@/lib/stats/analyze'
 
 const props = defineProps<{ state: PityState }>()
+const records = useRecords()
 const pct = computed(() => Math.min(100, (props.state.current / props.state.hardPity) * 100))
 const softPct = computed(() => (props.state.softPity / props.state.hardPity) * 100)
 const hasSoft = computed(() => props.state.softPity < props.state.hardPity)
@@ -27,7 +30,7 @@ const inSoft = computed(() => hasSoft.value && props.state.current >= props.stat
     <div class="relative mt-3 h-2 overflow-hidden rounded-full bg-elevated">
       <div
         class="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
-        :style="{ width: `${pct}%`, background: inSoft ? 'var(--color-rarity-6)' : 'var(--ui-primary)' }"
+        :style="{ width: `${pct}%`, background: inSoft ? rarityVar(records.profile.topStar) : 'var(--ui-primary)' }"
       />
       <div v-if="hasSoft" class="absolute inset-y-0 w-px bg-(--ui-text-dimmed)" :style="{ left: `${softPct}%` }" />
     </div>
@@ -38,11 +41,11 @@ const inSoft = computed(() => hasSoft.value && props.state.current >= props.stat
     </div>
 
     <p v-if="state.expectedMedian === null" class="mt-3 text-xs text-muted">
-      最多再抽 <span class="font-display text-sm text-highlighted">{{ state.hardPity - state.current }}</span> 抽必出 6★
+      最多再抽 <span class="font-display text-sm text-highlighted">{{ state.hardPity - state.current }}</span> 抽必出 {{ records.profile.topStar }}★
     </p>
     <p v-else class="mt-3 text-xs text-muted">
       预计还需 <span class="font-display text-sm text-highlighted">{{ state.expectedMedian }}</span> 抽（中位数），
-      90% 的情况下不超过 <span class="font-display text-sm text-highlighted">{{ state.expectedP90 }}</span> 抽
+      90% 的情况下不超过 <span class="font-display text-sm text-highlighted">{{ state.expectedP90 }}</span> 抽<template v-if="records.model.derived">（按官方数字推算，非官方）</template>
     </p>
     <p class="mt-1 truncate text-xs text-dimmed">最近：{{ state.lastPoolName }}</p>
   </div>

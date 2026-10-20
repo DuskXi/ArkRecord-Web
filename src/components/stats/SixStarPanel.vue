@@ -3,8 +3,8 @@ import type { EChartsOption } from 'echarts'
 import { computed } from 'vue'
 import EChart from '@/components/charts/EChart.vue'
 import SectionHeader from '@/components/ui/SectionHeader.vue'
-import { axisStyle, useChartTheme } from '@/composables/useChartTheme'
-import { formatDateTime, formatPercent } from '@/lib/format'
+import { axisStyle, rarityColor, useChartTheme } from '@/composables/useChartTheme'
+import { formatDateTime, formatPercent, rarityVar } from '@/lib/format'
 import { quantile } from '@/lib/stats/pity'
 import { analyzeUp, binPity, luckTrend } from '@/lib/stats/sixstar'
 import { useRecords } from '@/composables/useRecords'
@@ -12,6 +12,12 @@ import { useRecords } from '@/composables/useRecords'
 const records = useRecords()
 /** 明日方舟叫“出金”，终末地叫“出红” */
 const term = computed(() => records.profile.topTerm)
+/** 最高星级：鹰角 6★，米哈游 5★ */
+const top = computed(() => records.profile.topStar)
+/** 理论分布是按官方数字推算的（米哈游）：图例和说明里标注推算 */
+const derived = computed(() => !!records.model.derived)
+/** 有软保底（第 X 抽起概率上升）才显示相关的统计；米哈游没有官方的软保底 */
+const hasSoft = computed(() => records.model.softPity < records.model.hardPity)
 const palette = useChartTheme()
 const dist = computed(() => records.model.dist)
 const intervals = computed(() => records.analysis.mainIntervals)
@@ -41,9 +47,9 @@ const pityOption = computed<EChartsOption>(() => {
       { type: 'value', max: 100, ...axisStyle(p), splitLine: { show: false }, axisLabel: { color: p.dimmed, fontSize: 10, formatter: '{value}%' } },
     ],
     series: [
-      { name: '你的 6★', type: 'bar', data: b.actual, itemStyle: { color: p.rarity6, borderRadius: [2, 2, 0, 0] }, barMaxWidth: 18 },
+      { name: `你的 ${top.value}★`, type: 'bar', data: b.actual, itemStyle: { color: rarityColor(p, top.value), borderRadius: [2, 2, 0, 0] }, barMaxWidth: 18 },
       ...(b.expected
-        ? [{ name: '理论个数', type: 'line' as const, data: b.expected.map((v) => Number(v.toFixed(2))), symbol: 'none', itemStyle: { color: p.primary }, lineStyle: { color: p.primary, width: 2 } }]
+        ? [{ name: derived.value ? '理论个数（推算）' : '理论个数', type: 'line' as const, data: b.expected.map((v) => Number(v.toFixed(2))), symbol: 'none', itemStyle: { color: p.primary }, lineStyle: { color: p.primary, width: 2 } }]
         : []),
       {
         name: '你的累计',
@@ -52,10 +58,10 @@ const pityOption = computed<EChartsOption>(() => {
         step: 'end',
         data: pct(b.cdfActual),
         symbol: 'none',
-        itemStyle: { color: p.rarity6 }, lineStyle: { color: p.rarity6, width: 1.5, type: 'dashed' },
+        itemStyle: { color: rarityColor(p, top.value) }, lineStyle: { color: rarityColor(p, top.value), width: 1.5, type: 'dashed' },
       },
       ...(b.cdfTheory
-        ? [{ name: '理论累计', type: 'line' as const, yAxisIndex: 1, data: pct(b.cdfTheory), symbol: 'none', itemStyle: { color: p.primary }, lineStyle: { color: p.primary, width: 1.5, type: 'dashed' as const } }]
+        ? [{ name: derived.value ? '理论累计（推算）' : '理论累计', type: 'line' as const, yAxisIndex: 1, data: pct(b.cdfTheory), symbol: 'none', itemStyle: { color: p.primary }, lineStyle: { color: p.primary, width: 1.5, type: 'dashed' as const } }]
         : []),
     ],
   }
@@ -92,7 +98,7 @@ const sequenceOption = computed<EChartsOption>(() => {
         barMaxWidth: 18,
         data: seq.map(({ hit }) => ({
           value: hit.pity,
-          itemStyle: { color: hit.event.isUp === null ? p.rarity6 : hit.event.isUp ? p.primary : p.dimmed, borderRadius: [2, 2, 0, 0] },
+          itemStyle: { color: hit.event.isUp === null ? rarityColor(p, top.value) : hit.event.isUp ? p.primary : p.dimmed, borderRadius: [2, 2, 0, 0] },
         })),
         markLine: mean
           ? { symbol: 'none', label: { show: false }, lineStyle: { color: p.muted, type: 'dashed' }, data: [{ yAxis: Number(mean.toFixed(2)) }] }
@@ -118,7 +124,7 @@ const upOption = computed<EChartsOption>(() => {
       trigger: 'axis',
       formatter: (params) => {
         const k = ks[(params as unknown as { dataIndex: number }[])[0]?.dataIndex ?? 0] ?? 0
-        return `${u.total} 个 6★ 中恰有 <b>${k}</b> 个 UP<br/>理论概率 ${formatPercent(u.pmf[k] ?? 0, 2)}${k === u.wins ? '<br/><b>← 你的结果</b>' : ''}`
+        return `${u.total} 个 ${top.value}★ 中恰有 <b>${k}</b> 个 UP<br/>理论概率 ${formatPercent(u.pmf[k] ?? 0, 2)}${k === u.wins ? '<br/><b>← 你的结果</b>' : ''}`
       },
     },
     xAxis: { type: 'category', data: ks.map(String), name: 'UP 个数', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: p.dimmed, fontSize: 11 }, ...axisStyle(p) },
@@ -129,7 +135,7 @@ const upOption = computed<EChartsOption>(() => {
         barMaxWidth: 22,
         data: ks.map((k) => ({
           value: u.pmf[k] ?? 0,
-          itemStyle: { color: k === u.wins ? p.rarity6 : k < u.wins ? p.primary : p.border, borderRadius: [2, 2, 0, 0] },
+          itemStyle: { color: k === u.wins ? rarityColor(p, top.value) : k < u.wins ? p.primary : p.border, borderRadius: [2, 2, 0, 0] },
         })),
       },
     ],
@@ -137,7 +143,7 @@ const upOption = computed<EChartsOption>(() => {
 })
 
 // ── 欧非走势 ──
-const trend = computed(() => luckTrend(records.events, dist.value))
+const trend = computed(() => luckTrend(records.events, dist.value, undefined, top.value))
 const trendOption = computed<EChartsOption>(() => {
   const p = palette.value
   const t = trend.value
@@ -150,15 +156,23 @@ const trendOption = computed<EChartsOption>(() => {
         const point = t[(params as unknown as { dataIndex: number }[])[0]?.dataIndex ?? 0]
         if (!point) return ''
         const diff = point.actual - point.expected
-        return `第 ${point.pulls} 抽<br/>实际 6★ <b>${point.actual}</b> · 理论 ${point.expected.toFixed(1)}<br/>${diff >= 0 ? '多出' : '少了'} ${Math.abs(diff).toFixed(1)} 个`
+        return `第 ${point.pulls} 抽<br/>实际 ${top.value}★ <b>${point.actual}</b> · 理论 ${point.expected.toFixed(1)}<br/>${diff >= 0 ? '多出' : '少了'} ${Math.abs(diff).toFixed(1)} 个`
       },
     },
     xAxis: { type: 'category', data: t.map((x) => String(x.pulls)), ...axisStyle(p), axisLabel: { color: p.dimmed, fontSize: 10 } },
     yAxis: { type: 'value', ...axisStyle(p) },
     series: [
-      { name: '实际 6★', type: 'line', step: 'end', data: t.map((x) => x.actual), symbol: 'none', itemStyle: { color: p.rarity6 }, lineStyle: { color: p.rarity6, width: 2 } },
       {
-        name: '理论 6★',
+        name: `实际 ${top.value}★`,
+        type: 'line',
+        step: 'end',
+        data: t.map((x) => x.actual),
+        symbol: 'none',
+        itemStyle: { color: rarityColor(p, top.value) },
+        lineStyle: { color: rarityColor(p, top.value), width: 2 },
+      },
+      {
+        name: `理论 ${top.value}★${derived.value ? '（推算）' : ''}`,
         type: 'line',
         data: t.map((x) => Number(x.expected.toFixed(2))),
         symbol: 'none',
@@ -174,7 +188,7 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
 
 <template>
   <div class="space-y-10">
-    <p v-if="!intervals.length" class="py-10 text-center text-sm text-muted">还没有 6★ 记录</p>
+    <p v-if="!intervals.length" class="py-10 text-center text-sm text-muted">还没有 {{ top }}★ 记录</p>
     <template v-else>
       <section>
         <SectionHeader eyebrow="PITY DISTRIBUTION" :title="`${term}抽数分布`" />
@@ -183,12 +197,12 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
             <div class="rounded-(--ui-radius) border border-default p-4">
               <p class="eyebrow">YOUR MEDIAN</p>
               <p class="mt-1 font-display text-3xl font-semibold text-highlighted">{{ median ?? '—' }} <span class="text-sm font-normal text-muted">抽</span></p>
-              <p class="text-xs text-muted">一半的 6★ 在这个抽数之前出{{ theoryMedian ? `；理论中位数 ${theoryMedian} 抽` : '' }}</p>
+              <p class="text-xs text-muted">一半的 {{ top }}★ 在这个抽数之前出{{ theoryMedian ? `；理论中位数 ${theoryMedian} 抽${derived ? '（推算）' : ''}` : '' }}</p>
             </div>
-            <div class="rounded-(--ui-radius) border border-default p-4">
+            <div v-if="hasSoft" class="rounded-(--ui-radius) border border-default p-4">
               <p class="eyebrow">AFTER SOFT PITY</p>
               <p class="mt-1 font-display text-3xl font-semibold text-highlighted">{{ afterSoft === null ? '—' : formatPercent(afterSoft, 0) }}</p>
-              <p class="text-xs text-muted">在第 {{ records.model.softPity }} 抽之后才出的 6★ 占比</p>
+              <p class="text-xs text-muted">在第 {{ records.model.softPity }} 抽之后才出的 {{ top }}★ 占比</p>
             </div>
           </div>
           <div class="rounded-(--ui-radius) border border-default p-4 lg:col-span-3">
@@ -201,14 +215,14 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
       <section>
         <SectionHeader eyebrow="UP OR NOT" :title="`${term}歪不歪`" />
         <p v-if="!up.total" class="rounded-(--ui-radius) border border-default p-4 text-sm text-muted">
-          {{ records.weaponScope ? '武器池的 UP 概率没有可靠来源，暂不计算。' : '没有可以判断是否为 UP 的 6★（需要卡池的 UP 名单）。' }}
+          {{ records.weaponScope && !derived ? '武器池的 UP 概率没有可靠来源，暂不计算。' : `没有可以判断是否为 UP 的 ${top}★（需要卡池的 UP 名单）。` }}
         </p>
         <div v-else class="grid gap-3 lg:grid-cols-4">
           <div class="space-y-3 lg:col-span-1">
             <div class="rounded-(--ui-radius) border border-default p-4">
               <p class="eyebrow">UP LUCK</p>
-              <p class="mt-1 font-display text-3xl font-semibold" style="color: var(--color-rarity-6)">{{ up.luck === null ? '—' : formatPercent(up.luck, 0) }}</p>
-              <p class="text-xs text-muted">{{ up.total }} 个 6★ 中 {{ up.wins }} 个 UP（理论期望 {{ up.expected.toFixed(1) }} 个），不歪的运气超过这个比例的玩家</p>
+              <p class="mt-1 font-display text-3xl font-semibold" :style="{ color: rarityVar(top) }">{{ up.luck === null ? '—' : formatPercent(up.luck, 0) }}</p>
+              <p class="text-xs text-muted">{{ up.total }} 个 {{ top }}★ 中 {{ up.wins }} 个 UP（理论期望 {{ up.expected.toFixed(1) }} 个），不歪的运气超过这个比例的玩家</p>
             </div>
             <div class="rounded-(--ui-radius) border border-default p-4">
               <p class="eyebrow">OFF-BANNER STREAK</p>
@@ -225,7 +239,7 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
               <thead class="text-left text-xs text-muted">
                 <tr>
                   <th class="py-1 font-medium">卡池类型</th>
-                  <th class="py-1 text-right font-medium">6★</th>
+                  <th class="py-1 text-right font-medium">{{ top }}★</th>
                   <th class="py-1 text-right font-medium">UP</th>
                   <th class="py-1 text-right font-medium">实际 / 理论</th>
                 </tr>
@@ -244,14 +258,14 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
       </section>
 
       <section>
-        <SectionHeader eyebrow="6★ SEQUENCE" title="6★ 出货序列" />
+        <SectionHeader :eyebrow="`${top}★ SEQUENCE`" :title="`${top}★ 出货序列`" />
         <div class="rounded-(--ui-radius) border border-default p-4">
           <div class="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
             <span class="flex items-center gap-1.5"><i class="size-2.5 rounded-sm bg-primary" />当期 UP</span>
             <span class="flex items-center gap-1.5"><i class="size-2.5 rounded-sm bg-(--ui-text-dimmed)" />歪了</span>
-            <span class="flex items-center gap-1.5"><i class="size-2.5 rounded-sm" style="background: var(--color-rarity-6)" />常驻 / UP 未知</span>
+            <span class="flex items-center gap-1.5"><i class="size-2.5 rounded-sm" :style="{ background: rarityVar(top) }" />常驻 / UP 未知</span>
             <span class="flex items-center gap-1.5"><i class="h-0.5 w-4 rounded-full bg-(--ui-text-highlighted)" />累计平均</span>
-            <span v-if="dist" class="flex items-center gap-1.5"><i class="w-4 border-t border-dashed border-(--ui-text-muted)" />理论平均 {{ dist.mean.toFixed(1) }}</span>
+            <span v-if="dist" class="flex items-center gap-1.5"><i class="w-4 border-t border-dashed border-(--ui-text-muted)" />理论平均 {{ dist.mean.toFixed(1) }}{{ derived ? '（推算）' : '' }}</span>
           </div>
           <EChart :option="sequenceOption" height="280px" />
         </div>
@@ -261,7 +275,7 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
         <SectionHeader eyebrow="LUCK TREND" title="欧非走势" />
         <div class="rounded-(--ui-radius) border border-default p-4">
           <p class="text-xs text-muted">
-            按你每一抽当时的垫抽，累计理论上应出的 6★ 个数，与实际出的个数对比：实际线在上方就是偏欧。
+            按你每一抽当时的垫抽，累计理论上应出的 {{ top }}★ 个数，与实际出的个数对比：实际线在上方就是偏欧。<template v-if="derived">理论个数按官方数字推算，非官方。</template>
             <template v-if="trendLast">
               目前实际 <b class="text-highlighted">{{ trendLast.actual }}</b> 个，理论 {{ trendLast.expected.toFixed(1) }} 个。
             </template>

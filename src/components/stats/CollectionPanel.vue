@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import CharAvatar from '@/components/ui/CharAvatar.vue'
 import { formatDate } from '@/lib/format'
 import { useRecords } from '@/composables/useRecords'
 
 const records = useRecords()
-const star = ref('6')
+/** 最高星和次一级：鹰角 6★ / 5★，米哈游 5★ / 4★ */
+const top = computed(() => records.profile.topStar)
+const star = ref(String(top.value))
+watch(top, (t) => (star.value = String(t)))
 const sort = ref<'count' | 'recent'>('count')
 
 const all = computed(() => records.insights.collection)
-const tabs = computed(() => [
-  { label: `6★ · ${all.value.filter((c) => c.star === 6).length}`, value: '6' },
-  { label: `5★ · ${all.value.filter((c) => c.star === 5).length}`, value: '5' },
-])
+const tabs = computed(() =>
+  [top.value, top.value - 1].map((s) => ({ label: `${s}★ · ${all.value.filter((c) => c.star === s).length}`, value: String(s) })),
+)
 const shown = computed(() => {
   const list = all.value.filter((c) => String(c.star) === star.value)
   return sort.value === 'count' ? list : list.toSorted((a, b) => b.lastTs - a.lastTs)

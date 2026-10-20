@@ -3,17 +3,20 @@ import { computed, ref } from 'vue'
 import ShareStudio from '@/components/ShareStudio.vue'
 import PageShell from '@/components/shell/PageShell.vue'
 import CharAvatar from '@/components/ui/CharAvatar.vue'
-import { formatDateTime, rarityTextVar } from '@/lib/format'
+import { formatDateTime, rarityTextVar, rarityVar } from '@/lib/format'
 import type { PullEvent } from '@/lib/stats/events'
 import { type GiftEvent, giftNote } from '@/lib/stats/gifts'
 import { useRecords } from '@/composables/useRecords'
 
 /**
- * 时间线：以 6★ 为节点分段，两次 6★ 之间的低星记录默认折叠，只显示 5★ 和新干员。
+ * 时间线：以最高星（鹰角 6★，米哈游 5★）为节点分段，两次之间的低星记录默认折叠，只显示次一级的星和新干员。
  * 选择某个保底分组后，分段与该分组的保底计数完全对应。
  * 累计寻访赠送的（信物赠礼、限定干员赠送）按时间插在中间，单独标成“赠送”：不是抽出来的，不影响分段和保底计数。
  */
 const records = useRecords()
+/** 最高星级（鹰角 6★，米哈游 5★）和比它低的星级 */
+const top = computed(() => records.profile.topStar)
+const lowerStars = computed(() => records.profile.stars.filter((s) => s < top.value))
 const family = ref<string>('all')
 const expanded = ref(new Set<string>())
 const shareOpen = ref(false)
@@ -39,7 +42,7 @@ const segments = computed<Segment[]>(() => {
   for (const e of records.events) {
     if (family.value !== 'all' && e.family !== family.value) continue
     current.push(e)
-    if (e.star === 6) {
+    if (e.star === top.value) {
       out.push({ id: e.key, six: e, pity: pityByKey.value.get(e.key) ?? null, pulls: current })
       current = []
     }
@@ -66,13 +69,13 @@ const nodes = computed<Node[]>(() =>
 )
 
 function counts(pulls: PullEvent[]) {
-  const c = { 5: 0, 4: 0, 3: 0 } as Record<number, number>
-  for (const p of pulls) if (p.star < 6) c[p.star] = (c[p.star] ?? 0) + 1
+  const c = Object.fromEntries(lowerStars.value.map((s) => [s, 0])) as Record<number, number>
+  for (const p of pulls) if (p.star < top.value) c[p.star] = (c[p.star] ?? 0) + 1
   return c
 }
 
 function highlights(pulls: PullEvent[]) {
-  return pulls.filter((p) => p.star === 5 || (p.isNew && p.star < 6))
+  return pulls.filter((p) => p.star === top.value - 1 || (p.isNew && p.star < top.value))
 }
 
 function toggle(id: string) {
@@ -101,7 +104,7 @@ function pityTone(pity: number | null) {
         <USelect v-model="family" :items="familyOptions" class="w-56" size="sm" />
         <UButton label="分享卡片" icon="i-lucide-share" size="sm" color="neutral" variant="outline" class="sm:hidden" :disabled="!records.events.length" @click="shareOpen = true" />
         <span class="ml-auto font-display text-xs text-muted">
-          {{ segments.filter((s) => s.six).length }} 个 6★<template v-if="gifts.length"> · 另有赠送 {{ gifts.length }}</template>
+          {{ segments.filter((s) => s.six).length }} 个 {{ top }}★<template v-if="gifts.length"> · 另有赠送 {{ gifts.length }}</template>
         </span>
       </div>
 
@@ -127,17 +130,17 @@ function pityTone(pity: number | null) {
           <li v-else class="relative">
             <span
               class="absolute top-5 -left-[26px] size-3 rounded-full border-2 border-default"
-              :style="{ background: n.seg.six ? 'var(--color-rarity-6)' : 'var(--ui-bg)' }"
+              :style="{ background: n.seg.six ? rarityVar(top) : 'var(--ui-bg)' }"
             />
             <div class="rounded-(--ui-radius) border border-default bg-default p-4">
               <div class="flex items-center gap-3">
-                <CharAvatar v-if="n.seg.six" :char-id="n.seg.six.itemId" :name="n.seg.six.name" :star="6" :size="56" :game="records.game" />
+                <CharAvatar v-if="n.seg.six" :char-id="n.seg.six.itemId" :name="n.seg.six.name" :star="top" :size="56" :game="records.game" />
                 <div v-else class="grid size-14 place-items-center rounded-(--ui-radius) border border-dashed border-accented text-dimmed">
                   <UIcon name="i-lucide-hourglass" class="size-5" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
-                    <p class="truncate font-semibold" :style="n.seg.six ? { color: rarityTextVar(6) } : undefined">
+                    <p class="truncate font-semibold" :style="n.seg.six ? { color: rarityTextVar(top) } : undefined">
                       {{ n.seg.six ? n.seg.six.name : '进行中' }}
                     </p>
                     <UBadge v-if="n.seg.six?.isUp !== null && n.seg.six?.isUp !== undefined" :label="n.seg.six.isUp ? 'UP' : '歪'" :color="n.seg.six.isUp ? 'primary' : 'neutral'" variant="subtle" size="sm" />
@@ -159,9 +162,7 @@ function pityTone(pity: number | null) {
                   <span v-if="h.isNew" class="absolute -top-1 -right-1 size-2 rounded-full bg-error" />
                 </div>
                 <span class="ml-auto flex gap-3 font-display text-xs">
-                  <span :style="{ color: rarityTextVar(5) }">5★ × {{ counts(n.seg.pulls)[5] }}</span>
-                  <span :style="{ color: rarityTextVar(4) }">4★ × {{ counts(n.seg.pulls)[4] }}</span>
-                  <span v-if="records.profile.stars.includes(3)" class="text-muted">3★ × {{ counts(n.seg.pulls)[3] }}</span>
+                  <span v-for="s in lowerStars" :key="s" :class="s >= 4 ? undefined : 'text-muted'" :style="s >= 4 ? { color: rarityTextVar(s) } : undefined">{{ s }}★ × {{ counts(n.seg.pulls)[s] }}</span>
                 </span>
                 <UButton
                   :icon="expanded.has(n.seg.id) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"

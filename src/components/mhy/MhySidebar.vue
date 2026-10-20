@@ -1,22 +1,26 @@
 <script setup lang="ts">
 /**
- * 米哈游游戏的侧边栏（游戏切换下面的部分，由 src/platform/desktop.ts 交给 App.vue）：账号（UID）和导航（统计 / 记录）。
+ * 米哈游游戏的侧边栏（游戏切换下面的部分，由 src/platform/desktop.ts 交给 App.vue）：账号（UID）和导航。
  * 鹰角的账号和导航不在这里出现，切回鹰角用上面的厂商切换。
  */
 import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
 import { computed } from 'vue'
 import { MHY_GAME_LABEL, type MhyGame } from '@/lib/mhy/types'
 import { useMhyAccounts } from './accounts'
+import { MHY_PROFILES } from './profile'
 
 const props = defineProps<{ game: string; collapsed?: boolean }>()
 const game = computed(() => props.game as MhyGame)
 const { accounts, account, select } = useMhyAccounts(() => game.value)
 
 const base = computed(() => `/${game.value}`)
-/** 图标名必须写成字面量，构建时才能被扫描并打包 */
+/** 和鹰角的导航一样（页面也是同一套，见 MhyGamePage）；路径见 src/platform/desktop.ts。图标名必须写成字面量，构建时才能被扫描并打包 */
 const navItems = computed<NavigationMenuItem[]>(() => [
-  { label: '统计', icon: 'i-lucide-layout-dashboard', to: base.value, exact: true },
-  { label: '记录', icon: 'i-lucide-scroll-text', to: `${base.value}/records` },
+  { label: '总览', icon: 'i-lucide-layout-dashboard', to: base.value, exact: true },
+  { label: MHY_PROFILES[game.value].recordName, icon: 'i-lucide-scroll-text', to: `${base.value}/records` },
+  { label: '分析', icon: 'i-lucide-chart-column-big', to: `${base.value}/analysis` },
+  { label: '高级统计', icon: 'i-lucide-telescope', to: `${base.value}/stats` },
+  { label: '时间线', icon: 'i-lucide-git-commit-vertical', to: `${base.value}/timeline` },
 ])
 
 const menuItems = computed<DropdownMenuItem[][]>(() => [
