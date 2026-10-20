@@ -13,9 +13,18 @@ export interface UpTag {
   title: string
 }
 
-export function upTag(e: Pick<PullEvent, 'isUp' | 'guarantee'>): UpTag | null {
+/** 原神武器活动祈愿：大保底之外还有神铸定轨（命定值），这里的 UP 是两把之一 */
+const GENSHIN_WEAPON = 'genshin:weapon'
+
+export function upTag(e: Pick<PullEvent, 'isUp' | 'guarantee'> & { family?: string }): UpTag | null {
   if (e.isUp === null) return null
-  if (e.guarantee === 'big' && e.isUp) return { text: '大保底', up: true, title: '上一个歪了，这一个必是 UP（大保底）' }
+  if (e.guarantee === 'big' && e.isUp) {
+    const title =
+      e.family === GENSHIN_WEAPON
+        ? '上一个歪了，这一个必是两把 UP 武器之一（大保底）；定轨了的话，命定值已满，必是定轨的那把'
+        : '上一个歪了，这一个必是 UP（大保底）'
+    return { text: '大保底', up: true, title }
+  }
   if (!e.isUp) {
     return { text: '歪', up: false, title: e.guarantee === 'small' ? '小保底歪了，下一个必是 UP（大保底）' : '不是当期 UP' }
   }

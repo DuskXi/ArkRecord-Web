@@ -17,6 +17,7 @@ import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .ratelimit import LIMITER
 from .rpc import INVALID_PARAMS, Params, RpcError
 
 log = logging.getLogger(__name__)
@@ -94,7 +96,9 @@ _opener = urllib.request.build_opener(_NoRedirect)
 def urllib_send(
     method: str, url: str, headers: Mapping[str, str], body: bytes | None, timeout: float
 ) -> UpstreamResponse:
-    # 地址只会是白名单里的 https 地址（HgClient.request 拼出来的）
+    # 地址只会是白名单里的 https 地址（HgClient.request 等拼出来的）
+    # 所有对外请求都从这里走：先按主机取号，每分钟次数到了上限就排队（ratelimit.py）
+    LIMITER.acquire(urllib.parse.urlsplit(url).hostname or "")
     request = urllib.request.Request(url, data=body, headers=dict(headers), method=method)  # noqa: S310
     try:
         response = _opener.open(request, timeout=timeout)

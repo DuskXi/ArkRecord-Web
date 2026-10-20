@@ -139,3 +139,48 @@ def test_invalid_params(tmp_path, params):
 
 def test_registered():
     assert "img.fetch" in build_methods()
+
+
+def test_same_image_at_once_is_downloaded_once(tmp_path):
+    """同一张图同时被要多次：只向来源站请求一次，大家拿到同样的结果。"""
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class SlowSource(FakeSource):
+        def __call__(self, method, url, headers, body, timeout):
+            started.set()
+            release.wait(5)
+            return super().__call__(method, url, headers, body, timeout)
+
+    fake = SlowSource()
+    img = images(tmp_path, fake)
+    params = {"source": "prts-avatar", "target": "char_002_amiya"}
+    results = []
+
+    def fetch():
+        results.append(img.fetch(params))
+
+    first = threading.Thread(target=fetch)
+    first.start()
+    assert started.wait(5)
+    others = [threading.Thread(target=fetch) for _ in range(4)]
+    for t in others:
+        t.start()
+    release.set()
+    for t in [first, *others]:
+        t.join()
+    assert len(fake.calls) == 1
+    assert len(results) == 5 and all(r["status"] == 200 for r in results)
+    assert len({r["body"] for r in results}) == 1
+
+
+def test_a_failed_shared_download_can_be_retried(tmp_path):
+    fake = FakeSource(error=TimeoutError())
+    img = images(tmp_path, fake)
+    params = {"source": "prts-avatar", "target": "char_002_amiya"}
+    assert img.fetch(params) == {"status": 502}
+    fake.error = None
+    assert img.fetch(params)["status"] == 200
+    assert len(fake.calls) == 2

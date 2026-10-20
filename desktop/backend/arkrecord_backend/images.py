@@ -5,6 +5,8 @@
 - 不跟随重定向，只接受 image/* 且不超过 5 MB；
 - 缓存在应用数据目录（ARKRECORD_DATA_DIR/image-cache），成功的 30 天，来源站 404 的 1 小时。
 - BWIKI 的图片按 bili.py 控制节奏（同时最多 2 张），和 BWIKI 接口一起退避；退避期间返回 502、不发请求。
+- 同一张图同时被要多次时只下载一次，其余的等这一次的结果（维护者：“哪怕相同图片并发，也应该合并为一个对云请求”）；
+  每个主机每分钟的请求次数另有上限（ratelimit.py，所有对外请求都受它管）。
 """
 
 from __future__ import annotations
@@ -15,8 +17,10 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +35,8 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 TIMEOUT_S = 15
 CACHE_SECONDS = 30 * 24 * 3600
 MISSING_SECONDS = 3600
+# 等同一张图的另一次下载最多多久（那一次要排队取号、按节奏下载）
+WAIT_INFLIGHT_S = 120
 CACHE_DIR = "image-cache"
 
 # 原神、星铁的图标（BWIKI，mhy/icons.py 查出路径）：images/<ys|sr>/<哈希目录>/<文件名>，不带缩略图和查询参数
@@ -78,6 +84,9 @@ class Images:
         self._send = send
         self._clock = clock
         self._guard = guard or BiliGuard(self._dir, clock)
+        # 正在下载的图片：地址 → 结果；同一张图的其他请求等它
+        self._inflight: dict[str, Future[dict[str, Any]]] = {}
+        self._inflight_lock = threading.Lock()
 
     @property
     def sources(self) -> dict[str, dict[str, Any]]:
@@ -154,6 +163,28 @@ class Images:
         if cached:
             return cached
 
+        with self._inflight_lock:
+            pending = self._inflight.get(url)
+            owner = pending is None
+            if pending is None:
+                pending = self._inflight[url] = Future()
+        if not owner:
+            try:
+                return pending.result(timeout=WAIT_INFLIGHT_S)
+            except Exception:
+                return {"status": 502}
+        try:
+            result = self._download(source, url)
+            pending.set_result(result)
+            return result
+        except BaseException as error:
+            pending.set_exception(error)
+            raise
+        finally:
+            with self._inflight_lock:
+                self._inflight.pop(url, None)
+
+    def _download(self, source: str, url: str) -> dict[str, Any]:
         headers = {
             "accept": "image/avif,image/webp,image/png,image/*;q=0.8",
             "user-agent": f"ArkRecord-Desktop/{__version__} (+https://github.com/DuskXi/ArkRecord-Web)",

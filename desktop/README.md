@@ -162,6 +162,22 @@ interface ArkrecordBridge {
 - 白名单是 [`shared/images.json`](../shared/images.json)，和 Worker（`worker/images.ts`）同一份；再加上桌面版专用的来源（`images.py` 的 `DESKTOP_SOURCES`，Worker 不转发）：`bwiki` 是原神、星铁的图标，只允许 `patchwiki.biligame.com` 上 `images/<ys|sr>/<哈希目录>/<文件名>` 这一种路径。路径必须完整匹配，不跟随重定向，只接受 `image/*`、不超过 5 MB。
 - 缓存在 `ARKRECORD_DATA_DIR/image-cache`：成功的 30 天，来源站 404 的 1 小时。
 - `img.fetch` 在后端单独用一组线程（`serve` 的 `lanes`）：BWIKI 的图片排队下载时，不占读取记录等其他方法的线程。
+- 同一张图同时被要多次时只下载一次（维护者：“哪怕相同图片并发，也应该合并为一个对云请求”）：主进程按“来源/路径”合并（`desktop/electron/images.ts`），后端再按地址合并（`images.py`，其余请求等第一次的结果，最多 120 秒）。成功的图片带 `cache-control: private, max-age=86400`。
+
+## 对外请求的每分钟上限（`ratelimit.py`）
+
+维护者 2026-10-20：“对云请求本身就要有rpm本地限制”。后端所有对外请求都经过 `hg.urllib_send`，在那里按主机取号：最近 60 秒内的请求数到了上限就排队等，不直接失败；计数只在内存里，重启后从零开始（B 站被拦后的退避另有持久记录，见 `bili.py`）。
+
+| 主机 | 每分钟最多 |
+|---|---|
+| `wiki.biligame.com`（BWIKI 接口） | 6 |
+| `patchwiki.biligame.com`（BWIKI 图片） | 60 |
+| `torappu.prts.wiki`、`web.hycdn.cn`（明日方舟头像、终末地卡池图） | 60 |
+| `*.mihoyo.com`、`*.hoyoverse.com`（米哈游抽卡记录） | 100 |
+| `*.hypergryph.com`（鹰角） | 120 |
+| 其他（比如使用人数统计） | 60 |
+
+这是最后一道保险，各处还有自己的节奏：米哈游接口每个服务器两次至少隔 0.5 秒，BWIKI 接口两次至少隔 8 秒、图片同时最多 2 张。
 - 主进程这一侧：
   - 正式构建：`app://arkrecord/api/img/<来源>/<路径>` 由 `protocol.handle('app')` 交给 `img.fetch`，和页面同源，导出分享图时 canvas 不会因为跨域图片出错；
   - 开发时：页面在 Vite 开发服务器上，`/api/img/*` 也要转给 `img.fetch`（不要转到 Worker）；

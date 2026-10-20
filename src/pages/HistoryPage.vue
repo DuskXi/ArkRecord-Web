@@ -151,7 +151,12 @@ function batchClass(b: Batch): string {
 
 // ── 列表 ──
 /** 列表的一行：一次抽取，或者一条赠送（gift） */
-type Row = Pick<PullEvent, 'key' | 'ts' | 'itemId' | 'name' | 'star' | 'poolName' | 'isNew' | 'isUp' | 'guarantee'> & { order: number; gift?: GiftEvent }
+type Row = Pick<PullEvent, 'key' | 'ts' | 'itemId' | 'name' | 'star' | 'poolName' | 'isNew' | 'isUp' | 'guarantee'> & {
+  order: number
+  gift?: GiftEvent
+  /** 保底分组（upTag 的悬停说明按它区分原神武器池） */
+  family?: string
+}
 const columns = computed<TableColumn<Row>[]>(() => [
   { accessorKey: 'ts', header: '时间', meta: { class: { td: 'w-40 font-display text-xs text-muted tabular-nums' } } },
   { accessorKey: 'name', header: records.profile.nouns.char },

@@ -91,6 +91,9 @@ describe('大小保底', () => {
       [null, 'small'],
     ])
     expect(guaranteeStates(events).get('genshin:weapon')).toBe('unknown')
+    // 原神武器池的大保底：悬停说明提到定轨
+    expect(upTag(events[1]!)!.title).toContain('定轨')
+    expect(upTag({ isUp: true, guarantee: 'big', family: 'genshin:character' })!.title).not.toContain('定轨')
   })
 
   it('星铁：同一期里出过别的 UP，前限定角色就是歪的；大保底时一定是 UP', () => {
