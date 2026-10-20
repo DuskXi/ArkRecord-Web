@@ -23,7 +23,8 @@ watch(
 const src = computed(() => {
   if (failed.value) return undefined
   if (host?.avatar) return host.avatar(props.name, props.charId ?? null)
-  // 桌面版：头像全部运行时经本机后端转发、限速、缓存（src/platform/desktop.ts）
+  // 桌面版：头像全部运行时经本机后端转发、限速、缓存（src/platform/desktop.ts）。
+  // 森空岛的图是竖长的半身像，显示时从顶部裁成方形（和网页版构建脚本的效果一样）
   if (AVATAR_RESOLVER) return AVATAR_RESOLVER(props.game, props.charId ?? null, props.name)
   if (props.game === 'arknights') return akAvatarUrl(props.charId, app.akAvatars)
   if (props.game === 'endfield') return efAvatarUrl(props.charId, app.efAvatars)
@@ -46,6 +47,7 @@ const src = computed(() => {
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
       class="size-full object-cover"
+      :class="{ 'object-top': src.startsWith('/api/img/skland/') }"
       @error="failed = true"
     />
     <span

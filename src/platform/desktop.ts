@@ -47,8 +47,8 @@ const AK_CHAR_ID = /^char_\w{1,60}$/
 export const AVATAR_RESOLVER: AvatarResolver = (game, itemId, name) => {
   // 明日方舟：只用 PRTS（PRTS 上没有的显示文字）
   if (game === 'arknights') return itemId && AK_CHAR_ID.test(itemId) ? `/api/img/prts-avatar/${itemId}` : undefined
-  // 终末地：按名称查 BWIKI 的“<名称>头像 / 图标”
-  if (game === 'endfield') return wikiIconUrl('endfield', name)
+  // 终末地：按名称查 BWIKI 的“<名称>头像 / 图标”，BWIKI 没有的新角色按物品 ID 用森空岛的图
+  if (game === 'endfield') return wikiIconUrl('endfield', name, itemId)
   return undefined
 }
 
@@ -57,7 +57,8 @@ export const SOURCE_NOTES: Record<string, string> = {
   PRTS: '明日方舟干员名单、UP 名单、卡池名称（构建时获取）；干员头像由你的电脑直接向 PRTS 请求，只缓存在本机',
   'yuanyan3060/ArknightsGameResource': '干员头像的备用来源（只用于网页版的镜像，桌面版不使用）',
   '明日方舟终末地 BWIKI': '终末地角色头像与武器图标：由你的电脑直接向 BWIKI 请求，只缓存在本机',
-  森空岛: '终末地角色头像的备用来源（只用于网页版的镜像，桌面版不使用）',
+  森空岛:
+    'BWIKI 暂缺的终末地角色头像：由你的电脑直接向森空岛请求，只缓存在本机；图片地址取自 cmyyx/cep 的索引（一天最多取一次，只读取其中的图片地址）',
 }
 
 /** 米哈游每个游戏的页面：都是 MhyGamePage，里面用鹰角的统计页面；路径和 MhySidebar 的导航对应 */

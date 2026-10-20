@@ -10,7 +10,7 @@ async function setup(rpc: (method: string, params?: unknown) => Promise<unknown>
 describe('wikiIconUrl', () => {
   it('把用到的中文名攒起来一起查，给出 /api/img/bwiki/ 的地址；不安全的路径丢掉；同一个名称只查一次', async () => {
     const mhyIconUrl = await setup(async () => ({
-      items: { 琴: 'images/ys/1/11/abcdefghijklmnopqrstu.png', 刻晴: 'images/../secret.png', 迪卢克: 'images/ys/a.png?x=1' },
+      items: { 琴: 'bwiki/images/ys/1/11/abcdefghijklmnopqrstu.png', 刻晴: 'bwiki/images/../secret.png', 迪卢克: 'bwiki/images/ys/a.png?x=1' },
       complete: true,
     }))
     for (const name of ['琴', '刻晴', '迪卢克', 'Bailu', '琴']) expect(mhyIconUrl('genshin', name)).toBeUndefined()
@@ -26,7 +26,7 @@ describe('wikiIconUrl', () => {
   it('之后用到的新名称再查一次，只查新的', async () => {
     const mhyIconUrl = await setup(async (_method, params) => {
       const names = (params as { names: string[] }).names
-      return { items: Object.fromEntries(names.map((n, i) => [n, `images/sr/${i}/0${i}/abcdefghijklmnopqrst.png`])), complete: true }
+      return { items: Object.fromEntries(names.map((n, i) => [n, `bwiki/images/sr/${i}/0${i}/abcdefghijklmnopqrst.png`])), complete: true }
     })
     mhyIconUrl('starrail', '白露')
     await vi.waitFor(() => expect(mhyIconUrl('starrail', '白露')).toBeDefined())
@@ -43,7 +43,7 @@ describe('wikiIconUrl', () => {
     let calls = 0
     const mhyIconUrl = await setup(async () => {
       calls++
-      return calls === 1 ? { items: {}, complete: false } : { items: { 琴: 'images/ys/1/11/abcdefghijklmnopqrstu.png' }, complete: true }
+      return calls === 1 ? { items: {}, complete: false } : { items: { 琴: 'bwiki/images/ys/1/11/abcdefghijklmnopqrstu.png' }, complete: true }
     })
     const { computed } = await import('vue')
     const url = computed(() => mhyIconUrl('genshin', '琴'))
@@ -61,7 +61,7 @@ describe('wikiIconUrl', () => {
   it('终末地一次最多交给后端 25 个名称，剩下的马上接着查', async () => {
     const wikiIconUrl = await setup(async (_method, params) => {
       const names = (params as { names: string[] }).names
-      return { items: Object.fromEntries(names.map((n) => [n, 'images/zmd/1/11/abcdefghijklmnopqrstu.png'])), complete: true }
+      return { items: Object.fromEntries(names.map((n) => [n, 'bwiki/images/zmd/1/11/abcdefghijklmnopqrstu.png'])), complete: true }
     })
     const names = Array.from({ length: 30 }, (_, i) => `测试干员${i}`)
     for (const name of names) wikiIconUrl('endfield', name)
@@ -70,6 +70,23 @@ describe('wikiIconUrl', () => {
     expect(calls.map((c) => [c.game, c.names.length])).toEqual([
       ['endfield', 25],
       ['endfield', 5],
+    ])
+  })
+
+  it('终末地带上物品 ID，BWIKI 没有的新角色用森空岛的图；格式不对的 ID 不传；别的游戏不传 ID', async () => {
+    const wikiIconUrl = await setup(async (_method, params) => {
+      const { names } = params as { names: string[] }
+      return { items: Object.fromEntries(names.map((n) => [n, n === '祀' ? 'skland/image/common/20260101/1/abc_def.png' : 'bwiki/images/zmd/1/11/abcdefghijklmnopqrstu.png'])), complete: true }
+    })
+    wikiIconUrl('endfield', '祀', 'chr_0024_si')
+    wikiIconUrl('endfield', '黎风', 'Bad ID!')
+    await vi.waitFor(() => expect(wikiIconUrl('endfield', '祀')).toBe('/api/img/skland/image/common/20260101/1/abc_def.png'))
+    expect(wikiIconUrl('endfield', '黎风')).toBe('/api/img/bwiki/images/zmd/1/11/abcdefghijklmnopqrstu.png')
+    wikiIconUrl('genshin', '琴', 'chr_0024_si')
+    await vi.waitFor(() => expect(wikiIconUrl('genshin', '琴')).toBeDefined())
+    expect(vi.mocked(window.arkrecord!.rpc).mock.calls.map((c) => c[1])).toEqual([
+      { game: 'endfield', names: ['祀', '黎风'], ids: { 祀: 'chr_0024_si' } },
+      { game: 'genshin', names: ['琴'] },
     ])
   })
 
