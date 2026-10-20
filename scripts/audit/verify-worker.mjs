@@ -24,7 +24,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs, promisify } from 'node:util'
-import { attestationArgs, childEnv, commonProvenance, compareModules, ENVIRONMENTS, provenancesOf, sha256Hex, validateManifest } from './lib.mjs'
+import { attestationArgs, childEnv, commonProvenance, compareModules, coverBySubjects, ENVIRONMENTS, provenancesOf, sha256Hex, validateManifest } from './lib.mjs'
 
 const run = promisify(execFile)
 const API = 'https://api.cloudflare.com/client/v4'
@@ -120,6 +120,11 @@ async function inspect(id, dir, preferred) {
     if (typeof m?.name !== 'string' || typeof m.content_base64 !== 'string') throw new Error('Cloudflare 返回的模块格式不对')
     modules[m.name.slice(0, 200)] = await attest(m.name, Buffer.from(m.content_base64, 'base64'), dir)
   }
+  // 自己没查到证明、但列在另一个模块的有效证明里的，也算有证明（lib.mjs 的 coverBySubjects）
+  const names = Object.keys(modules)
+  coverBySubjects(Object.values(modules)).forEach((m, i) => {
+    modules[names[i]] = m
+  })
   const list = Object.values(modules)
   const each = list.length > 0 && list.every((m) => m.attested)
   const common = each ? commonProvenance(list, preferred) : null
@@ -131,7 +136,9 @@ async function inspect(id, dir, preferred) {
     mixedCommits: each && common === null,
     ref: common?.ref ?? null,
     run: common?.run ?? null,
-    modules: Object.fromEntries(Object.entries(modules).map(([n, m]) => [n, { sha256: m.sha256, size: m.size, attested: m.attested, ...(m.reason ? { reason: m.reason } : {}) }])),
+    modules: Object.fromEntries(
+      Object.entries(modules).map(([n, m]) => [n, { sha256: m.sha256, size: m.size, attested: m.attested, ...(m.covered ? { covered: true } : {}), ...(m.reason ? { reason: m.reason } : {}) }]),
+    ),
   }
 }
 
