@@ -13,6 +13,7 @@ from typing import Any
 from . import PROTOCOL_VERSION, __version__
 from .hg import HgClient
 from .images import Images
+from .mhy.icons import MhyIcons
 from .mhy.service import MhyService
 from .redact import RedactingFormatter
 from .rpc import Handler, Params, no_params, serve
@@ -29,6 +30,7 @@ def build_methods(
     mhy: MhyService | None = None,
     stats: Stats | None = None,
     images: Images | None = None,
+    icons: MhyIcons | None = None,
 ) -> dict[str, Handler]:
     hg_client: list[HgClient] = [hg] if hg else []
     hg_lock = threading.Lock()
@@ -46,6 +48,7 @@ def build_methods(
         **(mhy or MhyService()).methods(),
         **(stats or Stats()).methods(),
         **(images or Images()).methods(),
+        **(icons or MhyIcons()).methods(),
     }
 
 

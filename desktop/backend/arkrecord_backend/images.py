@@ -1,7 +1,7 @@
 """桌面版的图片（维护者 2026-10-19：“本地这边的图片，采取python转发，也不用走worker了”）。
 
 页面照旧请求 /api/img/<来源>/<路径>，主进程把这类请求交给这里（img.fetch）。规则和 Worker 一致（worker/images.ts）：
-- 只拉 shared/images.json 白名单里的图片（和 Worker 同一份），路径必须完整匹配；
+- 只拉白名单里的图片，路径必须完整匹配：shared/images.json（和 Worker 同一份）加上桌面版专用的 DESKTOP_SOURCES；
 - 不跟随重定向，只接受 image/* 且不超过 5 MB；
 - 缓存在应用数据目录（ARKRECORD_DATA_DIR/image-cache），成功的 30 天，来源站 404 的 1 小时。
 """
@@ -31,9 +31,25 @@ CACHE_SECONDS = 30 * 24 * 3600
 MISSING_SECONDS = 3600
 CACHE_DIR = "image-cache"
 
+# 原神、星铁的图标（BWIKI，mhy/icons.py 查出路径）：images/<ys|sr>/<哈希目录>/<文件名>，不带缩略图和查询参数
+BWIKI_HOST = "patchwiki.biligame.com"
+BWIKI_TARGET = r"images/(?:ys|sr)/[0-9a-f]/[0-9a-f]{2}/[0-9a-z]{16,48}\.(?:png|jpe?g|webp|gif)"
 
-def load_sources(path: Path | None = None) -> dict[str, dict[str, Any]]:
+# 只在桌面版用的来源：不放进 shared/images.json，Worker 不转发这些
+DESKTOP_SOURCES: dict[str, dict[str, str]] = {
+    "bwiki": {
+        "host": BWIKI_HOST,
+        "purpose": "原神、星铁的角色 / 武器 / 光锥图标（BWIKI，维护者 2026-10-20 选定；版权归米哈游，“关于”页有声明）",
+        "pattern": f"^{BWIKI_TARGET}$",
+        "path": "/{target}",
+    },
+}
+
+
+def load_sources(path: Path | None = None, desktop: bool = True) -> dict[str, dict[str, Any]]:
     data = json.loads((path or shared_dir() / "images.json").read_text(encoding="utf-8"))
+    if desktop:
+        data = {**data, **DESKTOP_SOURCES}
     sources = {}
     for name, source in data.items():
         if not isinstance(source.get("host"), str) or "{target}" not in source.get("path", ""):
