@@ -11,9 +11,9 @@ import { desktopBridge } from '@/lib/transport'
 /** 后端给的图片路径：只接受 images/ 下的相对路径，不含 ..、查询参数和锚点（后端还会再按白名单检查） */
 const SAFE_TARGET = /^images\/[\w\-./%]+$/
 const HAN = /\p{Script=Han}/u
-/** 攒一会儿再查，一次最多 200 个（和后端一次调用的上限一致） */
+/** 攒一会儿再查，一次最多 100 个（和后端一次调用的上限一致：2 个请求） */
 const FLUSH_DELAY_MS = 200
-const MAX_PER_CALL = 200
+const MAX_PER_CALL = 100
 /** 后端说没查完（BWIKI 出错后在退避）时，过一会儿再问；后端在退避期间不会发请求 */
 const RETRY_MS = 10 * 60 * 1000
 

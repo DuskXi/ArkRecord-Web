@@ -5,8 +5,8 @@ mhy.icons {game, names} → {items: {名称: target}, complete}
   查图片地址，一次最多 50 个；只查页面给的名称（记录里出现过的简体中文名），不拉整个分类。
 - target 是图片在 patchwiki.biligame.com 上的路径（images/ys/...），页面用 /api/img/bwiki/<target> 显示，
   由 img.fetch 按桌面版专用的白名单拉取、缓存（images.py 的 DESKTOP_SOURCES）。
-- 查到的 30 天内不再查，没有的 1 天后再查。对 BWIKI 低频：同一时间一个请求，两次之间至少 2 秒；
-  出错（包括 B 站反爬的 HTTP 567）后退避，15 分钟起每次翻倍、最多 1 天，退避期间只返回缓存，不重试。
+- 查到的 30 天内不再查，没有的 1 天后再查。对 BWIKI 低频（bili.py）：同一时间一个请求，两次之间至少 8 秒，
+  一次调用最多 2 个请求；出错（包括 B 站反爬的 HTTP 567）后和图片下载一起退避，退避期间只返回缓存，不重试。
 - 结果缓存在 ARKRECORD_DATA_DIR/mhy-icons/<game>.json，不进仓库、不经过 Worker。图片的版权归米哈游，
   “关于”页有声明。
 """
@@ -25,6 +25,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .. import __version__
+from ..bili import BiliGuard
 from ..hg import Sender, urllib_send
 from ..images import BWIKI_HOST, BWIKI_TARGET
 from ..rpc import INVALID_PARAMS, Params, RpcError
@@ -36,15 +37,14 @@ WIKI = {"genshin": "ys", "starrail": "sr"}
 USER_AGENT = f"ArkRecord-Desktop/{__version__} (+https://github.com/DuskXi/ArkRecord-Web)"
 
 BATCH = 50
-# 一次调用最多查多少个名称（4 次请求），其余的下次再查（complete 为 false）
-MAX_LOOKUPS_PER_CALL = 200
+# 一次调用最多查多少个名称（2 次请求），其余的下次再查（complete 为 false）
+MAX_LOOKUPS_PER_CALL = 100
 MAX_NAMES = 1000
-MIN_INTERVAL_S = 2.0
 TIMEOUT_S = 15
 FOUND_TTL_S = 30 * 24 * 3600
 MISSING_TTL_S = 24 * 3600
-BACKOFF_START_S = 15 * 60
-BACKOFF_MAX_S = 24 * 3600
+# 日志里最多列出多少个没查到的名称（都是公开的角色 / 武器名）
+LOG_MISSING = 30
 # 图标都在 300 KB 以内；更大的多半是立绘，不用
 MAX_ICON_BYTES = 1024 * 1024
 CACHE_DIR = "mhy-icons"
@@ -65,17 +65,15 @@ class MhyIcons:
         data_dir: Path | None = None,
         send: Sender = urllib_send,
         clock: Callable[[], float] = time.time,
-        sleep: Callable[[float], None] = time.sleep,
+        guard: BiliGuard | None = None,
     ) -> None:
         env_dir = os.environ.get("ARKRECORD_DATA_DIR")
         self._dir = data_dir or (Path(env_dir) if env_dir else None)
         self._send = send
         self._clock = clock
-        self._sleep = sleep
+        # 节奏和退避和图片下载共用（两个 wiki、图片都是 B 站的）
+        self._guard = guard or BiliGuard(self._dir, clock)
         self._game_locks = {game: threading.Lock() for game in WIKI}
-        # 两个 wiki 在同一个域名下，共用一个节奏
-        self._api_lock = threading.Lock()
-        self._last_request = -MIN_INTERVAL_S
         # 没有数据目录时（测试、开发）只放在内存里
         self._memory: dict[str, dict[str, Any]] = {}
 
@@ -87,14 +85,14 @@ class MhyIcons:
     def _load(self, game: str) -> dict[str, Any]:
         path = self._path(game)
         if path is None:
-            return self._memory.setdefault(game, {"version": CACHE_VERSION, "items": {}, "failure": None})
+            return self._memory.setdefault(game, {"version": CACHE_VERSION, "items": {}})
         try:
             state = json.loads(path.read_text(encoding="utf-8"))
             if state.get("version") == CACHE_VERSION and isinstance(state.get("items"), dict):
                 return state
         except (OSError, ValueError, AttributeError):
             pass
-        return {"version": CACHE_VERSION, "items": {}, "failure": None}
+        return {"version": CACHE_VERSION, "items": {}}
 
     def _save(self, game: str, state: dict[str, Any]) -> None:
         path = self._path(game)
@@ -114,14 +112,6 @@ class MhyIcons:
         ttl = FOUND_TTL_S if entry.get("target") else MISSING_TTL_S
         return now - entry["checkedAt"] > ttl
 
-    def _backing_off(self, state: dict[str, Any], now: float) -> bool:
-        failure = state.get("failure")
-        if not isinstance(failure, dict):
-            return False
-        count = max(1, int(failure.get("count", 1)))
-        wait = min(BACKOFF_MAX_S, BACKOFF_START_S * 2 ** (count - 1))
-        return now - float(failure.get("at", 0)) < wait
-
     # ---- BWIKI ----
 
     def _query(self, wiki: str, names: list[str]) -> dict[str, str | None]:
@@ -138,17 +128,15 @@ class MhyIcons:
         }
         url = f"https://{API_HOST}/{wiki}/api.php?" + "&".join(f"{k}={quote(v, safe='')}" for k, v in query.items())
         headers = {"accept": "application/json", "user-agent": USER_AGENT}
-        with self._api_lock:
-            wait = self._last_request + MIN_INTERVAL_S - self._clock()
-            if wait > 0:
-                self._sleep(wait)
+        with self._guard.api_turn():
+            # 排队时另一个请求可能刚被拦下
+            if self._guard.blocked():
+                raise _Failure
             try:
                 response = self._send("GET", url, headers, None, TIMEOUT_S)
             except Exception as error:
                 log.info("查 BWIKI 图标失败：%s", type(error).__name__)
                 raise _Failure from None
-            finally:
-                self._last_request = self._clock()
         if response.status != 200:
             # 567 是 B 站的反爬
             log.info("查 BWIKI 图标：HTTP %s", response.status)
@@ -208,8 +196,9 @@ class MhyIcons:
             items: dict[str, Any] = state["items"]
             now = self._clock()
             due = [n for n in wanted if self._due(items.get(n), now)]
-            if due and not self._backing_off(state, now):
-                checked = 0
+            if due and not self._guard.blocked():
+                checked: list[str] = []
+                missing: list[str] = []
                 try:
                     for start in range(0, min(len(due), MAX_LOOKUPS_PER_CALL), BATCH):
                         batch = due[start : start + BATCH]
@@ -217,12 +206,18 @@ class MhyIcons:
                         stamp = self._clock()
                         for name in batch:
                             items[name] = {"target": found.get(name), "checkedAt": stamp}
-                        checked += len(batch)
-                    state["failure"] = None
+                            (checked if found.get(name) else missing).append(name)
+                    self._guard.report_ok()
                 except _Failure:
-                    failure = state.get("failure") if isinstance(state.get("failure"), dict) else {"count": 0}
-                    state["failure"] = {"at": self._clock(), "count": int(failure.get("count", 0)) + 1}
-                log.info("查 BWIKI 图标：%s 个，共需 %s 个", checked, len(due))
+                    self._guard.report_block()
+                log.info(
+                    "查 BWIKI 图标（%s）：查到 %d 个，没查到 %d 个，还剩 %d 个没查%s",
+                    game,
+                    len(checked),
+                    len(missing),
+                    len(due) - len(checked) - len(missing),
+                    f"；没查到：{'、'.join(missing[:LOG_MISSING])}" if missing else "",
+                )
                 self._save(game, state)
                 now = self._clock()
                 due = [n for n in wanted if self._due(items.get(n), now)]

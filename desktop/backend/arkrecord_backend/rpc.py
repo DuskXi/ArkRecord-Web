@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import threading
@@ -106,8 +107,26 @@ def encode(response: dict[str, Any]) -> str:
     return json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n"
 
 
-def serve(methods: Mapping[str, Handler], lines: Iterable[str], out: TextIO, workers: int = 4) -> None:
-    """逐行读取请求，交给线程池处理；输入结束后等所有请求处理完再返回。"""
+def _method_of(line: str) -> str | None:
+    try:
+        request = json.loads(line)
+    except ValueError:
+        return None
+    method = request.get("method") if isinstance(request, dict) else None
+    return method if isinstance(method, str) else None
+
+
+def serve(
+    methods: Mapping[str, Handler],
+    lines: Iterable[str],
+    out: TextIO,
+    workers: int = 4,
+    lanes: Mapping[str, int] | None = None,
+) -> None:
+    """逐行读取请求，交给线程池处理；输入结束后等所有请求处理完再返回。
+
+    lanes：单独用一组线程的方法（方法名 → 线程数），比如要排队下载的图片，排队时不占别的方法的线程。
+    """
     lock = threading.Lock()
 
     def run(line: str) -> None:
@@ -126,9 +145,15 @@ def serve(methods: Mapping[str, Handler], lines: Iterable[str], out: TextIO, wor
             except OSError:
                 log.warning("写回复失败（主进程可能已退出）")
 
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="rpc") as pool:
+    with contextlib.ExitStack() as stack:
+        pool = stack.enter_context(ThreadPoolExecutor(max_workers=workers, thread_name_prefix="rpc"))
+        lane_pools = {
+            name: stack.enter_context(ThreadPoolExecutor(max_workers=count, thread_name_prefix=f"rpc-{name}"))
+            for name, count in (lanes or {}).items()
+        }
         for raw in lines:
             # 去掉 BOM：Windows PowerShell 5.1 用管道传给后端时会在开头加 U+FEFF
             line = raw.strip().lstrip("\ufeff").strip()
             if line:
-                pool.submit(run, line)
+                method = _method_of(line) if lane_pools else None
+                lane_pools.get(method or "", pool).submit(run, line)

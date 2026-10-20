@@ -4,6 +4,7 @@
 - 只拉白名单里的图片，路径必须完整匹配：shared/images.json（和 Worker 同一份）加上桌面版专用的 DESKTOP_SOURCES；
 - 不跟随重定向，只接受 image/* 且不超过 5 MB；
 - 缓存在应用数据目录（ARKRECORD_DATA_DIR/image-cache），成功的 30 天，来源站 404 的 1 小时。
+- BWIKI 的图片按 bili.py 控制节奏（同时最多 2 张），和 BWIKI 接口一起退避；退避期间返回 502、不发请求。
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .bili import BLOCK_STATUSES, BiliGuard
 from .hg import Sender, shared_dir, urllib_send
 from .rpc import INVALID_PARAMS, Params, RpcError
 
@@ -36,12 +38,14 @@ BWIKI_HOST = "patchwiki.biligame.com"
 BWIKI_TARGET = r"images/(?:ys|sr)/[0-9a-f]/[0-9a-f]{2}/[0-9a-z]{16,48}\.(?:png|jpe?g|webp|gif)"
 
 # 只在桌面版用的来源：不放进 shared/images.json，Worker 不转发这些
-DESKTOP_SOURCES: dict[str, dict[str, str]] = {
+DESKTOP_SOURCES: dict[str, dict[str, Any]] = {
     "bwiki": {
         "host": BWIKI_HOST,
         "purpose": "原神、星铁的角色 / 武器 / 光锥图标（BWIKI，维护者 2026-10-20 选定；版权归米哈游，“关于”页有声明）",
         "pattern": f"^{BWIKI_TARGET}$",
         "path": "/{target}",
+        # 按 B 站的节奏下载、和 BWIKI 接口一起退避（bili.py）
+        "bili": True,
     },
 }
 
@@ -66,12 +70,14 @@ class Images:
         data_dir: Path | None = None,
         send: Sender = urllib_send,
         clock: Callable[[], float] = time.time,
+        guard: BiliGuard | None = None,
     ) -> None:
         self._sources = sources
         env_dir = os.environ.get("ARKRECORD_DATA_DIR")
         self._dir = data_dir or (Path(env_dir) if env_dir else None)
         self._send = send
         self._clock = clock
+        self._guard = guard or BiliGuard(self._dir, clock)
 
     @property
     def sources(self) -> dict[str, dict[str, Any]]:
@@ -152,10 +158,24 @@ class Images:
             "accept": "image/avif,image/webp,image/png,image/*;q=0.8",
             "user-agent": f"ArkRecord-Desktop/{__version__} (+https://github.com/DuskXi/ArkRecord-Web)",
         }
+        bili = bool(self.sources[source].get("bili"))
+        if bili and self._guard.blocked():
+            return {"status": 502}
         try:
-            response = self._send("GET", url, headers, None, TIMEOUT_S)
+            if bili:
+                with self._guard.image_turn():
+                    # 排队时 B 站可能已经拦下了别的请求
+                    if self._guard.blocked():
+                        return {"status": 502}
+                    response = self._send("GET", url, headers, None, TIMEOUT_S)
+            else:
+                response = self._send("GET", url, headers, None, TIMEOUT_S)
         except Exception as error:
             log.info("拉取图片失败（%s）：%s", source, type(error).__name__)
+            return {"status": 502}
+        if bili and response.status in BLOCK_STATUSES:
+            log.info("图片来源站拦下了请求（%s）：HTTP %s", source, response.status)
+            self._guard.report_block()
             return {"status": 502}
         if response.status == 404:
             self._write_cache(url, 404)

@@ -11,6 +11,7 @@ import threading
 from typing import Any
 
 from . import PROTOCOL_VERSION, __version__
+from .bili import BiliGuard
 from .hg import HgClient
 from .images import Images
 from .mhy.icons import MhyIcons
@@ -32,6 +33,8 @@ def build_methods(
     images: Images | None = None,
     icons: MhyIcons | None = None,
 ) -> dict[str, Handler]:
+    # BWIKI 的图标和图片共用节奏和退避
+    guard = BiliGuard()
     hg_client: list[HgClient] = [hg] if hg else []
     hg_lock = threading.Lock()
 
@@ -47,8 +50,8 @@ def build_methods(
         "hg.request": hg_request,
         **(mhy or MhyService()).methods(),
         **(stats or Stats()).methods(),
-        **(images or Images()).methods(),
-        **(icons or MhyIcons()).methods(),
+        **(images or Images(guard=guard)).methods(),
+        **(icons or MhyIcons(guard=guard)).methods(),
     }
 
 
@@ -75,5 +78,6 @@ def main() -> int:
 
     _setup_logging(stderr)
     logging.getLogger(__name__).info("后端已启动：backend %s，协议 %s", __version__, PROTOCOL_VERSION)
-    serve(build_methods(), stdin, protocol_out)
+    # 图片（BWIKI 的要排队）单独用一组线程，不占读取记录等其他方法的线程
+    serve(build_methods(), stdin, protocol_out, lanes={"img.fetch": 4})
     return 0

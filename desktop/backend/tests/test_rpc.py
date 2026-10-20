@@ -159,3 +159,30 @@ def test_unserializable_result_becomes_internal_error():
     out = io.StringIO()
     serve({"bad": lambda params: {1, 2}}, [request("bad") + "\n"], out)
     assert json.loads(out.getvalue())["error"]["code"] == INTERNAL_ERROR
+
+
+def test_serve_lanes_keep_slow_methods_off_the_main_workers():
+    """排队下载的图片（img.fetch）单独用一组线程：占满了也不挡住别的方法。"""
+    release = threading.Event()
+    answered = []
+
+    def slow(params):
+        release.wait(5)
+        return "slow"
+
+    def fast(params):
+        answered.append(True)
+        # 别的方法都能回复时再放行图片
+        if len(answered) == 2:
+            release.set()
+        return "fast"
+
+    lines = [request("img.fetch", id_=i) + "\n" for i in range(4)] + [
+        request("fast", id_=10 + i) + "\n" for i in range(2)
+    ]
+    out = io.StringIO()
+    serve({"img.fetch": slow, "fast": fast}, lines, out, workers=2, lanes={"img.fetch": 4})
+    responses = [json.loads(line) for line in out.getvalue().splitlines()]
+    # 快的先回复，图片在后
+    assert [r["result"] for r in responses[:2]] == ["fast", "fast"]
+    assert len(responses) == 6

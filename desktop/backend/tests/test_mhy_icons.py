@@ -6,13 +6,12 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from arkrecord_backend.app import build_methods
+from arkrecord_backend.bili import API_INTERVAL_S, BACKOFF_START_S, BiliGuard
 from arkrecord_backend.hg import UpstreamResponse
 from arkrecord_backend.images import Images, load_sources
 from arkrecord_backend.mhy.icons import (
-    BACKOFF_START_S,
     FOUND_TTL_S,
     MAX_LOOKUPS_PER_CALL,
-    MIN_INTERVAL_S,
     MISSING_TTL_S,
     MhyIcons,
 )
@@ -70,9 +69,9 @@ class Clock:
         self.now += seconds
 
 
-def icons(tmp_path, wiki, clock=None):
+def icons(tmp_path, wiki, clock=None, guard=None):
     clock = clock or Clock()
-    return MhyIcons(tmp_path, wiki, clock, clock.sleep)
+    return MhyIcons(tmp_path, wiki, clock, guard or BiliGuard(tmp_path, clock, clock.sleep))
 
 
 def test_looks_up_file_icons_for_the_given_names(tmp_path):
@@ -136,19 +135,20 @@ def test_cached_on_disk_found_for_30_days_missing_for_a_day(tmp_path):
     assert set(wiki.calls[2]["query"]["titles"].split("|")) == {"文件:琴.png", "文件:没有这个.png"}
 
 
-def test_batches_of_50_spaced_out_and_at_most_200_per_call(tmp_path):
+def test_batches_of_50_spaced_out_and_at_most_two_requests_per_call(tmp_path):
     clock = Clock()
-    names = [f"名称{i}" for i in range(260)]
+    names = [f"名称{i}" for i in range(130)]
     wiki = FakeWiki({f"文件:{n}.png": {"url": file_url("ys", i)} for i, n in enumerate(names)})
     source = icons(tmp_path, wiki, clock)
     result = source.icons({"game": "genshin", "names": names})
-    assert len(wiki.calls) == MAX_LOOKUPS_PER_CALL // 50
+    assert len(wiki.calls) == MAX_LOOKUPS_PER_CALL // 50 == 2
     assert all(len(c["query"]["titles"].split("|")) == 50 for c in wiki.calls)
-    assert len(clock.slept) == len(wiki.calls) - 1 and all(s == pytest.approx(MIN_INTERVAL_S) for s in clock.slept)
-    assert (len(result["items"]), result["complete"]) == (200, False)
-    # 下一次调用查剩下的
+    assert clock.slept == [pytest.approx(API_INTERVAL_S)]
+    assert (len(result["items"]), result["complete"]) == (100, False)
+    # 下一次调用查剩下的，和上一次请求也隔开
     result = source.icons({"game": "genshin", "names": names})
-    assert (len(result["items"]), result["complete"]) == (260, True)
+    assert (len(result["items"]), result["complete"]) == (130, True)
+    assert len(clock.slept) == 2
 
 
 @pytest.mark.parametrize("wiki", [FakeWiki(status=567), FakeWiki(status=403), FakeWiki(error=TimeoutError())])
@@ -215,3 +215,42 @@ def test_registered_and_icons_load_through_the_desktop_image_source(tmp_path):
         "images/ys/1/11/abcdefghijklmnopqrstuvwxyz00001.png?x=1",
     ):
         assert images.resolve("bwiki", bad) is None
+
+
+def test_blocked_images_and_icon_lookups_back_off_together(tmp_path):
+    from arkrecord_backend.images import Images, load_sources
+
+    clock = Clock()
+    guard = BiliGuard(tmp_path, clock, clock.sleep)
+    blocked_image = FakeImage(UpstreamResponse(567, [], b""))
+    images = Images(load_sources(), tmp_path, blocked_image, clock, guard)
+    target = file_url("ys", 1)[len(HOST) :]
+    assert images.fetch({"source": "bwiki", "target": target}) == {"status": 502}
+    assert guard.blocked()
+
+    # 图片被拦下后，查图标也先不发请求
+    wiki = FakeWiki({"文件:琴.png": {"url": file_url("ys", 1)}})
+    assert icons(tmp_path, wiki, clock, guard).icons({"game": "genshin", "names": ["琴"]}) == {
+        "items": {},
+        "complete": False,
+    }
+    assert wiki.calls == []
+    # 其他图片也不下载
+    assert images.fetch({"source": "bwiki", "target": file_url("ys", 2)[len(HOST) :]}) == {"status": 502}
+    assert len(blocked_image.calls) == 1
+    # 重新启动后也记得
+    assert BiliGuard(tmp_path, clock, clock.sleep).blocked()
+
+    clock.now += BACKOFF_START_S + 1
+    assert icons(tmp_path, wiki, clock, guard).icons({"game": "genshin", "names": ["琴"]})["complete"] is True
+    assert not guard.blocked()
+
+
+class FakeImage:
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def __call__(self, method, url, headers, body, timeout):
+        self.calls.append(url)
+        return self.response
