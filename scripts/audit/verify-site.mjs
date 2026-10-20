@@ -94,7 +94,9 @@ async function main() {
       const { stdout } = await run('gh', attestationArgs(file, manifest.workflow), { env: childEnv(), maxBuffer: 16 * 1024 * 1024 })
       const provenances = provenancesOf(JSON.parse(stdout))
       const provenance = provenances.find((p) => p.commit === manifest.commit)
-      report.attestation = { verified: Boolean(provenance), workflow: manifest.workflow, ...(provenance ?? provenances[0]) }
+      // 报告里只记来源，不记证明签名的文件列表（几百个哈希）
+      const { subjects: _subjects, ...origin } = provenance ?? provenances[0] ?? {}
+      report.attestation = { verified: Boolean(provenance), workflow: manifest.workflow, ...origin }
       if (provenance) console.log(`✓ 构建证明有效：${manifest.workflow}，${provenance.ref ?? ''} ${provenance.run ?? ''}`)
       else problem(`构建清单的构建证明里没有 commit ${manifest.commit}（有：${provenances.map((p) => p.commit).join('，')}）`)
     } catch (error) {

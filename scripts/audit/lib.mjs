@@ -216,37 +216,79 @@ export function childEnv(env = process.env) {
   return Object.fromEntries(keep.filter((k) => env[k] !== undefined).map((k) => [k, env[k]]))
 }
 
+/**
+ * gh 对每个文件最多取多少份证明（gh 默认 30 份，按新到旧）。很少改动的文件（_headers）每次部署都会被签发一次，
+ * 测试站部署得多：2026-10-20 正式站 _headers 的 77 份证明里 74 份是测试站的，正式站的排在第 64 位以后，
+ * 只取 30 份时正式站的那份被挤掉，核对误报“没有构建证明”。
+ */
+export const ATTESTATION_LIMIT = 1000
+
 /** gh attestation verify 的参数：必须是本仓库、指定部署流程签发的 */
 export function attestationArgs(file, workflow) {
-  return ['attestation', 'verify', file, '--repo', REPOSITORY, '--signer-workflow', `${REPOSITORY}/${workflow}`, '--format', 'json']
+  return ['attestation', 'verify', file, '--repo', REPOSITORY, '--signer-workflow', `${REPOSITORY}/${workflow}`, '--limit', String(ATTESTATION_LIMIT), '--format', 'json']
 }
 
+const SHA256_HEX = /^[0-9a-f]{64}$/
+
 /**
- * 从 gh 的 JSON 输出里取出每一份构建证明的来源（commit、分支、运行地址）。
+ * 从 gh 的 JSON 输出里取出每一份构建证明的来源（commit、分支、运行地址），以及它签名的全部文件（subjects，SHA-256 列表）。
  * 同样内容的文件可能被多次构建签发过（例如 _headers 很少改动），所以是一个列表。
+ * 一次构建只签发一份证明，里面列出这次构建的全部文件（网站文件和 Worker 模块，见 manifest.mjs）。
  */
 export function provenancesOf(ghJson) {
   if (!Array.isArray(ghJson)) return []
   return ghJson.map((item) => {
     const cert = item?.verificationResult?.signature?.certificate ?? {}
+    const subject = item?.verificationResult?.statement?.subject
     return {
       commit: typeof cert.sourceRepositoryDigest === 'string' ? cert.sourceRepositoryDigest : null,
       ref: typeof cert.sourceRepositoryRef === 'string' ? cert.sourceRepositoryRef : null,
       run: typeof cert.runInvocationURI === 'string' ? cert.runInvocationURI : null,
+      subjects: Array.isArray(subject) ? subject.map((s) => s?.digest?.sha256).filter((d) => typeof d === 'string' && SHA256_HEX.test(d)) : [],
     }
   })
 }
 
 /**
- * 一个 Worker 版本的各个模块是否来自同一次构建：找出每个模块都有证明的 commit。
- * 有多个时优先取 preferred（网站上构建清单的 commit）。没有共同的 commit 说明模块被拼凑过。
+ * 一个 Worker 版本里，自己没查到证明的模块，如果列在同一版本另一个模块的有效证明里，也算有证明：
+ * 证明的签名覆盖它列出的全部文件（subjects），所以这份证明同样证明了这个模块来自那次构建。
+ * 用来兜底“同样内容被签发太多次、gh 没取到对的那份”的情况（见 ATTESTATION_LIMIT）。
+ * modules 的每一项是 { sha256, attested, provenances?, reason? }；返回新的列表，这样补上的标 covered: true。
+ */
+export function coverBySubjects(modules) {
+  const verified = modules.filter((m) => m.attested).flatMap((m) => m.provenances ?? [])
+  return modules.map((m) => {
+    if (m.attested) return m
+    const covering = verified.filter((p) => typeof m.sha256 === 'string' && (p.subjects ?? []).includes(m.sha256))
+    if (!covering.length) return m
+    const { reason: _reason, ...rest } = m
+    return { ...rest, attested: true, provenances: covering, covered: true }
+  })
+}
+
+/**
+ * 一个 Worker 版本的各个模块是否来自同一次构建。modules 的每一项是 { sha256, provenances }。
+ *
+ * 先找“同一份构建证明里列出了全部模块”的那次构建：证明的签名覆盖它列出的全部文件，所以这是最直接的证据。
+ * gh 对每个文件只取最近的若干份证明（默认 30 份），很少改动的模块（例如 _headers）每次构建都会被签发一次，
+ * 较早版本的那份证明可能不在列表里；但改动频繁的模块（index.js）只有自己那次构建的证明，从它出发就能找到。
+ * 找不到时再退回到“每个模块都有证明的 commit”（旧的判断方式）。
+ * 有多个时优先取 preferred（网站上构建清单的 commit）。都找不到说明模块被拼凑过。
  */
 export function commonProvenance(modules, preferred = null) {
   const lists = modules.map((m) => m.provenances ?? [])
   if (!lists.length || lists.some((l) => !l.length)) return null
+  const pick = (candidates) => {
+    if (!candidates.length) return null
+    const p = candidates.find((x) => x.commit === preferred) ?? candidates[0]
+    return { commit: p.commit, ref: p.ref ?? null, run: p.run ?? null }
+  }
+  const digests = modules.map((m) => m.sha256)
+  const sameBuild = lists
+    .flat()
+    .filter((p) => p.commit && digests.every((d) => typeof d === 'string' && (p.subjects ?? []).includes(d)))
+  const found = pick(sameBuild)
+  if (found) return found
   const common = [...new Set(lists[0].map((p) => p.commit).filter(Boolean))].filter((c) => lists.every((l) => l.some((p) => p.commit === c)))
-  if (!common.length) return null
-  const commit = preferred && common.includes(preferred) ? preferred : common[0]
-  const p = lists[0].find((x) => x.commit === commit)
-  return { commit, ref: p?.ref ?? null, run: p?.run ?? null }
+  return pick(common.map((c) => lists[0].find((x) => x.commit === c)))
 }

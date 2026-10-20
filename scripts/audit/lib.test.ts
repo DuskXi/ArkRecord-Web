@@ -12,6 +12,7 @@ import {
   isSafePath,
   parseHeadersFile,
   commonProvenance,
+  coverBySubjects,
   provenancesOf,
   servedPath,
   sha256Hex,
@@ -23,7 +24,7 @@ const OTHER = '9517e9d2fb7fd0527768ad8d13bb25938f48cba6'
 const cert = (commit: string, run: number) => ({
   verificationResult: { signature: { certificate: { sourceRepositoryDigest: commit, sourceRepositoryRef: 'refs/heads/master', runInvocationURI: `https://github.com/DuskXi/ArkRecord-Web/actions/runs/${run}/attempts/1` } } },
 })
-const prov = (commit: string) => ({ commit, ref: 'refs/heads/master', run: `run-${commit.slice(0, 3)}` })
+const prov = (commit: string, subjects: string[] = []) => ({ commit, ref: 'refs/heads/master', run: `run-${commit.slice(0, 3)}`, subjects })
 let dirs: string[] = []
 afterEach(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true })
@@ -147,22 +148,63 @@ describe('构建证明', () => {
       'DuskXi/ArkRecord-Web',
       '--signer-workflow',
       'DuskXi/ArkRecord-Web/.github/workflows/deploy-production.yml',
+      // gh 默认只取 30 份：很少改动的 _headers 被测试站反复签发，正式站那份会被挤掉
+      '--limit',
+      '1000',
       '--format',
       'json',
     ])
   })
 
+  it('自己没查到证明的模块，列在同一版本另一个模块的有效证明里也算有证明', () => {
+    const HEADERS = 'a'.repeat(64)
+    const INDEX = 'b'.repeat(64)
+    const build = { ...prov(COMMIT), subjects: [INDEX, HEADERS] }
+    const modules = [
+      { sha256: INDEX, attested: true, provenances: [build] },
+      // gh 只取到了测试站签发的证明，按正式站的部署流程过滤后一份都不剩
+      { sha256: HEADERS, attested: false, reason: '没有构建证明' },
+    ]
+    const covered = coverBySubjects(modules)
+    expect(covered[1]).toEqual({ sha256: HEADERS, attested: true, provenances: [build], covered: true })
+    expect(commonProvenance(covered)?.commit).toBe(COMMIT)
+    // 没列在任何有效证明里的，照旧没有证明
+    const other = coverBySubjects([{ sha256: INDEX, attested: true, provenances: [{ ...prov(COMMIT), subjects: [INDEX] }] }, { sha256: HEADERS, attested: false }])
+    expect(other[1]).toEqual({ sha256: HEADERS, attested: false })
+    // 都没有证明时不会凭空补上
+    expect(coverBySubjects([{ sha256: HEADERS, attested: false }])).toEqual([{ sha256: HEADERS, attested: false }])
+  })
+
   it('从 gh 的输出里取出每份证明的 commit、分支和运行地址', () => {
     expect(provenancesOf([cert(COMMIT, 1), cert(OTHER, 2)])).toEqual([
-      { commit: COMMIT, ref: 'refs/heads/master', run: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/1/attempts/1' },
-      { commit: OTHER, ref: 'refs/heads/master', run: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/2/attempts/1' },
+      { commit: COMMIT, ref: 'refs/heads/master', run: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/1/attempts/1', subjects: [] },
+      { commit: OTHER, ref: 'refs/heads/master', run: 'https://github.com/DuskXi/ArkRecord-Web/actions/runs/2/attempts/1', subjects: [] },
     ])
     expect(provenancesOf(null)).toEqual([])
+    // 证明签名的文件列表（in-toto statement 的 subject），只留格式正确的 SHA-256
+    const signed = { ...cert(COMMIT, 1), verificationResult: { ...cert(COMMIT, 1).verificationResult, statement: { subject: [{ name: 'a', digest: { sha256: 'a'.repeat(64) } }, { name: 'b', digest: { sha256: 'bad' } }, null] } } }
+    expect(provenancesOf([signed])[0]!.subjects).toEqual(['a'.repeat(64)])
+  })
+
+  it('同一份构建证明列出了全部模块：即使 _headers 的证明列表里没有这次构建（gh 只取最近的若干份）也算同一次构建', () => {
+    const INDEX = '1'.repeat(64)
+    const HEADERS = '2'.repeat(64)
+    const both = [INDEX, HEADERS]
+    // index.js 只有 COMMIT 那次构建的证明，证明里列出了两个模块；_headers 的证明列表里只有更新的 OTHER
+    const index = { sha256: INDEX, provenances: [prov(COMMIT, both)] }
+    const headers = { sha256: HEADERS, provenances: [prov(OTHER, both)] }
+    expect(commonProvenance([index, headers])).toEqual({ commit: COMMIT, ref: 'refs/heads/master', run: `run-${COMMIT.slice(0, 3)}` })
+    // 没有一份证明同时列出两个模块，也没有共同的 commit：拼凑的
+    expect(commonProvenance([{ sha256: INDEX, provenances: [prov(COMMIT, [INDEX])] }, { sha256: HEADERS, provenances: [prov(OTHER, [HEADERS])] }])).toBeNull()
+    // 别的构建的证明里也列出了同样内容的 index.js：那次构建同样产生了全部模块，也算
+    expect(commonProvenance([{ sha256: INDEX, provenances: [prov(COMMIT, [INDEX])] }, headers])?.commit).toBe(OTHER)
+    // 证明里的文件列表对不上时，退回到“每个模块都有同一个 commit 的证明”
+    expect(commonProvenance([{ sha256: INDEX, provenances: [prov(COMMIT, [INDEX])] }, { sha256: HEADERS, provenances: [prov(COMMIT, [HEADERS])] }])?.commit).toBe(COMMIT)
   })
 
   it('一个版本的模块必须有共同的构建来源：很少改动的 _headers 被多次签发也不算拼凑', () => {
     // index.js 只来自 COMMIT；_headers 内容没变，被 COMMIT 和 OTHER 两次构建都签发过
-    expect(commonProvenance([{ provenances: [prov(COMMIT)] }, { provenances: [prov(OTHER), prov(COMMIT)] }])).toEqual(prov(COMMIT))
+    expect(commonProvenance([{ provenances: [prov(COMMIT)] }, { provenances: [prov(OTHER), prov(COMMIT)] }])).toEqual({ commit: COMMIT, ref: 'refs/heads/master', run: `run-${COMMIT.slice(0, 3)}` })
     // 两个模块都被两次构建签发过（代码没变）：优先取网站上构建清单的 commit
     expect(commonProvenance([{ provenances: [prov(COMMIT), prov(OTHER)] }, { provenances: [prov(OTHER), prov(COMMIT)] }], OTHER)?.commit).toBe(OTHER)
     // 没有共同的 commit：模块被拼凑过
