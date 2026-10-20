@@ -1,4 +1,4 @@
-"""原神、星铁的图标（BWIKI）：假的 BWIKI，不发真实请求。名称都是常见的公开角色 / 武器名。"""
+"""原神、星铁、终末地的图标（BWIKI）：假的 BWIKI，不发真实请求。名称都是常见的公开角色 / 武器名。"""
 
 import json
 from urllib.parse import parse_qs, urlparse
@@ -9,13 +9,13 @@ from arkrecord_backend.app import build_methods
 from arkrecord_backend.bili import API_INTERVAL_S, BACKOFF_START_S, BiliGuard
 from arkrecord_backend.hg import UpstreamResponse
 from arkrecord_backend.images import Images, load_sources
-from arkrecord_backend.mhy.icons import (
-    FOUND_TTL_S,
-    MAX_LOOKUPS_PER_CALL,
-    MISSING_TTL_S,
-    MhyIcons,
-)
 from arkrecord_backend.rpc import INVALID_PARAMS, RpcError
+from arkrecord_backend.wikiicons import (
+    FOUND_TTL_S,
+    MAX_REQUESTS_PER_CALL,
+    MISSING_TTL_S,
+    WikiIcons,
+)
 
 HOST = "https://patchwiki.biligame.com/"
 
@@ -71,7 +71,7 @@ class Clock:
 
 def icons(tmp_path, wiki, clock=None, guard=None):
     clock = clock or Clock()
-    return MhyIcons(tmp_path, wiki, clock, guard or BiliGuard(tmp_path, clock, clock.sleep))
+    return WikiIcons(tmp_path, wiki, clock, guard or BiliGuard(tmp_path, clock, clock.sleep))
 
 
 def test_looks_up_file_icons_for_the_given_names(tmp_path):
@@ -118,7 +118,7 @@ def test_cached_on_disk_found_for_30_days_missing_for_a_day(tmp_path):
     params = {"game": "genshin", "names": ["琴", "没有这个"]}
     first = icons(tmp_path, wiki, clock).icons(params)
     assert len(wiki.calls) == 1
-    assert (tmp_path / "mhy-icons" / "genshin.json").is_file()
+    assert (tmp_path / "wiki-icons" / "genshin.json").is_file()
 
     # 重新启动（新的实例）也用缓存
     clock.now += MISSING_TTL_S - 10
@@ -141,7 +141,7 @@ def test_batches_of_50_spaced_out_and_at_most_two_requests_per_call(tmp_path):
     wiki = FakeWiki({f"文件:{n}.png": {"url": file_url("ys", i)} for i, n in enumerate(names)})
     source = icons(tmp_path, wiki, clock)
     result = source.icons({"game": "genshin", "names": names})
-    assert len(wiki.calls) == MAX_LOOKUPS_PER_CALL // 50 == 2
+    assert len(wiki.calls) == MAX_REQUESTS_PER_CALL == 2
     assert all(len(c["query"]["titles"].split("|")) == 50 for c in wiki.calls)
     assert clock.slept == [pytest.approx(API_INTERVAL_S)]
     assert (len(result["items"]), result["complete"]) == (100, False)
@@ -254,3 +254,50 @@ class FakeImage:
     def __call__(self, method, url, headers, body, timeout):
         self.calls.append(url)
         return self.response
+
+
+def test_endfield_tries_avatar_then_icon_and_the_name_without_spaces(tmp_path):
+    zmd = "images/zmd/1/11/abcdefghijklmnopqrstuvwxyz00001.png"
+    wiki = FakeWiki(
+        {
+            "文件:佩丽卡头像.png": {"url": HOST + zmd},
+            "文件:佩丽卡图标.png": {"url": HOST + zmd.replace("00001", "00002")},
+            "文件:某武器图标.png": {"url": HOST + zmd.replace("00001", "00003")},
+            "文件:LastRite头像.png": {"url": HOST + zmd.replace("00001", "00004")},
+        }
+    )
+    result = icons(tmp_path, wiki).icons({"game": "endfield", "names": ["佩丽卡", "某武器", "Last Rite", "没有"]})
+    assert result["items"] == {
+        "佩丽卡": zmd,
+        "某武器": zmd.replace("00001", "00003"),
+        "Last Rite": zmd.replace("00001", "00004"),
+    }
+    call = wiki.calls[0]
+    assert call["path"] == "/zmd/api.php"
+    assert "文件:Last Rite头像.png" in call["query"]["titles"].split("|")
+
+
+def test_endfield_batches_count_titles_not_names(tmp_path):
+    clock = Clock()
+    names = [f"干员{i}" for i in range(30)]
+    wiki = FakeWiki()
+    icons(tmp_path, wiki, clock).icons({"game": "endfield", "names": names})
+    # 每个名称两个标题（头像、图标），一次最多 50 个标题
+    assert [len(c["query"]["titles"].split("|")) for c in wiki.calls] == [50, 10]
+
+
+def test_mhy_icons_only_takes_mihoyo_games_and_old_cache_is_reused(tmp_path):
+    methods = build_methods(icons=icons(tmp_path, FakeWiki()))
+    with pytest.raises(RpcError):
+        methods["mhy.icons"]({"game": "endfield", "names": []})
+    assert methods["wiki.icons"]({"game": "endfield", "names": []}) == {"items": {}, "complete": True}
+
+    old = tmp_path / "mhy-icons"
+    old.mkdir()
+    target = file_url("ys", 1)[len(HOST) :]
+    clock = Clock()
+    entry = {"target": target, "checkedAt": clock.now}
+    (old / "genshin.json").write_text(json.dumps({"version": 1, "items": {"琴": entry}}), encoding="utf-8")
+    wiki = FakeWiki()
+    assert icons(tmp_path, wiki, clock).icons({"game": "genshin", "names": ["琴"]})["items"] == {"琴": target}
+    assert wiki.calls == []

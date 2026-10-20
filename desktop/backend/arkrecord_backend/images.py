@@ -39,15 +39,15 @@ MISSING_SECONDS = 3600
 WAIT_INFLIGHT_S = 120
 CACHE_DIR = "image-cache"
 
-# 原神、星铁的图标（BWIKI，mhy/icons.py 查出路径）：images/<ys|sr>/<哈希目录>/<文件名>，不带缩略图和查询参数
+# 原神、星铁、终末地的图标（BWIKI，wikiicons.py 查出路径）：images/<ys|sr|zmd>/<哈希目录>/<文件名>，不带缩略图和查询参数
 BWIKI_HOST = "patchwiki.biligame.com"
-BWIKI_TARGET = r"images/(?:ys|sr)/[0-9a-f]/[0-9a-f]{2}/[0-9a-z]{16,48}\.(?:png|jpe?g|webp|gif)"
+BWIKI_TARGET = r"images/(?:ys|sr|zmd)/[0-9a-f]/[0-9a-f]{2}/[0-9a-z]{16,48}\.(?:png|jpe?g|webp|gif)"
 
 # 只在桌面版用的来源：不放进 shared/images.json，Worker 不转发这些
 DESKTOP_SOURCES: dict[str, dict[str, Any]] = {
     "bwiki": {
         "host": BWIKI_HOST,
-        "purpose": "原神、星铁的角色 / 武器 / 光锥图标（BWIKI，维护者 2026-10-20 选定；版权归米哈游，“关于”页有声明）",
+        "purpose": "原神、星铁、终末地的角色 / 武器 / 光锥图标（BWIKI，维护者 2026-10-20 选定；“关于”页有版权声明）",
         "pattern": f"^{BWIKI_TARGET}$",
         "path": "/{target}",
         # 按 B 站的节奏下载、和 BWIKI 接口一起退避（bili.py）

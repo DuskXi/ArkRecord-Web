@@ -24,8 +24,8 @@ RPM_RULES: Sequence[tuple[str, int]] = (
     # BWIKI：接口最严（2026-10-20 实测被 B 站的反爬拦过），图片按页面一次要几十张算
     ("wiki.biligame.com", 6),
     ("patchwiki.biligame.com", 60),
-    # 明日方舟头像（PRTS）、终末地卡池图（鹰角 CDN）
-    ("torappu.prts.wiki", 60),
+    # 明日方舟头像（PRTS，桌面版运行时加载，一页可能有上百个干员）、终末地卡池图（鹰角 CDN）
+    ("torappu.prts.wiki", 120),
     ("web.hycdn.cn", 60),
     # 米哈游的抽卡记录接口：读一个大账号要翻上百页
     (".mihoyo.com", 100),

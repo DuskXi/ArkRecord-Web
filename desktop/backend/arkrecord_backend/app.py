@@ -14,11 +14,11 @@ from . import PROTOCOL_VERSION, __version__
 from .bili import BiliGuard
 from .hg import HgClient
 from .images import Images
-from .mhy.icons import MhyIcons
 from .mhy.service import MhyService
 from .redact import RedactingFormatter
 from .rpc import Handler, Params, no_params, serve
 from .stats import Stats
+from .wikiicons import WikiIcons
 
 
 def ping(params: Params) -> dict[str, Any]:
@@ -31,7 +31,7 @@ def build_methods(
     mhy: MhyService | None = None,
     stats: Stats | None = None,
     images: Images | None = None,
-    icons: MhyIcons | None = None,
+    icons: WikiIcons | None = None,
 ) -> dict[str, Handler]:
     # BWIKI 的图标和图片共用节奏和退避
     guard = BiliGuard()
@@ -51,7 +51,7 @@ def build_methods(
         **(mhy or MhyService()).methods(),
         **(stats or Stats()).methods(),
         **(images or Images(guard=guard)).methods(),
-        **(icons or MhyIcons(guard=guard)).methods(),
+        **(icons or WikiIcons(guard=guard)).methods(),
     }
 
 

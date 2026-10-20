@@ -85,13 +85,14 @@ uv run --project desktop/backend python -m arkrecord_backend
 - `gachaType`：原神 100、200、301（会同时返回 400）、302、500；星铁 1、2、11、12、21、22（21、22 走联动池接口）。
 - 业务错误（-32000）的 `data.kind`：`game_not_found`、`cache_locked`（最新版本的缓存被游戏占用：先关闭游戏再读取；Windows 上已经用允许共享删除的方式打开，游戏独占时仍然读不了）、`no_link`（先在游戏里打开抽卡记录）、`link_expired`、`link_invalid`、`bad_link`、`handle_expired`、`rate_limited`（-110，稍后重试）、`network`、`upstream_error`、`unsupported`。
 - 页面：原神 `/genshin`（统计）和 `/genshin/records`（记录），星铁 `/starrail` 和 `/starrail/records`，都是 `src/components/mhy/MhyGamePage.vue`（星铁的界面文字是“跃迁记录”）。统计按 `MHY_POOLS[game]` 的卡池组（星铁的联动跃迁各自一组），抽数都只在本卡池内计算，界面上写明“本卡池内”。最上面都有读取面板；账号（UID）在侧边栏 `MhySidebar` 里切换，和页面共用 `accounts.ts`，选中的记在本机。读取面板：从游戏缓存读取（先 `mhy.locate`，找不到时用 `app.pickDirectory` 手动选，选过的目录记在本机）、等待读取（每 3 秒查 `mhy.cacheStamp`，变了就读，最多 10 分钟）、粘贴链接（输入框不回显、不保存，提交后马上清空）、同步进度、出错时按 `kind` 给出下一步、中途出错时显示已经保存的部分。读取的状态按游戏分开放在 `reader.ts`（不放在面板里：切换原神 / 星铁时面板是复用的），所以两个游戏可以同时读取，切走再切回来能看到进度，等待读取离开页面后也继续；不在那个游戏的页面上时，读完或出错会弹提示。头像用 BWIKI 的图（维护者 2026-10-20 决定，“关于”页声明不拥有图片版权）：`src/components/mhy/icons.ts` 把页面用到的名称攒起来交给 `mhy.icons`（见下）查图片路径，图片走 `/api/img/bwiki/…`，只查带汉字的名称，查不到时显示文字；`CharAvatar` 通过 `provideRecords` 的 host.avatar 取图，鹰角页面不受影响。统计和记录列表只数事实，不写保底规则。
-- 图标 `mhy.icons {game, names}` → `{items: {名称: target}, complete}`（`arkrecord_backend/mhy/icons.py`）：
-  - 查 BWIKI 上的“文件:<名称>.png”（原神 `wiki.biligame.com/ys`、星铁 `/sr` 的 MediaWiki 接口，`prop=imageinfo`，一次 50 个）；`target` 是图片在 `patchwiki.biligame.com` 上的路径，只要原图（不要缩略图），不超过 1 MB；
-  - 只查页面给的名称，不拉整个分类；一次调用最多 2 个请求（100 个名称），其余下次再查（`complete` 为 false）；
+- 图标 `wiki.icons {game, names}` → `{items: {名称: target}, complete}`（`arkrecord_backend/wikiicons.py`；`game` 是 genshin、starrail、endfield；`mhy.icons` 是同一个方法，只接受原神、星铁）：
+  - 原神（`wiki.biligame.com/ys`）、星铁（`/sr`）查 BWIKI 上的“文件:<名称>.png”；终末地（`/zmd`）查“文件:<名称>头像.png”，没有时用“文件:<名称>图标.png”，名称去掉空格和下划线也试一次（和 `scripts/sync-gamedata.mjs` 的 `normalizeName` 一致）。用 MediaWiki 接口的 `prop=imageinfo`，一次 50 个标题；`target` 是图片在 `patchwiki.biligame.com` 上的路径，只要原图（不要缩略图），不超过 1 MB；
+  - 只查页面给的名称，不拉整个分类；一次调用最多 2 个请求，其余下次再查（`complete` 为 false）；
   - 查到的 30 天内不再查，没有的 1 天后再查；
   - 对 B 站低频（`arkrecord_backend/bili.py`）：接口两次请求至少间隔 8 秒；BWIKI 的图片同时最多下 2 张、两张开始之间至少 0.2 秒；接口或图片任何一边遇到 HTTP 567（B 站反爬）或 429，两边一起退避，15 分钟起每次翻倍、最多 1 天，记在 `ARKRECORD_DATA_DIR/bili-guard.json`（重启后也遵守）；退避期间接口只返回缓存、图片返回 502，都不发请求。2026-10-20 实测：星铁查了 3 次接口、下了几十张图后，原神的接口被 567 拦下；
   - 日志写“查到 x 个、没查到 y 个”，没查到的名称（公开的角色 / 武器名）列出前 30 个；
-  - 缓存在 `ARKRECORD_DATA_DIR/mhy-icons/<game>.json`。主进程允许页面调用，超时 120 秒。
+  - 缓存在 `ARKRECORD_DATA_DIR/wiki-icons/<game>.json`（原来原神、星铁的在 `mhy-icons/`，读得到就沿用）。主进程允许页面调用，超时 120 秒。
+  - 桌面版不打包镜像的头像（维护者 2026-10-20：“本地全走转发限速这条路”）：明日方舟头像走 `img.fetch` 的 `prts-avatar`（只用 PRTS；构建脚本用作备份的 GitHub 上的游戏资源是解包数据，桌面版运行时不用），终末地头像按名称用 `wiki.icons` 查 BWIKI。森空岛的图和它的第三方地址索引运行时不用；手动覆盖表现在是空的，以后要用时再加一个森空岛来源。
 - 本机只读检查（不输出参数值、不发请求）：`uv run --project desktop/backend python -m arkrecord_backend.mhy.inspect genshin`。
 - 本机真实请求实验：`uv run --project desktop/backend python -m arkrecord_backend.mhy.probe genshin`。不加 `--yes` 只列出会发哪些请求；加 `--yes` 后走和应用相同的代码（校验链接、每个卡池拉到最后一页），只输出页数、条数、字段名和格式检查，不输出 authkey、UID 和记录内容。要先在游戏里打开一次抽卡记录，并经维护者同意（见 docs/desktop/plan.md 的调试规则）。
 
@@ -172,7 +173,8 @@ interface ArkrecordBridge {
 |---|---|
 | `wiki.biligame.com`（BWIKI 接口） | 6 |
 | `patchwiki.biligame.com`（BWIKI 图片） | 60 |
-| `torappu.prts.wiki`、`web.hycdn.cn`（明日方舟头像、终末地卡池图） | 60 |
+| `torappu.prts.wiki`（明日方舟头像：一页可能有上百个干员） | 120 |
+| `web.hycdn.cn`（终末地卡池图） | 60 |
 | `*.mihoyo.com`、`*.hoyoverse.com`（米哈游抽卡记录） | 100 |
 | `*.hypergryph.com`（鹰角） | 120 |
 | 其他（比如使用人数统计） | 60 |
