@@ -89,8 +89,8 @@ describe('记录的空档', () => {
     const a = analyze(events, mhyModel('genshin', 'char'))
     expect(a.pity[0]).toMatchObject({ current: 4, afterGap: true })
     const [card] = mhyGuarantees('genshin', a, events)
-    expect(card!.label).toContain('空档')
-    expect(card!.label).toContain('至少 4 抽')
+    expect(card).toMatchObject({ label: '大小保底看不出来（有空档）', current: 4, atLeast: true })
+    expect(card!.hint).toContain('至少垫了 4 抽')
   })
 
   it('间隔不到保留时长不算空档；星铁按 180 天，原神按 365 天', () => {

@@ -67,6 +67,9 @@ const recent = computed<RecentHit[]>(() =>
 const multiAccount = computed(() => new Set(summaries.value.filter((s) => s.accounts.length > 1).map((s) => s.game)))
 const accountName = (h: RecentHit) => summaries.value.find((s) => s.game === h.game)?.accounts.find((a) => a.accountId === h.accountId)?.name ?? ''
 
+/** 最近 12 个月的抽数合计 */
+const recentMonthPulls = computed(() => withData.value.reduce((n, s) => n + s.monthly.reduce((m, x) => m + x.pulls, 0), 0))
+
 /** 每月抽数：四款游戏叠在一起，只画有记录的游戏 */
 const monthlyOption = computed<EChartsOption>(() => {
   const p = palette.value
@@ -165,7 +168,8 @@ function open(game: DesktopGame) {
         </ul>
       </section>
 
-      <section v-if="totals.pulls">
+      <!-- 最近 12 个月都没有抽卡时不显示（只会是一张空图） -->
+      <section v-if="recentMonthPulls">
         <SectionHeader index="03" eyebrow="MONTHLY" title="每月抽数" />
         <div class="rounded-(--ui-radius) border border-default p-4">
           <EChart :option="monthlyOption" height="260px" />

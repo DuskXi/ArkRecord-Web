@@ -253,9 +253,20 @@ export function mhyGuarantees(game: MhyGame, analysis: Analysis, events: readonl
     const rates = OFFICIAL_RATES[game][group]
     if (!isEventGroup(group) || !rates) continue
     const state = states.get(p.family) ?? 'unknown'
-    // 记录的空档（gaps.ts）之后：垫抽只算了空档之后的
-    const label = p.afterGap ? `大小保底看不出来（中间有一段没有记录的空档，已垫至少 ${p.current} 抽）` : STATE_TEXT[state](group, game)
-    out.push({ poolName: p.label, label, current: p.current, target: rates.hardPity, done: false })
+    // 记录的空档（gaps.ts）之后：看不出大小保底，垫抽只是下限。标题要短（卡片上一行放得下），细节放在下面
+    if (p.afterGap) {
+      out.push({
+        poolName: p.label,
+        label: '大小保底看不出来（有空档）',
+        hint: `中间有一段没有记录的空档，实际至少垫了 ${p.current} 抽`,
+        current: p.current,
+        atLeast: true,
+        target: rates.hardPity,
+        done: false,
+      })
+      continue
+    }
+    out.push({ poolName: p.label, label: STATE_TEXT[state](group, game), current: p.current, target: rates.hardPity, done: false })
   }
   return out
 }

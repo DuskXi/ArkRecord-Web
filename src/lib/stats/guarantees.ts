@@ -6,7 +6,11 @@ import type { Analysis, PoolSummary } from './analyze'
 export interface Guarantee {
   poolName: string
   label: string
+  /** 标题下面的补充说明（米哈游：记录有空档时为什么看不出来） */
+  hint?: string
   current: number
+  /** current 只是下限（米哈游：记录有空档，实际至少这么多） */
+  atLeast?: true
   target: number
   done: boolean
 }

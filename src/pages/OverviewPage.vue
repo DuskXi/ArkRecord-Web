@@ -118,11 +118,12 @@ const upHint = computed(() => {
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <div v-for="g in records.guarantees" :key="g.poolName + g.label" class="rounded-(--ui-radius) border border-default p-4">
             <p class="truncate text-xs text-dimmed">{{ g.poolName }}</p>
-            <p class="truncate font-medium text-highlighted">{{ g.label }}</p>
+            <p class="truncate font-medium text-highlighted" :title="g.label">{{ g.label }}</p>
+            <p v-if="g.hint" class="text-xs text-muted">{{ g.hint }}</p>
             <div class="mt-2 flex items-center gap-3">
               <UProgress :model-value="g.done ? g.target : Math.min(g.current, g.target)" :max="g.target" :color="g.done ? 'success' : 'primary'" class="flex-1" />
               <span class="font-display text-sm tabular-nums text-muted">
-                {{ g.done ? '已达成' : `${g.current} / ${g.target}` }}
+                {{ g.done ? '已达成' : `${g.atLeast ? '≥' : ''}${g.current} / ${g.target}` }}
               </span>
             </div>
           </div>
