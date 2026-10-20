@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { formatDate, rarityVar } from '@/lib/format'
 import type { SixStarHit } from '@/lib/stats/analyze'
 import { type GiftEvent, giftNote } from '@/lib/stats/gifts'
+import { upTag } from '@/lib/stats/up-tag'
 import CharAvatar from './CharAvatar.vue'
 
 /**
@@ -40,11 +41,12 @@ const shown = computed<Tile[]>(() =>
             {{ t.hit.pity }}
           </span>
           <span
-            v-if="t.hit.event.isUp !== null"
+            v-if="upTag(t.hit.event)"
             class="absolute bottom-1.5 left-1 rounded-sm px-1 text-[10px] font-medium text-white"
-            :class="t.hit.event.isUp ? 'bg-primary' : 'bg-zinc-600'"
+            :class="upTag(t.hit.event)!.up ? 'bg-primary' : 'bg-zinc-600'"
+            :title="upTag(t.hit.event)!.title"
           >
-            {{ t.hit.event.isUp ? 'UP' : '歪' }}
+            {{ upTag(t.hit.event)!.text }}
           </span>
         </div>
         <div class="mt-1 h-1 overflow-hidden rounded-full bg-elevated">

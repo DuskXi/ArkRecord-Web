@@ -6,6 +6,7 @@ import CharAvatar from '@/components/ui/CharAvatar.vue'
 import { formatDateTime, rarityTextVar, rarityVar } from '@/lib/format'
 import type { PullEvent } from '@/lib/stats/events'
 import { type GiftEvent, giftNote } from '@/lib/stats/gifts'
+import { upTag } from '@/lib/stats/up-tag'
 import { useRecords } from '@/composables/useRecords'
 
 /**
@@ -143,7 +144,14 @@ function pityTone(pity: number | null) {
                     <p class="truncate font-semibold" :style="n.seg.six ? { color: rarityTextVar(top) } : undefined">
                       {{ n.seg.six ? n.seg.six.name : '进行中' }}
                     </p>
-                    <UBadge v-if="n.seg.six?.isUp !== null && n.seg.six?.isUp !== undefined" :label="n.seg.six.isUp ? 'UP' : '歪'" :color="n.seg.six.isUp ? 'primary' : 'neutral'" variant="subtle" size="sm" />
+                    <UBadge
+                      v-if="n.seg.six && upTag(n.seg.six)"
+                      :label="upTag(n.seg.six)!.text"
+                      :color="upTag(n.seg.six)!.up ? 'primary' : 'neutral'"
+                      :title="upTag(n.seg.six)!.title"
+                      variant="subtle"
+                      size="sm"
+                    />
                     <UBadge v-if="n.seg.six?.isNew" label="NEW" color="error" variant="subtle" size="sm" class="font-display" />
                   </div>
                   <p class="truncate text-xs text-muted">

@@ -7,6 +7,7 @@ import { axisStyle, rarityColor, useChartTheme } from '@/composables/useChartThe
 import { formatDateTime, formatPercent, rarityVar } from '@/lib/format'
 import { quantile } from '@/lib/stats/pity'
 import { analyzeUp, binPity, luckTrend } from '@/lib/stats/sixstar'
+import { upTag } from '@/lib/stats/up-tag'
 import { useRecords } from '@/composables/useRecords'
 
 const records = useRecords()
@@ -81,7 +82,8 @@ const sequenceOption = computed<EChartsOption>(() => {
         const item = seq[(params as unknown as { dataIndex: number }[])[0]?.dataIndex ?? 0]
         if (!item) return ''
         const e = item.hit.event
-        const tag = e.isUp === null ? '' : e.isUp ? '（UP）' : '（歪）'
+        const up = upTag(e)
+        const tag = up ? `（${up.text}）` : ''
         return `<b>${e.name}</b>${tag}<br/>${e.poolName}<br/>${formatDateTime(e.ts)}<br/>第 <b>${item.hit.pity}</b> 抽 · 累计平均 ${item.runningAvg.toFixed(1)}`
       },
     },
@@ -111,6 +113,8 @@ const sequenceOption = computed<EChartsOption>(() => {
 
 // ── 歪不歪 ──
 const up = computed(() => analyzeUp(records.analysis.hits))
+/** 米哈游的大小保底：只算小保底，叫“小保底不歪率”（大保底必是 UP） */
+const fiftyFifty = computed(() => records.profile.fiftyFifty)
 const upOption = computed<EChartsOption>(() => {
   const p = palette.value
   const u = up.value
@@ -124,10 +128,11 @@ const upOption = computed<EChartsOption>(() => {
       trigger: 'axis',
       formatter: (params) => {
         const k = ks[(params as unknown as { dataIndex: number }[])[0]?.dataIndex ?? 0] ?? 0
-        return `${u.total} 个 ${top.value}★ 中恰有 <b>${k}</b> 个 UP<br/>理论概率 ${formatPercent(u.pmf[k] ?? 0, 2)}${k === u.wins ? '<br/><b>← 你的结果</b>' : ''}`
+        const head = fiftyFifty.value ? `${u.total} 次小保底中恰有 <b>${k}</b> 次没歪` : `${u.total} 个 ${top.value}★ 中恰有 <b>${k}</b> 个 UP`
+        return `${head}<br/>理论概率 ${formatPercent(u.pmf[k] ?? 0, 2)}${k === u.wins ? '<br/><b>← 你的结果</b>' : ''}`
       },
     },
-    xAxis: { type: 'category', data: ks.map(String), name: 'UP 个数', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: p.dimmed, fontSize: 11 }, ...axisStyle(p) },
+    xAxis: { type: 'category', data: ks.map(String), name: fiftyFifty.value ? '没歪次数' : 'UP 个数', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: p.dimmed, fontSize: 11 }, ...axisStyle(p) },
     yAxis: { type: 'value', ...axisStyle(p), axisLabel: { color: p.dimmed, fontSize: 10, formatter: (v: number) => `${(v * 100).toFixed(0)}%` } },
     series: [
       {
@@ -213,16 +218,19 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
       </section>
 
       <section>
-        <SectionHeader eyebrow="UP OR NOT" :title="`${term}歪不歪`" />
+        <SectionHeader eyebrow="UP OR NOT" :title="fiftyFifty ? '小保底不歪率' : `${term}歪不歪`" />
         <p v-if="!up.total" class="rounded-(--ui-radius) border border-default p-4 text-sm text-muted">
-          {{ records.weaponScope && !derived ? '武器池的 UP 概率没有可靠来源，暂不计算。' : `没有可以判断是否为 UP 的 ${top}★（需要卡池的 UP 名单）。` }}
+          {{ records.weaponScope && !derived ? '武器池的 UP 概率没有可靠来源，暂不计算。' : records.profile.upUnknownNote }}
         </p>
         <div v-else class="grid gap-3 lg:grid-cols-4">
           <div class="space-y-3 lg:col-span-1">
             <div class="rounded-(--ui-radius) border border-default p-4">
               <p class="eyebrow">UP LUCK</p>
               <p class="mt-1 font-display text-3xl font-semibold" :style="{ color: rarityVar(top) }">{{ up.luck === null ? '—' : formatPercent(up.luck, 0) }}</p>
-              <p class="text-xs text-muted">{{ up.total }} 个 {{ top }}★ 中 {{ up.wins }} 个 UP（理论期望 {{ up.expected.toFixed(1) }} 个），不歪的运气超过这个比例的玩家</p>
+              <p v-if="fiftyFifty" class="text-xs text-muted">
+                {{ up.total }} 次小保底中 {{ up.wins }} 次没歪（理论期望 {{ up.expected.toFixed(1) }} 次），小保底不歪的运气超过这个比例的玩家
+              </p>
+              <p v-else class="text-xs text-muted">{{ up.total }} 个 {{ top }}★ 中 {{ up.wins }} 个 UP（理论期望 {{ up.expected.toFixed(1) }} 个），不歪的运气超过这个比例的玩家</p>
             </div>
             <div class="rounded-(--ui-radius) border border-default p-4">
               <p class="eyebrow">OFF-BANNER STREAK</p>
@@ -232,15 +240,20 @@ const theoryMedian = computed(() => (dist.value ? quantile(dist.value.pmf, 0.5) 
           </div>
           <div class="rounded-(--ui-radius) border border-default p-4 lg:col-span-3">
             <p class="text-xs text-muted">
-              每个 6★ 按所在卡池的规则有各自的 UP 概率（单 UP 50%、限定 70% 等），由此精确算出“N 个 6★ 中有 k 个 UP”的概率分布。橙色是你的结果，蓝色是比你少的情况。不计入定向保底。
+              <template v-if="fiftyFifty">
+                只算小保底：按官方规则，角色活动池的小保底 50% 是 UP，武器 / 光锥活动池 75%，由此精确算出“N 次小保底中有 k 次没歪”的概率分布。高亮的是你的结果，蓝色是比你少的情况。大保底必是 UP，不计入。
+              </template>
+              <template v-else>
+                每个 6★ 按所在卡池的规则有各自的 UP 概率（单 UP 50%、限定 70% 等），由此精确算出“N 个 6★ 中有 k 个 UP”的概率分布。橙色是你的结果，蓝色是比你少的情况。不计入定向保底。
+              </template>
             </p>
             <EChart :option="upOption" height="220px" />
             <table class="mt-2 w-full text-sm">
               <thead class="text-left text-xs text-muted">
                 <tr>
-                  <th class="py-1 font-medium">卡池类型</th>
-                  <th class="py-1 text-right font-medium">{{ top }}★</th>
-                  <th class="py-1 text-right font-medium">UP</th>
+                  <th class="py-1 font-medium">{{ fiftyFifty ? '卡池' : '卡池类型' }}</th>
+                  <th class="py-1 text-right font-medium">{{ fiftyFifty ? '小保底' : `${top}★` }}</th>
+                  <th class="py-1 text-right font-medium">{{ fiftyFifty ? '不歪' : 'UP' }}</th>
                   <th class="py-1 text-right font-medium">实际 / 理论</th>
                 </tr>
               </thead>

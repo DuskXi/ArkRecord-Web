@@ -45,6 +45,12 @@ export interface GameProfile {
   readonly hasLedger: boolean
   /** 总览没有记录时的提示；importLink：给出“去导入”（数据页）的按钮 */
   readonly emptyHint: { readonly description: string; readonly importLink: boolean }
+  /** 总览上保底进度卡片（records.guarantees）那一节的标题 */
+  readonly guaranteeTitle: string
+  /** UP 统计只算小保底（米哈游的大小保底：大保底必是 UP，不算运气）；界面上叫“小保底不歪率” */
+  readonly fiftyFifty: boolean
+  /** 高级统计里没有能判断 UP 的最高星时的说明 */
+  readonly upUnknownNote: string
   /** 累计寻访赠送是什么；没有赠送的游戏为 null */
   readonly giftNote: string | null
   /** 总览“抽数”那一格的说明 */
@@ -84,6 +90,9 @@ export const HG_PROFILES: Record<Game, GameProfile> = {
     hasScope: false,
     hasLedger: true,
     emptyHint: HG_EMPTY_HINT,
+    guaranteeTitle: '定向保底与累计奖励',
+    fiftyFifty: false,
+    upUnknownNote: '没有可以判断是否为 UP 的 6★（需要卡池的 UP 名单）。',
     giftNote: '限定池累计 300 抽赠送',
     spendNote: (pulls) => `约 ${formatNumber(pulls * 600)} 合成玉`,
     poolFilters: [
@@ -114,6 +123,9 @@ export const HG_PROFILES: Record<Game, GameProfile> = {
     hasScope: true,
     hasLedger: false,
     emptyHint: HG_EMPTY_HINT,
+    guaranteeTitle: '定向保底与累计奖励',
+    fiftyFifty: false,
+    upUnknownNote: '没有可以判断是否为 UP 的 6★（需要卡池的 UP 名单）。',
     giftNote: '信物赠礼，潜能 +1',
     spendNote: () => '含免费十连，不含赠送',
     poolFilters: [

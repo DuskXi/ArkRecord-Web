@@ -37,6 +37,11 @@ const luckColor = computed(
 /** 累计寻访赠送的 6★（不是抽出来的，不计入统计） */
 const giftedSix = computed(() => records.gifts.filter((g) => g.copy && g.star === top.value))
 const currency = computed(() => records.profile.spendNote(a.value.total))
+const upHint = computed(() => {
+  const { upWins, upTotal } = a.value
+  if (records.profile.fiftyFifty) return upTotal ? `小保底 ${upTotal} 次，不歪 ${upWins} 次` : '还没有能判断的小保底'
+  return upTotal ? `${upWins} / ${upTotal} 个 ${top.value}★ 为当期 UP` : 'UP 名单未知'
+})
 </script>
 
 <template>
@@ -80,16 +85,17 @@ const currency = computed(() => records.profile.spendNote(a.value.total))
           :hint="records.model.dist ? `理论期望 ${records.model.dist.mean.toFixed(2)} 抽${records.model.derived ? '（推算）' : ''}` : `${records.model.hardPity} 抽内必出 ${top}★`"
           icon="i-lucide-gauge"
         />
+        <!-- 米哈游只算小保底（大保底必是 UP）：叫“小保底不歪率” -->
         <StatTile
-          label="UP WIN RATE"
+          :label="records.profile.fiftyFifty ? '50/50 WIN RATE' : 'UP WIN RATE'"
           :value="a.upTotal ? formatPercent(a.upWins / a.upTotal, 0) : '—'"
-          :hint="a.upTotal ? `${a.upWins} / ${a.upTotal} 个 ${top}★ 为当期 UP` : 'UP 名单未知'"
+          :hint="upHint"
           icon="i-lucide-target"
         />
         <StatTile
           label="LUCK"
           :value="a.luck === null ? '—' : formatPercent(a.luck, 0)"
-          :hint="!records.model.dist ? (records.model.derived ? '没有可靠的概率分布，不计算运气' : '武器池不计算运气') : a.luck === null ? `还没有出过 ${top}★` : `${luck.text} · ${records.model.derived ? '推算，非官方' : '比这个比例的玩家更欧'}`"
+          :hint="!records.model.dist ? (records.model.derived ? '没有可靠的概率分布，不计算运气' : '武器池不计算运气') : a.luck === null ? `还没有出过 ${top}★` : `${luck.text} · 比这个比例的玩家更欧${records.model.derived ? '（推算，非官方）' : ''}`"
           icon="i-lucide-sparkles"
           :accent="luckColor"
           class="col-span-2 md:col-span-1"
@@ -104,7 +110,7 @@ const currency = computed(() => records.profile.spendNote(a.value.total))
       </section>
 
       <section v-if="records.guarantees.length">
-        <SectionHeader index="02" eyebrow="GUARANTEE" title="定向保底与累计奖励" />
+        <SectionHeader index="02" eyebrow="GUARANTEE" :title="records.profile.guaranteeTitle" />
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <div v-for="g in records.guarantees" :key="g.poolName + g.label" class="rounded-(--ui-radius) border border-default p-4">
             <p class="truncate text-xs text-dimmed">{{ g.poolName }}</p>

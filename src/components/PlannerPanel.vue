@@ -3,17 +3,19 @@ import { refDebounced } from '@vueuse/core'
 import type { EChartsOption } from 'echarts'
 import { computed, ref, watch } from 'vue'
 import EChart from '@/components/charts/EChart.vue'
-import { useChartTheme } from '@/composables/useChartTheme'
-import { formatPercent } from '@/lib/format'
+import { rarityColor, useChartTheme } from '@/composables/useChartTheme'
+import { formatPercent, rarityVar } from '@/lib/format'
 import { plan } from '@/lib/stats/planner'
 import { useRecords } from '@/composables/useRecords'
 
 /**
  * 抽卡规划：按游戏的保底规则精确计算“再抽 N 抽”的出货概率。
- * 当前垫抽默认取自记录，可以手动修改。
+ * 当前垫抽默认取自记录，可以手动修改。米哈游的每抽概率是按官方数字推算的（非官方），UP 有大保底。
  */
 const records = useRecords()
 const palette = useChartTheme()
+/** 最高星级：鹰角 6★，米哈游 5★ */
+const top = computed(() => records.profile.topStar)
 
 /** 预设、概率和规则来自游戏档案；StatsPage 只在档案里有抽卡规划时显示这个面板 */
 const planner = computed(() => records.profile.planner!)
@@ -51,6 +53,20 @@ watch(
   () => (presetId.value = 'any'),
 )
 
+/**
+ * 现在是不是大保底（米哈游的活动池，预设里有 fallback 时用）：这个保底分组最后一个能判断的最高星歪了。
+ * 和 lib/mhy/up.ts 的 guaranteeStates 是同一条规则；这里是共用代码，不能引用米哈游的模块。
+ */
+const guaranteed = ref(false)
+watch(
+  [family, () => records.events],
+  ([f]) => {
+    const last = records.events.findLast((e) => e.family === f && e.star === top.value && e.upShare !== undefined && e.isUp !== null)
+    guaranteed.value = last?.isUp === false
+  },
+  { immediate: true },
+)
+
 // 明日方舟资源换算：600 合成玉 = 1 抽，1 源石 = 180 合成玉
 const orundum = ref(0)
 const originite = ref(0)
@@ -69,6 +85,7 @@ const inputs = computed(() => ({
   pulls: pulls.value || 0,
   share: (upShare.value || 0) / 100,
   spark: sparkAt.value ? { at: sparkAt.value, done: done.value || 0, gift: preset.value.gift } : undefined,
+  fallback: preset.value.fallback ? { guaranteed: guaranteed.value, guaranteedShare: preset.value.guaranteedShare } : undefined,
 }))
 const debounced = refDebounced(inputs, 120)
 const result = computed(() =>
@@ -79,6 +96,7 @@ const result = computed(() =>
     pulls: debounced.value.pulls,
     upShare: debounced.value.share,
     spark: debounced.value.spark,
+    fallback: debounced.value.fallback,
   }),
 )
 
@@ -114,12 +132,12 @@ const chartOption = computed<EChartsOption>(() => {
     },
     series: [
       {
-        name: '至少 1 个 6★',
+        name: `至少 1 个 ${top.value}★`,
         type: 'line',
         data: pct(r.sixCdf),
         symbol: 'none',
-        itemStyle: { color: p.rarity6 },
-        lineStyle: { color: p.rarity6, width: 2 },
+        itemStyle: { color: rarityColor(p, top.value) },
+        lineStyle: { color: rarityColor(p, top.value), width: 2 },
         markLine:
           debounced.value.pulls > 0 && debounced.value.pulls <= span
             ? {
@@ -172,8 +190,15 @@ const chartOption = computed<EChartsOption>(() => {
         <USelect v-model="presetId" :items="presetOptions" class="w-full" />
       </UFormField>
 
+      <USwitch
+        v-if="preset.fallback"
+        v-model="guaranteed"
+        label="现在是大保底"
+        :description="`上一个 ${top}★ 歪了，下一个必是 UP。默认按你的记录判断，可以修改。`"
+      />
+
       <div v-if="upShare > 0 || custom" class="grid grid-cols-3 gap-2">
-        <UFormField label="UP 占 6★" size="xs">
+        <UFormField :label="`UP 占 ${top}★`" size="xs">
           <UInputNumber v-model="upShare" :min="0" :max="100" :disabled="!custom" size="sm" />
         </UFormField>
         <UFormField label="第几抽必得" size="xs">
@@ -188,14 +213,14 @@ const chartOption = computed<EChartsOption>(() => {
     <div class="space-y-4 lg:col-span-3">
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div class="rounded-(--ui-radius) border border-default p-3">
-          <p class="eyebrow">AT LEAST ONE 6★</p>
-          <p class="mt-1 font-display text-2xl font-semibold" :style="{ color: 'var(--color-rarity-6)' }">{{ formatPercent(result.pSix, 1) }}</p>
-          <p class="text-xs text-muted">至少出 1 个 6★</p>
+          <p class="eyebrow">AT LEAST ONE {{ top }}★</p>
+          <p class="mt-1 font-display text-2xl font-semibold" :style="{ color: rarityVar(top) }">{{ formatPercent(result.pSix, 1) }}</p>
+          <p class="text-xs text-muted">至少出 1 个 {{ top }}★</p>
         </div>
         <div class="rounded-(--ui-radius) border border-default p-3">
           <p class="eyebrow">EXPECTED</p>
           <p class="mt-1 font-display text-2xl font-semibold text-highlighted">{{ result.expectedSix.toFixed(2) }}</p>
-          <p class="text-xs text-muted">期望 6★ 个数</p>
+          <p class="text-xs text-muted">期望 {{ top }}★ 个数</p>
         </div>
         <div v-if="result.pTarget !== null" class="col-span-2 rounded-(--ui-radius) border border-primary/40 bg-primary/5 p-3 sm:col-span-1">
           <p class="eyebrow">TARGET</p>
@@ -208,7 +233,7 @@ const chartOption = computed<EChartsOption>(() => {
 
       <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         <span v-for="a in atLeast" :key="a.k">
-          ≥ {{ a.k }} 个 6★：<b class="font-display text-highlighted">{{ formatPercent(a.p, a.p > 0.999 || a.p < 0.001 ? 2 : 1) }}</b>
+          ≥ {{ a.k }} 个 {{ top }}★：<b class="font-display text-highlighted">{{ formatPercent(a.p, a.p > 0.999 || a.p < 0.001 ? 2 : 1) }}</b>
         </span>
       </div>
 
@@ -216,7 +241,10 @@ const chartOption = computed<EChartsOption>(() => {
         <p class="text-xs text-muted">n 抽内的累计概率</p>
         <EChart :option="chartOption" height="240px" />
       </div>
-      <p class="text-xs leading-relaxed text-dimmed">
+      <p v-if="records.model.derived" class="text-xs leading-relaxed text-dimmed">
+        每抽的概率按官方公布的基础概率、综合概率和保底推算（推算，非官方）；UP 和大保底按官方规则逐抽精确计算，不是模拟抽样。卡池规则以游戏内公告为准。
+      </p>
+      <p v-else class="text-xs leading-relaxed text-dimmed">
         按游戏公布的概率和保底规则逐抽精确计算，不是模拟抽样。卡池规则以游戏内公告为准，特殊卡池请选择“自定义”自行设置。
       </p>
     </div>

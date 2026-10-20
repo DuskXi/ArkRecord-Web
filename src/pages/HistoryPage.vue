@@ -9,6 +9,7 @@ import { dayKey } from '@/lib/stats/analyze'
 import type { PullEvent } from '@/lib/stats/events'
 import type { GiftEvent } from '@/lib/stats/gifts'
 import { type Batch, bestStar, groupBatches } from '@/lib/stats/insights'
+import { upTag } from '@/lib/stats/up-tag'
 import { useRecords } from '@/composables/useRecords'
 import { starsFrom } from '@/lib/game-profile'
 
@@ -150,7 +151,7 @@ function batchClass(b: Batch): string {
 
 // ── 列表 ──
 /** 列表的一行：一次抽取，或者一条赠送（gift） */
-type Row = Pick<PullEvent, 'key' | 'ts' | 'itemId' | 'name' | 'star' | 'poolName' | 'isNew' | 'isUp'> & { order: number; gift?: GiftEvent }
+type Row = Pick<PullEvent, 'key' | 'ts' | 'itemId' | 'name' | 'star' | 'poolName' | 'isNew' | 'isUp' | 'guarantee'> & { order: number; gift?: GiftEvent }
 const columns = computed<TableColumn<Row>[]>(() => [
   { accessorKey: 'ts', header: '时间', meta: { class: { td: 'w-40 font-display text-xs text-muted tabular-nums' } } },
   { accessorKey: 'name', header: records.profile.nouns.char },
@@ -325,11 +326,12 @@ function toggleStar(s: number) {
                       </span>
                       <span v-if="e.isNew" class="absolute top-1 left-1 size-1.5 rounded-full bg-error ring-2 ring-(--ui-bg)" title="NEW" />
                       <span
-                        v-if="e.star === top && e.isUp !== null"
+                        v-if="e.star === top && upTag(e)"
                         class="absolute bottom-1 left-0.5 rounded-sm px-1 text-[9px] font-medium text-white"
-                        :class="e.isUp ? 'bg-primary' : 'bg-zinc-600'"
+                        :class="upTag(e)!.up ? 'bg-primary' : 'bg-zinc-600'"
+                        :title="upTag(e)!.title"
                       >
-                        {{ e.isUp ? 'UP' : '歪' }}
+                        {{ upTag(e)!.text }}
                       </span>
                     </div>
                     <p
@@ -378,9 +380,10 @@ function toggleStar(s: number) {
               :title="giftTitle(row.original.gift)"
             />
             <UBadge
-              v-if="row.original.star === top && row.original.isUp !== null"
-              :label="row.original.isUp ? 'UP' : '歪'"
-              :color="row.original.isUp ? 'primary' : 'neutral'"
+              v-if="row.original.star === top && upTag(row.original)"
+              :label="upTag(row.original)!.text"
+              :color="upTag(row.original)!.up ? 'primary' : 'neutral'"
+              :title="upTag(row.original)!.title"
               variant="subtle"
               size="sm"
             />

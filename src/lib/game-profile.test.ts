@@ -22,6 +22,12 @@ describe('HG_PROFILES', () => {
     expect(ef.emptyHint).toEqual(ak.emptyHint)
   })
 
+  it('保底卡片的标题、UP 统计的说法', () => {
+    expect([ak.guaranteeTitle, ef.guaranteeTitle]).toEqual(['定向保底与累计奖励', '定向保底与累计奖励'])
+    expect([ak.fiftyFifty, ef.fiftyFifty]).toEqual([false, false])
+    expect(ak.upUnknownNote).toBe('没有可以判断是否为 UP 的 6★（需要卡池的 UP 名单）。')
+  })
+
   it('从最高星往下的星级', () => {
     expect(starsFrom(6)).toEqual([6, 5, 4, 3])
     expect(starsFrom(5)).toEqual([5, 4, 3])

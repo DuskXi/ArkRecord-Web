@@ -46,13 +46,18 @@ describe('useMhyRecords', () => {
     expect(source.analysis.topStar).toBe(5)
     expect(source.analysis.stars[5]).toBe(1)
     expect(source.weaponScope).toBe(false)
-    expect([source.gifts, source.roster, source.guarantees, source.efPools.size]).toEqual([[], [], [], 0])
+    expect([source.gifts, source.roster, source.efPools.size]).toEqual([[], [], 0])
+    // 角色活动池的 5★ 不在常驻名单里：是 UP，之后是小保底
+    expect(source.events.at(-1)).toMatchObject({ star: 5, isUp: true })
+    expect(source.guarantees).toEqual([{ poolName: '角色活动跃迁', label: '小保底：下一个 5★ 有 50% 是 UP', current: 0, target: 90, done: false }])
+    expect(source.profile.planner?.presets.map((p) => p.id)).toEqual(['any', 'up'])
 
     // 页面右上角的“角色 / 光锥”切换直接改 efScope
     source.efScope = 'weapon'
     expect(source.weaponScope).toBe(true)
     expect(source.events.map((e) => e.star)).toEqual([3, 5])
     expect(source.model.hardPity).toBe(80)
+    expect(source.profile.planner?.presets.map((p) => p.id)).toEqual(['any', 'up'])
 
     // 换游戏时回到“角色”
     game.value = 'genshin'

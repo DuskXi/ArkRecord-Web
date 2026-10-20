@@ -11,7 +11,8 @@ defineProps<{ label: string; value: string | number; hint?: string; icon?: strin
     <p class="mt-2 font-display text-3xl font-semibold tabular-nums text-highlighted" :style="accent ? { color: accent } : undefined">
       {{ value }}
     </p>
-    <p v-if="hint" class="mt-1 truncate text-xs text-muted">{{ hint }}</p>
+    <!-- 最多两行（米哈游的“推算，非官方”要看得到），放不下的悬停看全文 -->
+    <p v-if="hint" class="mt-1 line-clamp-2 text-xs text-muted" :title="hint">{{ hint }}</p>
     <slot />
   </div>
 </template>
