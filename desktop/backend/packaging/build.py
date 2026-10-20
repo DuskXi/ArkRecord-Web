@@ -61,11 +61,19 @@ def check(exe: Path) -> dict:
     """启动打好的后端，发两个请求，读回复；后端读到输入结束就退出。
 
     - ping：能启动、协议正常；
-    - img.fetch 一个白名单以外的来源：要读 shared/images.json，确认 ARKRECORD_SHARED_DIR 管用（不发网络请求）。
+    - img.fetch 一个白名单以外的来源：要读 shared/images.json；
+    - hg.request 一个白名单以外的路径：要读 shared/upstreams/hg.json（鹰角两款的同步靠它）。
+    后两个确认 ARKRECORD_SHARED_DIR 管用，都不发网络请求。
     """
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "ping"},
         {"jsonrpc": "2.0", "id": 2, "method": "img.fetch", "params": {"source": "not-a-source", "target": "x"}},
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "hg.request",
+            "params": {"upstream": "not-an-upstream", "path": "/x", "envelope": "{}"},
+        },
     ]
     result = subprocess.run(
         [str(exe)],
@@ -83,6 +91,8 @@ def check(exe: Path) -> dict:
         raise SystemExit(f"ping 的回复不对：{responses[1]}")
     if responses[2].get("result") != {"status": 404}:
         raise SystemExit(f"img.fetch 的回复不对（读不到 shared/？）：{responses[2]}")
+    if responses[3].get("result", {}).get("status") != 404:
+        raise SystemExit(f"hg.request 的回复不对（读不到 shared/upstreams？）：{responses[3]}")
     return responses[1]["result"]
 
 

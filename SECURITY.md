@@ -91,7 +91,7 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 
 ## 桌面版的使用人数统计
 
-桌面版（开发中）由本机的 Python 后端上报，默认开启，可以在“关于”页关闭；关闭后不发出任何统计请求。代码：[`desktop/backend/arkrecord_backend/stats.py`](desktop/backend/arkrecord_backend/stats.py)（上报）、[`worker/desktop-stats.ts`](worker/desktop-stats.ts) 和 [`worker/proxy.ts`](worker/proxy.ts) 的 `handleSaltedStats`（接收）。
+桌面版（开发中）由本机的 Python 后端上报，默认开启，可以在“关于”页关闭；关闭后不发出任何统计请求。**安装版（打包发布的版本）暂时不上报**：维护者 2026-10-20 的决定（原话：“打包版先不上报统计，等正式站有了接口、我同意后再开。”），现在只有开发版向测试站上报。代码：[`desktop/backend/arkrecord_backend/stats.py`](desktop/backend/arkrecord_backend/stats.py)（上报）、[`worker/desktop-stats.ts`](worker/desktop-stats.ts) 和 [`worker/proxy.ts`](worker/proxy.ts) 的 `handleSaltedStats`（接收）。
 
 | 上报 | 内容 | 服务器保存什么 |
 |---|---|---|
