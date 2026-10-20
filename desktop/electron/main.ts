@@ -116,10 +116,11 @@ async function serveAppFile(request: Request): Promise<Response> {
 }
 
 /**
- * 使用人数统计的上报地址（desktop/README.md 的“使用人数统计”）：安装版报到正式站，开发版报到测试站。
- * 冒烟测试不设，测试数据不算进统计
+ * 使用人数统计的上报地址（desktop/README.md 的“使用人数统计”）：开发版报到测试站；冒烟测试不设，测试数据不算进统计。
+ * 安装版暂时不上报（维护者 2026-10-20：“打包版先不上报统计，等正式站有了接口、我同意后再开”）：
+ * 正式站还没有桌面版的统计接口。要打开时改成 'https://ark.kaltsit.dev'，先问维护者。
  */
-const STATS_URL = smoke ? undefined : app.isPackaged ? 'https://ark.kaltsit.dev' : 'https://ark-next.kaltsit.dev'
+const STATS_URL = smoke || app.isPackaged ? undefined : 'https://ark-next.kaltsit.dev'
 
 const backend = new Backend(() => {
   if (app.isPackaged) throw new Error('安装包里还没有带上后端（M4）')

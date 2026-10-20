@@ -205,7 +205,7 @@ interface ArkrecordBridge {
 主进程启动后端时要传两个环境变量：
 
 - `ARKRECORD_DATA_DIR`：应用数据目录（`app.getPath('userData')`），后端在这里存 `stats.json`（开关、随机设备 ID、今天报过什么）。
-- `ARKRECORD_STATS_URL`：安装版 `https://ark.kaltsit.dev`，开发版 `https://ark-next.kaltsit.dev`。后端只接受这两个地址，没设置时不上报。
+- `ARKRECORD_STATS_URL`：开发版 `https://ark-next.kaltsit.dev`；安装版**暂时不设、不上报**（维护者 2026-10-20：“打包版先不上报统计，等正式站有了接口、我同意后再开”，正式站还没有桌面版的统计接口），以后打开时用 `https://ark.kaltsit.dev`。后端只接受这两个地址，没设置时不上报。
 - 主进程这一侧在 `desktop/electron/main.ts`（`STATS_URL`，经 `backend.ts` 的 `env` 传给后端）。**冒烟测试不设上报地址**，继承来的环境变量里有也会删掉，测试数据不算进统计；数据目录是冒烟测试的临时目录。冒烟测试检查页面上没有同意弹窗、`stats.status` 的 `available` 为 false。
 
 ## 鹰角 token 的保存（主进程，`app.tokens.*`）
