@@ -16,7 +16,7 @@ import MhyReadButton from './MhyReadButton.vue'
 import MhySyncPanel from './MhySyncPanel.vue'
 import { useMhyRecords } from './records'
 
-const props = defineProps<{ game: MhyGame; view: 'overview' | 'history' | 'analysis' | 'stats' | 'timeline' }>()
+const props = defineProps<{ game: MhyGame; view: 'overview' | 'history' | 'analysis' | 'stats' | 'timeline' | 'data' }>()
 
 const VIEWS = {
   overview: defineAsyncComponent(() => import('@/pages/OverviewPage.vue')),
@@ -25,6 +25,7 @@ const VIEWS = {
   stats: defineAsyncComponent(() => import('@/pages/StatsPage.vue')),
   timeline: defineAsyncComponent(() => import('@/pages/TimelinePage.vue')),
 }
+const MhyDataPage = defineAsyncComponent(() => import('./MhyDataPage.vue'))
 const EYEBROW: Record<MhyGame, string> = { genshin: 'GENSHIN IMPACT', starrail: 'HONKAI: STAR RAIL' }
 
 const source = useMhyRecords(() => props.game)
@@ -43,7 +44,9 @@ const recordName = computed(() => source.profile.recordName)
 </script>
 
 <template>
-  <component :is="VIEWS[view]" v-if="source.accountId" />
+  <!-- “数据”页没有记录时也能打开（可以先导入） -->
+  <MhyDataPage v-if="view === 'data'" :game="game" />
+  <component :is="VIEWS[view]" v-else-if="source.accountId" />
   <PageShell v-else :id="`${game}-read`" :eyebrow="`${EYEBROW[game]} · READ`" title="读取" :require-account="false" :sync="false" :scoped="false">
     <div class="space-y-8">
       <section>

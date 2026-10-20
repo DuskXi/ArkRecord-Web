@@ -45,6 +45,7 @@ const VIEWS = [
   { path: '/analysis', view: 'analysis' },
   { path: '/stats', view: 'stats' },
   { path: '/timeline', view: 'timeline' },
+  { path: '/data', view: 'data' },
 ] as const
 
 export const EXTRA_ROUTES: RouteRecordRaw[] = (['genshin', 'starrail'] as const).flatMap((game) =>
