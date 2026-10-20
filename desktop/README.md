@@ -270,6 +270,8 @@ interface ArkrecordBridge {
 - **本机打包**（Windows 实测）：在 `desktop/backend` 打后端，再在仓库根目录 `npm run desktop:build`（要拉游戏数据；只想试打包可以换成 `npx vite build --mode desktop && npx tsc -p desktop/electron`），设 `CSC_IDENTITY_AUTO_DISCOVERY=false` 后 `npm run desktop:package`，最后 `npm run desktop:smoke:packaged`。
 - **工作流**：`.github/workflows/desktop-release.yml`，三个平台各打一份。只在 `desktop` 分支（推送改了打包相关的文件时自动打包，只上传构建产物；手动触发要等工作流文件进了 master 才能用）和 `desktop-vX.Y.Z` 标签（建草稿 release）上运行。**标签不要用 `v` 开头**：`deploy-production.yml` 会把 `v*` 标签部署到正式站。草稿由维护者确认版本号和说明后再发布。
 - **不签名**：macOS 首次打开要在“系统设置 → 隐私与安全性”里允许，Windows 可能出现 SmartScreen 提示。
+- **版本号**：和网站一致，跟 `package.json` 走（维护者 2026-10-20：“桌面版版本号跟网页版一致，用 1.1.9，标签 desktop-v1.1.9”）。标签是 `desktop-v` 加版本号。
+- **发布说明**：`desktop/release-notes/<版本号>.md`，写给玩家看（能做什么、下载哪个文件、已知情况）。UIGF 不在发布说明里宣传（维护者：“UIGF别高调宣传”）。
 
 ## 安全规则
 
