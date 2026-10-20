@@ -7,7 +7,7 @@ import SectionHeader from '@/components/ui/SectionHeader.vue'
 import { formatNumber } from '@/lib/format'
 import { BUILD_COMMIT, HG_VERIFY_URL, SECURITY_URL } from '@/lib/cloud/links'
 import { LEGACY_APP_PATH } from '@/lib/legacy'
-import { EXTRA_NOTICES, EXTRA_SOURCES } from '@/platform'
+import { EXTRA_NOTICES, EXTRA_SOURCES, SOURCE_NOTES } from '@/platform'
 import { APP_VERSION, useAppStore } from '@/stores/app'
 import { IMAGE_SOURCES } from '../../worker/images'
 import { UPSTREAMS } from '../../worker/upstreams'
@@ -98,7 +98,7 @@ const sources = [
         <ul class="divide-y divide-default rounded-(--ui-radius) border border-default">
           <li v-for="s in sources" :key="s.name" class="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
             <ULink :to="s.url" target="_blank" class="text-sm font-medium text-highlighted hover:text-primary">{{ s.name }}</ULink>
-            <span class="text-xs text-muted">{{ s.desc }}</span>
+            <span class="text-xs text-muted">{{ SOURCE_NOTES[s.name] ?? s.desc }}</span>
           </li>
         </ul>
       </section>

@@ -37,9 +37,8 @@ const ALLOWED_METHODS = new Map([
   ['mhy.useLink', 45_000],
   ['mhy.fetchPage', 45_000],
   ['mhy.forget', 10_000],
-  // 原神、星铁的头像名单（BWIKI，后端低频拉取并缓存在本机）
-  // 查 BWIKI：一次最多 2 个请求、间隔 8 秒，原神、星铁同时查时要排队
-  ['mhy.icons', 120_000],
+  // 原神、星铁、终末地的头像名单（BWIKI，后端低频拉取并缓存在本机）：一次最多 2 个请求、间隔 8 秒，几个游戏同时查时要排队
+  ['wiki.icons', 120_000],
 ])
 /** 和后端约定的协议版本（desktop/README.md） */
 const PROTOCOL_VERSION = 1

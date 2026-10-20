@@ -27,6 +27,9 @@ export interface ExtraVendor {
   brand?: string
 }
 
+/** 按游戏、物品 ID、名称给出头像地址；没有时 CharAvatar 显示文字 */
+export type AvatarResolver = (game: string, itemId: string | null, name: string) => string | undefined
+
 /** “关于”页数据来源表里多出的一行 */
 export interface ExtraSource {
   name: string
@@ -40,3 +43,7 @@ export const EXTRA_ROUTES: RouteRecordRaw[] = []
 export const EXTRA_SOURCES: ExtraSource[] = []
 /** “关于”页底部版权说明后面多出的话 */
 export const EXTRA_NOTICES: string[] = []
+/** 头像怎么取：网页版是 null，CharAvatar 用构建时镜像到本站的头像；桌面版全部运行时经本机后端转发（见 desktop.ts） */
+export const AVATAR_RESOLVER: AvatarResolver | null = null
+/** “关于”页数据来源的说明换一种写法（桌面版：按需加载，不是镜像到本站），键是来源名称 */
+export const SOURCE_NOTES: Record<string, string> = {}

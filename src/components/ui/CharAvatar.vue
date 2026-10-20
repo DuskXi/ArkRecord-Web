@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { rarityVar } from '@/lib/format'
 import { useRecordsHost } from '@/composables/useRecords'
 import { akAvatarUrl, efAvatarUrl } from '@/lib/meta'
+import { AVATAR_RESOLVER } from '@/platform'
 import { useAppStore } from '@/stores/app'
 
 const props = withDefaults(
@@ -22,6 +23,8 @@ watch(
 const src = computed(() => {
   if (failed.value) return undefined
   if (host?.avatar) return host.avatar(props.name, props.charId ?? null)
+  // 桌面版：头像全部运行时经本机后端转发、限速、缓存（src/platform/desktop.ts）
+  if (AVATAR_RESOLVER) return AVATAR_RESOLVER(props.game, props.charId ?? null, props.name)
   if (props.game === 'arknights') return akAvatarUrl(props.charId, app.akAvatars)
   if (props.game === 'endfield') return efAvatarUrl(props.charId, app.efAvatars)
   return undefined

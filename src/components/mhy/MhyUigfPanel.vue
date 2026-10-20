@@ -35,7 +35,14 @@ async function onFile(event: Event) {
   if (!file) return
   busy.value = true
   try {
-    const next = parseUigf(JSON.parse(await file.text()))
+    let json: unknown
+    try {
+      json = JSON.parse(await file.text())
+    } catch {
+      // 浏览器的 JSON 报错是英文，不直接给用户看
+      throw new Error('文件不是有效的 JSON')
+    }
+    const next = parseUigf(json)
     parsed.value = next
     preview.value = await previewUigf(next)
     fileName.value = file.name

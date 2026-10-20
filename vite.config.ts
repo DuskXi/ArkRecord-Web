@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { relative } from 'node:path'
+import { rm } from 'node:fs/promises'
+import { join, relative } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import ui from '@nuxt/ui/vite'
@@ -99,6 +100,23 @@ function webWithoutDesktopCode(): Plugin {
   }
 }
 
+const DESKTOP_OUT_DIR = 'desktop/electron/dist/renderer'
+
+/**
+ * 桌面版的头像都在运行时由本机后端按白名单转发、按来源站限速、只缓存在本机（维护者：“本地全走转发限速这条路”），
+ * 所以安装包里不带构建时镜像的头像（public/gamedata/avatars、ef-avatars）。元数据（名称、卡池、UP 名单）照常保留。
+ */
+function desktopWithoutMirroredAvatars(): Plugin {
+  const outDir = fileURLToPath(new URL(`./${DESKTOP_OUT_DIR}/`, import.meta.url))
+  return {
+    name: 'arkrecord:desktop-without-mirrored-avatars',
+    apply: 'build',
+    async closeBundle() {
+      for (const dir of ['gamedata/avatars', 'gamedata/ef-avatars']) await rm(join(outDir, dir), { recursive: true, force: true })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   /**
    * 桌面版（vite build --mode desktop、npm run desktop:dev）：页面由 Electron 加载，请求交给本机的 Python 后端，
@@ -127,6 +145,7 @@ export default defineConfig(({ mode }) => {
       }),
       // 本地开发时由这个插件在 Vite 里运行 worker/index.ts，/api/* 与页面同源，和线上一致。
       ...(desktop ? [] : [cloudflare()]),
+      ...(desktop ? [desktopWithoutMirroredAvatars()] : []),
     ],
     resolve: {
       alias: [
@@ -140,7 +159,7 @@ export default defineConfig(({ mode }) => {
     preview: { cors: false },
     build: {
       chunkSizeWarningLimit: 1200,
-      ...(desktop ? { outDir: 'desktop/electron/dist/renderer', emptyOutDir: true } : {}),
+      ...(desktop ? { outDir: DESKTOP_OUT_DIR, emptyOutDir: true } : {}),
     },
   }
 })

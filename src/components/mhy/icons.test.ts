@@ -4,10 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 async function setup(rpc: (method: string, params?: unknown) => Promise<unknown>) {
   vi.resetModules()
   window.arkrecord = { rpc: vi.fn(rpc), platform: 'win32' }
-  return (await import('./icons')).mhyIconUrl
+  return (await import('./icons')).wikiIconUrl
 }
 
-describe('mhyIconUrl', () => {
+describe('wikiIconUrl', () => {
   it('把用到的中文名攒起来一起查，给出 /api/img/bwiki/ 的地址；不安全的路径丢掉；同一个名称只查一次', async () => {
     const mhyIconUrl = await setup(async () => ({
       items: { 琴: 'images/ys/1/11/abcdefghijklmnopqrstu.png', 刻晴: 'images/../secret.png', 迪卢克: 'images/ys/a.png?x=1' },
@@ -20,7 +20,7 @@ describe('mhyIconUrl', () => {
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(window.arkrecord!.rpc).toHaveBeenCalledTimes(1)
     // 不带汉字的名称（别的语言的记录）不查
-    expect(window.arkrecord!.rpc).toHaveBeenCalledWith('mhy.icons', { game: 'genshin', names: ['琴', '刻晴', '迪卢克'] })
+    expect(window.arkrecord!.rpc).toHaveBeenCalledWith('wiki.icons', { game: 'genshin', names: ['琴', '刻晴', '迪卢克'] })
   })
 
   it('之后用到的新名称再查一次，只查新的', async () => {
@@ -56,6 +56,21 @@ describe('mhyIconUrl', () => {
     expect(calls).toBe(2)
     expect(url.value).toBe('/api/img/bwiki/images/ys/1/11/abcdefghijklmnopqrstu.png')
     vi.useRealTimers()
+  })
+
+  it('终末地一次最多交给后端 25 个名称，剩下的马上接着查', async () => {
+    const wikiIconUrl = await setup(async (_method, params) => {
+      const names = (params as { names: string[] }).names
+      return { items: Object.fromEntries(names.map((n) => [n, 'images/zmd/1/11/abcdefghijklmnopqrstu.png'])), complete: true }
+    })
+    const names = Array.from({ length: 30 }, (_, i) => `测试干员${i}`)
+    for (const name of names) wikiIconUrl('endfield', name)
+    await vi.waitFor(() => expect(wikiIconUrl('endfield', '测试干员29')).toBeDefined())
+    const calls = vi.mocked(window.arkrecord!.rpc).mock.calls.map((c) => c[1] as { game: string; names: string[] })
+    expect(calls.map((c) => [c.game, c.names.length])).toEqual([
+      ['endfield', 25],
+      ['endfield', 5],
+    ])
   })
 
   it('后端没有这个方法时只显示文字，不反复请求', async () => {

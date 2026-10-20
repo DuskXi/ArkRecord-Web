@@ -4,7 +4,8 @@
  */
 import { defineAsyncComponent } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
-import type { ExtraSource, ExtraVendor } from './index'
+import { wikiIconUrl } from '@/components/mhy/icons'
+import type { AvatarResolver, ExtraSource, ExtraVendor } from './index'
 
 const MhyGamePage = () => import('@/components/mhy/MhyGamePage.vue')
 
@@ -37,6 +38,27 @@ export const EXTRA_NOTICES: string[] = [
   'ArkRecord 与米哈游无关。原神、崩坏：星穹铁道的名称与图像版权归米哈游所有。',
   '角色、武器、光锥的图片全部来自社区维基 BWIKI，不来自本项目，本项目也不拥有这些图片的版权；图片由你的电脑直接向 BWIKI 的服务器请求，只缓存在本机，不打包进安装包，也不经过本项目的任何服务器。',
 ]
+
+/**
+ * 维护者 2026-10-20：“本地全走转发限速这条路”。桌面版的头像全部在运行时由本机后端按白名单转发、按来源站限速、只缓存在本机，
+ * 安装包里不带镜像的头像（vite.config.ts 的 desktopWithoutMirroredAvatars）。米哈游的页面由 MhyGamePage 的 host.avatar 取图。
+ */
+const AK_CHAR_ID = /^char_\w{1,60}$/
+export const AVATAR_RESOLVER: AvatarResolver = (game, itemId, name) => {
+  // 明日方舟：只用 PRTS（PRTS 上没有的显示文字）
+  if (game === 'arknights') return itemId && AK_CHAR_ID.test(itemId) ? `/api/img/prts-avatar/${itemId}` : undefined
+  // 终末地：按名称查 BWIKI 的“<名称>头像 / 图标”
+  if (game === 'endfield') return wikiIconUrl('endfield', name)
+  return undefined
+}
+
+/** “关于”页：桌面版的头像不是镜像到本站的，按需加载 */
+export const SOURCE_NOTES: Record<string, string> = {
+  PRTS: '明日方舟干员名单、UP 名单、卡池名称（构建时获取）；干员头像由你的电脑直接向 PRTS 请求，只缓存在本机',
+  'yuanyan3060/ArknightsGameResource': '干员头像的备用来源（只用于网页版的镜像，桌面版不使用）',
+  '明日方舟终末地 BWIKI': '终末地角色头像与武器图标：由你的电脑直接向 BWIKI 请求，只缓存在本机',
+  森空岛: '终末地角色头像的备用来源（只用于网页版的镜像，桌面版不使用）',
+}
 
 /** 米哈游每个游戏的页面：都是 MhyGamePage，里面用鹰角的统计页面；路径和 MhySidebar 的导航对应 */
 const VIEWS = [

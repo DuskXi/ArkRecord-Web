@@ -1,6 +1,7 @@
 /**
- * 原神、星铁的头像：用 BWIKI 的图（维护者 2026-10-20 的决定，“软件声明不拥有图片版权”，见“关于”页）。
- * 页面用到哪些名称，就把这些名称交给本机后端 mhy.icons 查图片路径（后端只查这些、缓存在本机，对 BWIKI 低频）；
+ * 桌面版按名称查头像：原神、星铁（维护者 2026-10-20 的决定：用 BWIKI 的图，“软件声明不拥有图片版权”，见“关于”页），
+ * 以及终末地（维护者：“本地全走转发限速这条路”，见 src/platform/desktop.ts 的 AVATAR_RESOLVER）。
+ * 页面用到哪些名称，就把这些名称交给本机后端 wiki.icons 查图片路径（后端只查这些、缓存在本机，对 BWIKI 低频）；
  * 图片走 /api/img/bwiki/…，由后端按桌面版的白名单下载、只缓存在这台电脑上，不打包、不进网页版。
  * 只查带汉字的名称（简体中文的记录，和大小保底的判断一致）；对不上、还没查到时，CharAvatar 显示文字。
  */
@@ -8,12 +9,19 @@ import { reactive } from 'vue'
 import type { MhyGame } from '@/lib/mhy/types'
 import { desktopBridge } from '@/lib/transport'
 
+export type WikiGame = MhyGame | 'endfield'
+
 /** 后端给的图片路径：只接受 images/ 下的相对路径，不含 ..、查询参数和锚点（后端还会再按白名单检查） */
 const SAFE_TARGET = /^images\/[\w\-./%]+$/
 const HAN = /\p{Script=Han}/u
-/** 攒一会儿再查，一次最多 100 个（和后端一次调用的上限一致：2 个请求） */
+/** 攒一会儿再查 */
 const FLUSH_DELAY_MS = 200
-const MAX_PER_CALL = 100
+/**
+ * 一次调用最多交给后端几个名称：后端一次调用最多 2 个请求、每个请求 50 个文件名。
+ * 原神、星铁一个名称查 1 个文件名；终末地查“头像”“图标”，去掉空格下划线再试一次，一个名称占 2～4 个，所以少给一些，
+ * 剩下的马上接着查（后端按每分钟上限排队），不用等“没查完”的 10 分钟。
+ */
+const MAX_PER_CALL: Record<WikiGame, number> = { genshin: 100, starrail: 100, endfield: 25 }
 /** 后端说没查完（BWIKI 出错后在退避）时，过一会儿再问；后端在退避期间不会发请求 */
 const RETRY_MS = 10 * 60 * 1000
 
@@ -27,16 +35,16 @@ interface GameState {
   disabled: boolean
 }
 
-const urls = reactive<Partial<Record<MhyGame, Record<string, string>>>>({})
+const urls = reactive<Partial<Record<WikiGame, Record<string, string>>>>({})
 /** 没查到的名称“可以再问”时加一：用到头像的地方（CharAvatar）会重新取，不用等页面重新渲染 */
-const retryRounds = reactive<Partial<Record<MhyGame, number>>>({})
-const states: Partial<Record<MhyGame, GameState>> = {}
+const retryRounds = reactive<Partial<Record<WikiGame, number>>>({})
+const states: Partial<Record<WikiGame, GameState>> = {}
 
-function stateOf(game: MhyGame): GameState {
+function stateOf(game: WikiGame): GameState {
   return (states[game] ??= { asked: new Set(), pending: new Set(), busy: false, disabled: false })
 }
 
-function schedule(game: MhyGame): void {
+function schedule(game: WikiGame): void {
   const s = stateOf(game)
   if (s.timer || s.busy) return
   s.timer = setTimeout(() => {
@@ -45,19 +53,19 @@ function schedule(game: MhyGame): void {
   }, FLUSH_DELAY_MS)
 }
 
-async function flush(game: MhyGame): Promise<void> {
+async function flush(game: WikiGame): Promise<void> {
   const s = stateOf(game)
   const bridge = desktopBridge()
   if (!bridge) {
     s.disabled = true
     return
   }
-  const names = [...s.pending].slice(0, MAX_PER_CALL)
+  const names = [...s.pending].slice(0, MAX_PER_CALL[game])
   for (const name of names) s.pending.delete(name)
   if (!names.length) return
   s.busy = true
   try {
-    const value = (await bridge.rpc('mhy.icons', { game, names })) as { items?: unknown; complete?: unknown } | null
+    const value = (await bridge.rpc('wiki.icons', { game, names })) as { items?: unknown; complete?: unknown } | null
     const items = value?.items
     const list = (urls[game] ??= {})
     if (items && typeof items === 'object') {
@@ -82,7 +90,7 @@ async function flush(game: MhyGame): Promise<void> {
 }
 
 /** 名称对应的头像地址；第一次用到某个名称时去查，查到之前和对不上时是 undefined */
-export function mhyIconUrl(game: MhyGame, name: string): string | undefined {
+export function wikiIconUrl(game: WikiGame, name: string): string | undefined {
   // 读一下计数：没查到的可以再问时，调用的地方会重新执行
   void retryRounds[game]
   const url = urls[game]?.[name]
