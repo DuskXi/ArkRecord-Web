@@ -28,6 +28,8 @@ interface GameState {
 }
 
 const urls = reactive<Partial<Record<MhyGame, Record<string, string>>>>({})
+/** 没查到的名称“可以再问”时加一：用到头像的地方（CharAvatar）会重新取，不用等页面重新渲染 */
+const retryRounds = reactive<Partial<Record<MhyGame, number>>>({})
 const states: Partial<Record<MhyGame, GameState>> = {}
 
 function stateOf(game: MhyGame): GameState {
@@ -67,6 +69,7 @@ async function flush(game: MhyGame): Promise<void> {
       // 没查到的过一会儿可以再问
       setTimeout(() => {
         for (const name of names) if (!urls[game]?.[name]) s.asked.delete(name)
+        retryRounds[game] = (retryRounds[game] ?? 0) + 1
       }, RETRY_MS)
     }
   } catch {
@@ -80,6 +83,8 @@ async function flush(game: MhyGame): Promise<void> {
 
 /** 名称对应的头像地址；第一次用到某个名称时去查，查到之前和对不上时是 undefined */
 export function mhyIconUrl(game: MhyGame, name: string): string | undefined {
+  // 读一下计数：没查到的可以再问时，调用的地方会重新执行
+  void retryRounds[game]
   const url = urls[game]?.[name]
   if (url) return url
   const s = stateOf(game)

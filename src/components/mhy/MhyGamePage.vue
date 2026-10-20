@@ -34,7 +34,8 @@ const host: RecordsHost = reactive({
   playerName: computed(() => (account.value ? `UID ${account.value.uid}` : '')),
   base: computed(() => `/${props.game}`),
   avatar: (name: string) => mhyIconUrl(props.game, name),
-  imageCredit: '角色、武器、光锥图片来自 BWIKI，版权归米哈游所有',
+  // 维护者 2026-10-20：图片全部不来自本项目，请求由本机直接发给社区服务器（完整的声明在“关于”页）
+  imageCredit: '角色、武器、光锥图片全部来自 BWIKI，不来自本项目，由本机直接向 BWIKI 请求；图片版权归米哈游所有，本项目不拥有',
 })
 provideRecords(source, host)
 

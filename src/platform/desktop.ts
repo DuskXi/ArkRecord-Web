@@ -23,13 +23,17 @@ export const EXTRA_VENDORS: ExtraVendor[] = [
 
 export const EXTRA_SOURCES: ExtraSource[] = [
   { name: '米哈游', desc: '原神、崩坏：星穹铁道的抽卡记录（本机直接请求官方接口，不经过任何服务器）', url: 'https://www.mihoyo.com/' },
-  { name: '原神 BWIKI', desc: '原神角色、武器的头像（在这台电脑上按需加载、只缓存在本机，不打包、不再分发）', url: 'https://wiki.biligame.com/ys/' },
+  { name: '原神 BWIKI', desc: '原神角色、武器的头像：由你的电脑直接向 BWIKI 的服务器请求，只缓存在本机（图片不来自本项目）', url: 'https://wiki.biligame.com/ys/' },
   { name: '崩坏：星穹铁道 BWIKI', desc: '星铁角色、光锥的头像（同上）', url: 'https://wiki.biligame.com/sr/' },
 ]
 
-/** 维护者 2026-10-20：“用 bwiki 的图，并且软件声明不拥有图片版权” */
+/**
+ * 维护者 2026-10-20：“用 bwiki 的图，并且软件声明不拥有图片版权”；
+ * “增加申明，图片全部不来自于本项目，并且请求由本机直接向社区服务器发送”
+ */
 export const EXTRA_NOTICES: string[] = [
-  'ArkRecord 与米哈游无关。原神、崩坏：星穹铁道的名称与图像版权归米哈游所有；角色、武器、光锥图片来自 BWIKI，ArkRecord 不拥有这些图片的版权，只在你的电脑上按需加载显示。',
+  'ArkRecord 与米哈游无关。原神、崩坏：星穹铁道的名称与图像版权归米哈游所有。',
+  '角色、武器、光锥的图片全部来自社区维基 BWIKI，不来自本项目，本项目也不拥有这些图片的版权；图片由你的电脑直接向 BWIKI 的服务器请求，只缓存在本机，不打包进安装包，也不经过本项目的任何服务器。',
 ]
 
 /** 米哈游每个游戏的页面：都是 MhyGamePage，里面用鹰角的统计页面；路径和 MhySidebar 的导航对应 */

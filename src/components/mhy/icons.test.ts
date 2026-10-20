@@ -38,6 +38,26 @@ describe('mhyIconUrl', () => {
     ])
   })
 
+  it('后端没查完（BWIKI 限速、退避中）时，10 分钟后用到头像的地方会自动再问', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    const mhyIconUrl = await setup(async () => {
+      calls++
+      return calls === 1 ? { items: {}, complete: false } : { items: { 琴: 'images/ys/1/11/abcdefghijklmnopqrstu.png' }, complete: true }
+    })
+    const { computed } = await import('vue')
+    const url = computed(() => mhyIconUrl('genshin', '琴'))
+    expect(url.value).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(calls).toBe(1)
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    expect(url.value).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(calls).toBe(2)
+    expect(url.value).toBe('/api/img/bwiki/images/ys/1/11/abcdefghijklmnopqrstu.png')
+    vi.useRealTimers()
+  })
+
   it('后端没有这个方法时只显示文字，不反复请求', async () => {
     const mhyIconUrl = await setup(() => Promise.reject({ code: -32601, message: '不允许调用这个方法' }))
     expect(mhyIconUrl('starrail', '白露')).toBeUndefined()

@@ -57,6 +57,8 @@ const host = useRecordsHost()
           class="mt-16"
         />
         <slot v-else />
+        <!-- 米哈游页面的图片来源声明（侧边栏没有“关于”，每页底部写一行） -->
+        <p v-if="host?.imageCredit" class="mt-10 text-center text-[11px] leading-relaxed text-dimmed">{{ host.imageCredit }}</p>
       </div>
     </template>
   </UDashboardPanel>
