@@ -2,6 +2,7 @@
  * 把两个游戏的原始记录统一成同一种“寻访事件”，后续的统计逻辑只处理事件。
  * 保底分组规则见 docs/rewrite/research.md 1.8 与 2.3。
  */
+import { inferRuleType } from '../../../shared/ak-pools.js'
 import type { AkMeta, EfMeta } from '../meta'
 import type { AkPull, EfPoolInfo, EfPull } from '../types'
 
@@ -42,12 +43,8 @@ export function akRuleType(poolId: string | null, poolName: string, meta: AkMeta
   if (poolId) {
     const known = meta.pools[poolId]
     if (known) return known.t
-    if (poolId.startsWith('BOOT')) return 'BOOT'
-    if (poolId.startsWith('CLASSIC_ATTAIN')) return 'CLASSIC_ATTAIN'
-    if (poolId.startsWith('CLASSIC_DOUBLE')) return 'CLASSIC_DOUBLE'
-    const prefix = poolId.split('_')[0] ?? ''
-    if (prefix === 'NORM') return 'NORMAL'
-    return prefix
+    // 卡池数据里还没有：按 poolId 前缀推断（和构建脚本共用 shared/ak-pools.js）
+    return inferRuleType(poolId)
   }
   // 旧版数据只有卡池名
   if (poolName.includes('中坚')) return 'CLASSIC'

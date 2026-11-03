@@ -8,6 +8,24 @@ import type { Announcement } from './index'
  */
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: 'v1.1.10',
+    kind: 'minor',
+    version: '1.1.10',
+    date: '2026-11-03',
+    title: '新卡池开放当天就能判断是不是 UP',
+    summary: '网站更新之后才开放的明日方舟卡池，现在也能认出 UP 干员，“得到 UP”和歪没歪的统计不用再等网站更新。',
+    sections: [
+      {
+        title: '新卡池的 UP 名单',
+        items: [
+          '以前网站只认识部署那天已有的卡池，之后开放的新卡池（例如“将雪投火”）里的 6★ 判断不了是不是 UP，“得到 UP”显示“—”。',
+          '现在遇到这种卡池时，网站会自动从 PRTS 取最新的 UP 名单补上，统计照常计算。取到的名单保存在你的浏览器里，不需要你做任何操作。',
+          '取名单的请求经本站转发并缓存，不包含你的账号信息，PRTS 也看不到你的 IP。来源说明见[关于](/about)页。',
+        ],
+      },
+    ],
+  },
+  {
     id: 'v1.1.9',
     kind: 'minor',
     version: '1.1.9',
