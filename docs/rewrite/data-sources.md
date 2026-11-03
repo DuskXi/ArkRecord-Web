@@ -35,7 +35,10 @@
   - **`gachaPoolId` 与新接口的 `poolId` 一致**（例如 `LINKAGE_74_0_1` “幽境狩人”）。
   - 规则类型分布：NORMAL 233、DOUBLE 42、CLASSIC 41、SINGLE 36、CLASSIC_DOUBLE 35、LIMITED 26、FESCLASSIC 14、LINKAGE 9、SPECIAL 8、ATTAIN 5、CLASSIC_ATTAIN 3、BACKFLOW 1。
   - 不足：标准 / 中坚池的名字都是泛称；除 SPECIAL 外**没有 UP 名单**；没有卡池图字段。
-- UP 名单：`weedy.prts.wiki/gacha_table.json`（服务器侧卡池详情，含 `upCharInfo.perCharList`）。RIIC-Web 的每日 GitHub Action 在 2026-10-15 成功拉取过。只在 CI 构建时获取，失败时降级为“UP 未知”。
+- UP 名单：`weedy.prts.wiki/gacha_table.json`（服务器侧卡池详情，含 `upCharInfo.perCharList`，约 2.3 MB，允许跨域）。RIIC-Web 的每日 GitHub Action 在 2026-10-15 成功拉取过。
+  - 构建时获取一次，写进 `ak-meta.json`。
+  - **运行时补充**（维护者 2026-11-03：“前端要有算法能够解析 PRTS 的新的卡池，不要全部都依赖于构建”）：构建之后才开放的卡池，页面在记录里遇到时经本站的缓存转发（`/api/gamedata/prts-gacha`，`worker/gamedata.ts`，每个机房 3 小时最多回源一次）取这张表，在浏览器里解析（`shared/ak-pools.js`，和构建脚本是同一份代码；`src/lib/runtime-pools.ts`）。结果存在本机，还有没补上的卡池时最多每 6 小时再取，PRTS 一直没有的卡池 7 天后不再取。表里只有卡池 ID 和详情（UP 名单、限定干员），卡池名称取自寻访记录，类型按 ID 前缀推断。
+  - 都拿不到时降级为“UP 未知”。
 - 卡池标题图：`ArknightsAssets/ArknightsAssets2` 仓库的 `assets/dyn/ui/gacha/{poolId}/title.png`。
 - 旧版抓 PRTS「卡池一览/常驻标准寻访」HTML 来划分常驻池时段，这一需求可以由 `gacha_table` 的 `openTime` / `endTime` 完全取代。
 

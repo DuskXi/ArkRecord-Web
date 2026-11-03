@@ -22,6 +22,8 @@ ArkRecord 的所有统计计算都在你的浏览器里完成。服务器（Clou
 | [`worker/proxy.ts`](worker/proxy.ts)、[`worker/upstreams.ts`](worker/upstreams.ts) | 从鹰角同步记录时 | 浏览器不能直接请求鹰角接口（没有 CORS），所以经 Worker 转发。浏览器把参数（包括 token）放在请求体里，Worker 按白名单拼成上游请求，转给鹰角接口，**不记录、不存储** |
 | [`worker/hg-verify.ts`](worker/hg-verify.ts) | 云同步：检测云端状态、开通 / 覆盖、忘记密码时删除、开关双重验证、开启双重验证的账号的每个请求、无密码模式的每个请求 | 用 OAuth token 查询鹰角的角色绑定列表，确认这个 UID 属于你；**核实完立即丢弃**，不写入存储、不写日志、不出现在返回值里 |
 
+另外两处转发只取公开数据，不接触任何 token 或账号信息：图片缓存（[`worker/images.ts`](worker/images.ts)，新干员头像、终末地卡池图）和明日方舟卡池表（[`worker/gamedata.ts`](worker/gamedata.ts)，构建之后才开放的卡池的 UP 名单，原样转发 PRTS 的公开文件）。两者都只转发固定的白名单地址，结果缓存在 Cloudflare，来源站看不到用户的 IP。
+
 ### token 只存在于 Worker 处理请求时的内存里
 
 - **只放在请求体里。**浏览器发给 Worker 的请求，token 一律放在请求体里，不出现在网址和请求头里：Cloudflare 的统计、安全事件可能记录网址，实时日志（`wrangler tail`）会显示网址和请求头，但都不包含请求体。转发接口拒绝网址里带参数的请求（[`worker/proxy.ts`](worker/proxy.ts) 的 `ProxyEnvelope`）。
