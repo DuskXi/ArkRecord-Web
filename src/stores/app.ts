@@ -5,6 +5,7 @@ import { useLiveQuery } from '@/composables/useLiveQuery'
 import { db } from '@/lib/db'
 import { type AkMeta, type EfMeta, loadAkMeta, loadEfMeta } from '@/lib/meta'
 import { markWelcomeSeen, welcomeSeen } from '@/lib/onboarding'
+import { RUNTIME_POOLS_KEY, withRuntimePools } from '@/lib/runtime-pools'
 import type { Account, Game } from '@/lib/types'
 import { loadCloudflareAnalytics } from '@/lib/analytics'
 import { type Consent, readConsent, writeConsent } from '@/lib/consent'
@@ -39,8 +40,35 @@ export const useAppStore = defineStore('app', () => {
     activeIds.value = { ...activeIds.value, [account.game]: account.id }
   }
 
+  /** 构建时的明日方舟卡池数据 */
+  const builtMeta = shallowRef<AkMeta | null>(null)
+  void loadAkMeta().then((m) => (builtMeta.value = m))
+  /** 页面用的卡池数据：构建数据之后才开放的卡池，UP 名单在运行时从 PRTS 补上（lib/runtime-pools.ts） */
   const meta = shallowRef<AkMeta | null>(null)
-  void loadAkMeta().then((m) => (meta.value = m))
+  /** 本机记录里出现过的明日方舟卡池（只读索引，不读记录本身） */
+  const akPoolIds = useLiveQuery(
+    async () => (await db.akPulls.orderBy('[accountId+poolId]').uniqueKeys()).map((key) => (Array.isArray(key) ? String(key[1] ?? '') : '')),
+    [],
+    [] as string[],
+  )
+  let runtimeRound = 0
+  watch(
+    [builtMeta, akPoolIds],
+    async ([built, poolIds]) => {
+      if (!built) return
+      const round = ++runtimeRound
+      meta.value ??= built
+      const merged = await withRuntimePools(built, poolIds, {
+        fetch: (input, init) => fetch(input, init),
+        load: async () => (await db.kv.get(RUNTIME_POOLS_KEY))?.value,
+        save: async (value) => {
+          await db.kv.put({ key: RUNTIME_POOLS_KEY, value })
+        },
+      })
+      if (round === runtimeRound) meta.value = merged
+    },
+    { immediate: true },
+  )
   const efMeta = shallowRef<EfMeta | null>(null)
   void loadEfMeta().then((m) => (efMeta.value = m))
   /** 已镜像到本站的头像，元数据加载完成后头像组件会自动切换到图片 */

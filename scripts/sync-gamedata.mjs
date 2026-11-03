@@ -23,6 +23,7 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import sharp from 'sharp'
+import { extractUpLists, inferRuleType, limitedChars, poolIds, PRTS_GACHA_TABLE } from '../shared/ak-pools.js'
 
 const OUT_DIR = path.resolve('public/gamedata')
 const AVATAR_DIR = path.join(OUT_DIR, 'avatars')
@@ -31,7 +32,8 @@ const AVATAR_SIZE = 128
 const CONCURRENCY = 4
 
 const GAMEDATA = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata'
-const WEEDY_GACHA = 'https://weedy.prts.wiki/gacha_table.json'
+// PRTS 卡池表的解析和网页运行时共用 shared/ak-pools.js
+const WEEDY_GACHA = PRTS_GACHA_TABLE
 const PRTS_API = 'https://prts.wiki/api.php'
 const PRTS_PROFESSION = { 先锋: 'PIONEER', 近卫: 'WARRIOR', 重装: 'TANK', 狙击: 'SNIPER', 术师: 'CASTER', 医疗: 'MEDIC', 辅助: 'SUPPORT', 特种: 'SPECIAL' }
 /** 按顺序尝试：PRTS 为主，GitHub 资源仓库为备 */
@@ -97,19 +99,6 @@ async function exists(file) {
 
 function rarityOf(value) {
   return typeof value === 'number' ? value + 1 : (TIER[value] ?? 0)
-}
-
-/** 从服务器侧卡池详情中提取各卡池的 UP 名单：{ poolId: { 6: [charId], 5: [charId] } } */
-function extractUpLists(weedy) {
-  const result = {}
-  for (const pool of weedy.gachaPoolClient ?? []) {
-    const list = pool.gachaPoolDetail?.detailInfo?.upCharInfo?.perCharList ?? []
-    if (!list.length) continue
-    const up = {}
-    for (const entry of list) up[entry.rarityRank + 1] = entry.charIdList
-    result[pool.gachaPoolId] = up
-  }
-  return result
 }
 
 const RULE_LABEL = {
@@ -286,15 +275,6 @@ function applyPrtsPoolPages(pools, rows, chars) {
   if (stats.recentMissing.length) console.warn(`  PRTS 有、游戏数据还没有的近期卡池：${stats.recentMissing.join('、')}`)
 }
 
-/** 与前端 akRuleType 的回退规则一致：按 poolId 前缀推断规则类型 */
-function inferRuleType(poolId) {
-  if (poolId.startsWith('BOOT')) return 'BOOT'
-  if (poolId.startsWith('CLASSIC_ATTAIN')) return 'CLASSIC_ATTAIN'
-  if (poolId.startsWith('CLASSIC_DOUBLE')) return 'CLASSIC_DOUBLE'
-  const prefix = poolId.split('_')[0] ?? ''
-  return prefix === 'NORM' ? 'NORMAL' : prefix
-}
-
 async function downloadAvatar(id) {
   const target = path.join(AVATAR_DIR, `${id}.webp`)
   if (await exists(target)) return 'cached'
@@ -376,10 +356,10 @@ async function syncArknights() {
   const upLists = weedy.status === 'fulfilled' ? extractUpLists(weedy.value) : {}
   const pools = gachaTable.status === 'fulfilled' ? buildPools(gachaTable.value, upLists) : {}
   const wikiOnlyPools = []
-  for (const entry of weedy.status === 'fulfilled' ? (weedy.value.gachaPoolClient ?? []) : []) {
-    const id = entry.gachaPoolId
-    if (!id || pools[id]) continue
-    pools[id] = { n: '', t: inferRuleType(id), o: 0, e: 0, ...(upLists[id] ? { up: upLists[id] } : {}) }
+  const wikiLimited = weedy.status === 'fulfilled' ? limitedChars(weedy.value) : {}
+  for (const id of weedy.status === 'fulfilled' ? poolIds(weedy.value) : []) {
+    if (pools[id]) continue
+    pools[id] = { n: '', t: inferRuleType(id), o: 0, e: 0, ...(upLists[id] ? { up: upLists[id] } : {}), ...(wikiLimited[id] ? { lim: wikiLimited[id] } : {}) }
     wikiOnlyPools.push(id)
   }
   console.log(`卡池：${Object.keys(pools).length}，UP 名单 ${Object.keys(upLists).length}${wikiOnlyPools.length ? `，仅 PRTS 有：${wikiOnlyPools.join('、')}` : ''}`)

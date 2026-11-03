@@ -23,6 +23,9 @@ function category(ruleType: string, weapon: boolean): Filter {
   return 'limited'
 }
 
+/** 构建数据里还没有的新干员（新卡池的 UP 名单在运行时补上，见 lib/runtime-pools.ts）：名字从自己的记录里取 */
+const namesFromRecords = computed(() => new Map(records.events.flatMap((e) => (e.itemId ? [[e.itemId, e.name] as const] : []))))
+
 const pools = computed(() =>
   records.analysis.pools
     .filter((p) => filter.value === 'all' || category(p.ruleType, p.weapon) === filter.value)
@@ -35,7 +38,7 @@ const pools = computed(() =>
         ...p,
         badge: ruleLabel(p.ruleType),
         period: meta?.o ? `${formatDate(meta.o * 1000)} — ${formatDate(meta.e * 1000)}` : `${formatDate(p.firstTs)} — ${formatDate(p.lastTs)}`,
-        upNames: meta?.up?.['6']?.map((id) => app.meta?.chars[id]?.n ?? id) ?? (efUp.length ? efUp : info?.up6Name ? [info.up6Name] : []),
+        upNames: meta?.up?.['6']?.map((id) => app.meta?.chars[id]?.n ?? namesFromRecords.value.get(id) ?? id) ?? (efUp.length ? efUp : info?.up6Name ? [info.up6Name] : []),
         art: efImageUrl(info?.up6Image),
       }
     }),

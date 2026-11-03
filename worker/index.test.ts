@@ -333,6 +333,53 @@ describe('图片缓存转发', () => {
   })
 })
 
+describe('PRTS 卡池表的缓存转发', () => {
+  const table = JSON.stringify({ gachaPoolClient: [] })
+  function upstream(body = table, type = 'application/json', status = 200) {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(body, { status, headers: { 'content-type': type } }))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('只转发固定的一个地址；只接受本站页面的 GET 请求', async () => {
+    const fetchMock = upstream()
+    const cases = [
+      call('/api/gamedata/prts-gacha', { headers: { 'sec-fetch-site': 'same-origin' } }),
+      call('/api/gamedata/prts-gacha', { headers: sameOriginHeaders({ 'sec-fetch-site': 'cross-site' }) }),
+      call('/api/gamedata/prts-gacha', { method: 'POST', headers: sameOriginHeaders() }),
+      call('/api/gamedata/prts-gacha?x=1', { headers: sameOriginHeaders() }),
+      call('/api/gamedata/other', { headers: sameOriginHeaders() }),
+    ]
+    expect((await Promise.all(cases)).map((r) => r.status)).toEqual([403, 403, 405, 404, 404])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('原样返回 PRTS 的卡池表，可以缓存几小时', async () => {
+    const fetchMock = upstream()
+    const res = await call('/api/gamedata/prts-gacha', { headers: sameOriginHeaders() })
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe(table)
+    expect(res.headers.get('cache-control')).toBe('public, max-age=10800')
+    expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8')
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['https://weedy.prts.wiki/gacha_table.json'])
+    expect(fetchMock.mock.calls[0]![1].redirect).toBe('manual')
+    // 不把用户的请求头转发给 PRTS
+    expect(new Headers(fetchMock.mock.calls[0]![1].headers).get('x-arkrecord-client')).toBeNull()
+  })
+
+  it('PRTS 返回的不是 JSON、出错时不转发；回源受限速保护', async () => {
+    upstream('<html>', 'text/html')
+    expect((await call('/api/gamedata/prts-gacha', { headers: sameOriginHeaders() })).headers.get('x-arkrecord-proxy')).toBe('upstream_not_json')
+    upstream('', 'application/json', 500)
+    expect((await call('/api/gamedata/prts-gacha', { headers: sameOriginHeaders() })).status).toBe(502)
+    const fetchMock = upstream()
+    const env = { RL_DATA: { limit: vi.fn(async () => ({ success: false })) } } as unknown as Env
+    const limited = await call('/api/gamedata/prts-gacha', { headers: sameOriginHeaders() }, env)
+    expect(limited.status).toBe(429)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
 /** 模拟统计用的 Durable Object，记录收到的请求 */
 function fakeStats() {
   const calls: { url: string; init?: RequestInit }[] = []

@@ -6,6 +6,7 @@
 import { CLOUD_PREFIX } from '../shared/cloud-protocol'
 import { type CloudEnv, handleCloud } from './cloud'
 import { FEEDBACK_PREFIX, hashToken, newFeedbackId, newFeedbackToken, parseFeedback } from './feedback'
+import { GAMEDATA_PREFIX, handleGamedata } from './gamedata'
 import { handleImage, IMAGE_PREFIX } from './images'
 import { handlePage, PAGES } from './pages'
 import { kindsFor, parseDesktopPing, saltedKey, type StatsPlatform } from './desktop-stats'
@@ -94,6 +95,13 @@ export async function handleRequest(request: Request, env: Env, ctx?: Pick<Execu
   if (url.pathname.startsWith(CLOUD_PREFIX)) return handleCloud(request, env, url)
   if (url.pathname.startsWith(IMAGE_PREFIX)) {
     return handleImage(request, url, {
+      allowUpstream: () => withinRateLimit(env, 'data', request),
+      waitUntil: ctx ? (promise) => ctx.waitUntil(promise) : undefined,
+    })
+  }
+  // 明日方舟新卡池的 UP 名单：PRTS 卡池表的缓存转发（见 gamedata.ts）
+  if (url.pathname.startsWith(GAMEDATA_PREFIX)) {
+    return handleGamedata(request, url, {
       allowUpstream: () => withinRateLimit(env, 'data', request),
       waitUntil: ctx ? (promise) => ctx.waitUntil(promise) : undefined,
     })
